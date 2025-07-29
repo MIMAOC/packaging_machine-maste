@@ -1,0 +1,39 @@
+2025-07-29 22:07:55,940 - clients.adaptive_learning_webapi - INFO - 发送自适应学习参数分析请求到: https://guji.xiaoajia.cn:8443/api/adaptive_learning/analyze
+2025-07-29 22:07:55,941 - clients.adaptive_learning_webapi - DEBUG - 请求数据: {'target_weight': 200.0, 'actual_total_cycle_ms': 9500, 'actual_coarse_time_ms': 3800, 'error_value': 0.3, 'current_coarse_advance': 15.0, 'current_fall_value': 0.4, 'fine_flow_rate': 0.37, 'analysis_type': 'adaptive_learning', 'client_version': '1.5.1', 'timestamp': '2025-07-29T22:07:55.940497'}
+2025-07-29 22:07:55,944 - urllib3.connectionpool - DEBUG - Starting new HTTPS connection (1): guji.xiaoajia.cn:8443
+2025-07-29 22:07:58,361 - clients.adaptive_learning_webapi - ERROR - 无法连接到后端API服务器
+2025-07-29 22:07:58,418 - clients.adaptive_learning_webapi - INFO - 发送自适应学习参数分析请求到: https://guji.xiaoajia.cn:8443/api/adaptive_learning/analyze
+2025-07-29 22:07:58,418 - clients.adaptive_learning_webapi - DEBUG - 请求数据: {'target_weight': 200.0, 'actual_total_cycle_ms': 9500, 'actual_coarse_time_ms': 3800, 'error_value': 0.3, 'current_coarse_advance': 15.0, 'current_fall_value': 0.4, 'fine_flow_rate': None, 'analysis_type': 'adaptive_learning', 'client_version': '1.5.1', 'timestamp': '2025-07-29T22:07:58.418053'}
+2025-07-29 22:07:58,419 - urllib3.connectionpool - DEBUG - Starting new HTTPS connection (1): guji.xiaoajia.cn:8443
+2025-07-29 22:08:00,549 - clients.adaptive_learning_webapi - ERROR - 无法连接到后端API服务器
+2025-07-29 22:08:00,551 - clients.adaptive_learning_webapi - INFO - 发送自适应学习参数分析请求到: https://guji.xiaoajia.cn:8443/api/adaptive_learning/analyze
+2025-07-29 22:08:00,551 - clients.adaptive_learning_webapi - DEBUG - 请求数据: {'target_weight': 200.0, 'actual_total_cycle_ms': 15000, 'actual_coarse_time_ms': 3800, 'error_value': 0.8, 'current_coarse_advance': 15.0, 'current_fall_value': 0.4, 'fine_flow_rate': 0.5, 'analysis_type': 'adaptive_learning', 'client_version': '1.5.1', 'timestamp': '2025-07-29T22:08:00.551255'}
+2025-07-29 22:08:00,552 - urllib3.connectionpool - DEBUG - Starting new HTTPS connection (1): guji.xiaoajia.cn:8443
+2025-07-29 22:08:02,716 - clients.adaptive_learning_webapi - ERROR - 无法连接到后端API服务器
+2025-07-29 22:08:02,720 - __main__ - ERROR - 请求模型验证异常:
+Traceback (most recent call last):
+  File "d:\newpacking\packaging_machine-master\frontend\debug_test_script.py", line 170, in test_request_model_validation
+    from models.request_models import AdaptiveLearningAnalysisRequest
+ModuleNotFoundError: No module named 'models'
+2025-07-29 22:09:28,777 - clients.adaptive_learning_webapi - INFO - 发送自适应学习参数分析请求到: http://localhost:8080/api/adaptive_learning/analyze
+2025-07-29 22:09:28,777 - clients.adaptive_learning_webapi - DEBUG - 请求数据: {'target_weight': 200.0, 'actual_total_cycle_ms': 9500, 'actual_coarse_time_ms': 3800, 'error_value': 0.3, 'current_coarse_advance': 15.0, 'current_fall_value': 0.4, 'fine_flow_rate': 0.37, 'analysis_type': 'adaptive_learning', 'client_version': '1.5.1', 'timestamp': '2025-07-29T22:09:28.777080'}
+2025-07-29 22:09:28,780 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): localhost:8080
+2025-07-29 22:09:28,847 - urllib3.connectionpool - DEBUG - http://localhost:8080 "POST /api/adaptive_learning/analyze HTTP/1.1" 200 1004
+2025-07-29 22:09:28,848 - clients.adaptive_learning_webapi - INFO - 自适应学习参数分析成功: 符合条件=False, 消息=❌ 不符合条件: 总周期9500ms超出标准9000ms; 调整参数: 快加提前量→0.0g
+2025-07-29 22:09:28,848 - clients.adaptive_learning_webapi - DEBUG - 调整参数: {'coarse_advance': 0.0}
+2025-07-29 22:09:28,850 - clients.adaptive_learning_webapi - INFO - 发送自适应学习参数分析请求到: http://localhost:8080/api/adaptive_learning/analyze
+2025-07-29 22:09:28,850 - clients.adaptive_learning_webapi - DEBUG - 请求数据: {'target_weight': 200.0, 'actual_total_cycle_ms': 9500, 'actual_coarse_time_ms': 3800, 'error_value': 0.3, 'current_coarse_advance': 15.0, 'current_fall_value': 0.4, 'fine_flow_rate': None, 'analysis_type': 'adaptive_learning', 'client_version': '1.5.1', 'timestamp': '2025-07-29T22:09:28.850086'}
+2025-07-29 22:09:28,851 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): localhost:8080
+2025-07-29 22:09:28,874 - urllib3.connectionpool - DEBUG - http://localhost:8080 "POST /api/adaptive_learning/analyze HTTP/1.1" 200 946
+2025-07-29 22:09:28,874 - clients.adaptive_learning_webapi - INFO - 自适应学习参数分析成功: 符合条件=False, 消息=❌ 不符合条件: 总周期9500ms超出标准9000ms
+2025-07-29 22:09:28,875 - clients.adaptive_learning_webapi - INFO - 发送自适应学习参数分析请求到: http://localhost:8080/api/adaptive_learning/analyze
+2025-07-29 22:09:28,875 - clients.adaptive_learning_webapi - DEBUG - 请求数据: {'target_weight': 200.0, 'actual_total_cycle_ms': 15000, 'actual_coarse_time_ms': 3800, 'error_value': 0.8, 'current_coarse_advance': 15.0, 'current_fall_value': 0.4, 'fine_flow_rate': 0.5, 'analysis_type': 'adaptive_learning', 'client_version': '1.5.1', 'timestamp': '2025-07-29T22:09:28.875614'}
+2025-07-29 22:09:28,877 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): localhost:8080
+2025-07-29 22:09:28,882 - urllib3.connectionpool - DEBUG - http://localhost:8080 "POST /api/adaptive_learning/analyze HTTP/1.1" 200 1086
+2025-07-29 22:09:28,883 - clients.adaptive_learning_webapi - INFO - 自适应学习参数分析成功: 符合条件=False, 消息=❌ 不符合条件: 误差值0.80g超出范围[0.1g, 0.5g]; 总周期15000ms超出标准9000ms; 调整参数: 快加提前量→0.0g, 落差值→0.5g
+2025-07-29 22:09:28,883 - clients.adaptive_learning_webapi - DEBUG - 调整参数: {'coarse_advance': 0.0, 'fall_value': 0.5}
+2025-07-29 22:09:28,886 - __main__ - ERROR - 请求模型验证异常:
+Traceback (most recent call last):
+  File "d:\newpacking\packaging_machine-master\frontend\debug_test_script.py", line 170, in test_request_model_validation
+    from models.request_models import AdaptiveLearningAnalysisRequest
+ModuleNotFoundError: No module named 'models'
