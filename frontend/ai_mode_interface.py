@@ -1040,7 +1040,18 @@ class AIModeInterface:
     def on_settings_click(self):
         """设置按钮点击事件"""
         print("点击了设置")
-        messagebox.showinfo("设置", "AI模式设置功能")
+        try:
+            # 隐藏AI模式界面
+            self.root.withdraw()
+            
+            # 导入并创建系统设置界面
+            from system_settings_interface import SystemSettingsInterface
+            settings_interface = SystemSettingsInterface(parent=self.root, ai_mode_window=self)
+            print("系统设置界面已打开，AI模式界面已隐藏")
+        except Exception as e:
+            # 如果出错，重新显示AI模式界面
+            self.root.deiconify()
+            messagebox.showerror("界面错误", f"打开系统设置界面失败：{str(e)}")
     
     def on_new_material_click(self):
         """新增物料按钮点击事件 - 显示第一个弹窗（输入物料名称）"""
@@ -2629,7 +2640,8 @@ class AIModeInterface:
                 # 显示确认对话框
                 result = messagebox.askyesno(
                     "取消学习确认", 
-                    "您确定要取消当前的学习过程吗？\n\n"
+                    "您确定要取消训练\n"
+                    "结束这次生产\n\n"
                     "取消后将：\n"
                     "• 停止所有料斗的学习过程\n"
                     "• 清除当前学习进度\n"
