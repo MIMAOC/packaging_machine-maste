@@ -843,6 +843,7 @@ class AIModeInterface:
         progress_window.resizable(False, False)
         progress_window.transient(self.root)
         progress_window.grab_set()
+        progress_window.protocol("WM_DELETE_WINDOW", lambda: None)
         
         # 居中显示进度弹窗
         progress_window.update_idletasks()
@@ -1497,7 +1498,7 @@ class AIModeInterface:
             write_success, write_message = self.plc_operations.write_bucket_parameters_all(
                 target_weight=target_weight,
                 coarse_speed=coarse_speed,
-                fine_speed=48,
+                fine_speed=44,
                 coarse_advance=0,
                 fall_value=0
             )
@@ -1573,7 +1574,7 @@ class AIModeInterface:
                 f"  • API地址：{self.api_config.base_url if self.api_config else '未配置'}\n"
                 f"  • 目标重量：{target_weight}g\n"
                 f"  • 推荐快加速度：{coarse_speed} 档\n"
-                f"  • 慢加速度：48 档\n"
+                f"  • 慢加速度：44 档\n"
                 f"  • 快加提前量：0\n"
                 f"  • 落差值：0\n\n"
                 f"📝 操作摘要：\n"

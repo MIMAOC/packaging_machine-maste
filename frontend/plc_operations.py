@@ -124,6 +124,11 @@ class PLCOperations:
             self.logger.info("开始执行放料和清零序列操作")
             
             # 1. 总停止=1
+            self.logger.info("步骤1: 发送总启0命令")
+            if not self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStart'], False):
+                return False, "发送总启动命令失败"
+            
+            # 1. 总停止=1
             self.logger.info("步骤1: 发送总停止命令")
             if not self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStop'], True):
                 return False, "发送总停止命令失败"
@@ -151,7 +156,7 @@ class PLCOperations:
             
             # 6. 延迟100ms
             self.logger.info("步骤6: 等待100ms清零完成")
-            time.sleep(0.1)
+            time.sleep(1)
             
             # 7. 总清零=0
             self.logger.info("步骤7: 发送总清零停止命令")
@@ -173,7 +178,7 @@ class PLCOperations:
             return False, error_msg
     
     def write_bucket_parameters_all(self, target_weight: float, coarse_speed: int, 
-                                  fine_speed: int = 48, coarse_advance: int = 0, 
+                                  fine_speed: int = 44, coarse_advance: int = 0, 
                                   fall_value: int = 0) -> Tuple[bool, str]:
         """
         将参数写入所有料斗的PLC地址
@@ -181,7 +186,7 @@ class PLCOperations:
         Args:
             target_weight (float): 目标重量（克）
             coarse_speed (int): 快加速度
-            fine_speed (int): 慢加速度，默认48
+            fine_speed (int): 慢加速度，默认44
             coarse_advance (int): 快加提前量，默认0
             fall_value (int): 落差值，默认0
             

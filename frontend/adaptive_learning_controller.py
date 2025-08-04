@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-自适应学习阶段控制器
+自适应学习阶段控制器 - 修复版本
 对慢加时间测定成功的料斗进行自适应学习阶段测定，直至连续3次符合条件或超出3轮各15次测定失败
+
+修复内容：
+1. 修复连续成功次数的重置逻辑
+2. 修复轮次管理逻辑
+3. 确保不符合条件时正确重置成功计数
 
 作者：AI助手
 创建日期：2025-07-24
-更新日期：2025-07-29（修复参数传递和快加状态监测问题）
+更新日期：2025-07-30（修复连续成功次数重置逻辑）
 """
 
 import threading
@@ -33,6 +38,7 @@ class BucketAdaptiveLearningState:
         self.max_attempts_per_round = 15   # 每轮最大尝试次数
         self.consecutive_success_count = 0 # 连续成功次数
         self.consecutive_success_required = 3  # 需要连续成功3次
+        self.parameters_initialized = False  # 标记目标重量和落差值是否已初始化
         
         # 测定过程变量
         self.start_time = None             # 启动时间
@@ -54,7 +60,7 @@ class BucketAdaptiveLearningState:
         # 最终结果存储（测定成功时的参数）
         self.is_success = False            # 最终是否成功
         self.final_coarse_speed = 0        # 最终快加速度
-        self.final_fine_speed = 48         # 最终慢加速度
+        self.final_fine_speed = 44         # 最终慢加速度
         self.final_coarse_advance = 0.0    # 最终快加提前量
         self.final_fall_value = 0.4        # 最终落差值
         self.failure_stage = ""            # 失败阶段
@@ -68,6 +74,7 @@ class BucketAdaptiveLearningState:
         self.current_round = 1
         self.current_attempt = 0
         self.consecutive_success_count = 0
+        self.parameters_initialized = False
         self.start_time = None
         self.coarse_end_time = None
         self.target_reached_time = None
@@ -81,7 +88,7 @@ class BucketAdaptiveLearningState:
         # 重置最终结果
         self.is_success = False
         self.final_coarse_speed = 0
-        self.final_fine_speed = 48
+        self.final_fine_speed = 44
         self.final_coarse_advance = 0.0
         self.final_fall_value = 0.4
         self.failure_stage = ""
@@ -91,7 +98,7 @@ class BucketAdaptiveLearningState:
         """开始新一轮测定"""
         self.current_round += 1
         self.current_attempt = 0
-        self.consecutive_success_count = 0
+        # 注意：这里不重置连续成功次数，因为连续成功是跨轮次的概念
     
     def start_next_attempt(self):
         """开始下一次尝试"""
@@ -124,15 +131,17 @@ class BucketAdaptiveLearningState:
         """重置连续成功次数"""
         self.consecutive_success_count = 0
     
-    def is_round_complete(self) -> bool:
-        """检查当前轮次是否完成"""
-        return (self.consecutive_success_count >= self.consecutive_success_required or 
-                self.current_attempt >= self.max_attempts_per_round)
+    def is_current_round_exhausted(self) -> bool:
+        """检查当前轮次的尝试次数是否已用完"""
+        return self.current_attempt >= self.max_attempts_per_round
     
-    def is_learning_complete(self) -> bool:
-        """检查学习是否完成（成功或失败）"""
-        return (self.consecutive_success_count >= self.consecutive_success_required or 
-                self.current_round >= self.max_rounds)
+    def has_reached_max_rounds(self) -> bool:
+        """检查是否已达到最大轮次数"""
+        return self.current_round >= self.max_rounds
+    
+    def is_learning_successful(self) -> bool:
+        """检查学习是否成功（连续成功3次）"""
+        return self.consecutive_success_count >= self.consecutive_success_required
     
     def complete_successfully(self, coarse_speed: int, fine_speed: int):
         """成功完成测定"""
@@ -159,6 +168,12 @@ class AdaptiveLearningController:
     
     负责对慢加时间测定成功的料斗进行自适应学习阶段测定
     每个料斗独立运行，直至连续3次符合条件或超出3轮各15次测定失败
+    
+    修复的逻辑：
+    1. 符合条件：连续成功次数+1，如果达到3次则成功完成
+    2. 不符合条件：连续成功次数重置为0，继续在当前轮次内重试
+    3. 当前轮次尝试次数用完：开始新一轮（如果未超过最大轮次）
+    4. 超过最大轮次：判定为失败
     """
     
     def __init__(self, modbus_client: ModbusClient):
@@ -350,11 +365,25 @@ class AdaptiveLearningController:
         """
         try:
             # 步骤1: 写入参数到PLC
-            self._log(f"📝 步骤1: 料斗{bucket_id}写入自适应学习参数")
-            success = self._write_adaptive_learning_parameters(bucket_id)
-            if not success:
-                self._handle_bucket_failure(bucket_id, f"料斗{bucket_id}写入自适应学习参数失败")
-                return
+            with self.lock:
+                state = self.bucket_states[bucket_id]
+                is_first_attempt = not state.parameters_initialized
+            
+            if is_first_attempt:
+                # 第一次尝试时，初始化所有参数
+                self._log(f"📝 步骤1: 料斗{bucket_id}初始化自适应学习参数（第一次）")
+                success = self._write_adaptive_learning_parameters(bucket_id)
+                if not success:
+                    self._handle_bucket_failure(bucket_id, f"料斗{bucket_id}初始化自适应学习参数失败")
+                    return
+                
+                # 标记为已初始化
+                with self.lock:
+                    state.parameters_initialized = True
+            else:
+                # 后续尝试时，不写入目标重量和落差值
+                self._log(f"📝 步骤1: 料斗{bucket_id}准备开始测定（第{state.current_round}轮第{state.current_attempt}次）")
+                # 不需要写入参数，直接进入下一步
             
             # 步骤2: 启动料斗（互斥保护）
             self._log(f"📤 步骤2: 启动料斗{bucket_id}（互斥保护）")
@@ -539,9 +568,9 @@ class AdaptiveLearningController:
                 self._handle_bucket_failure(bucket_id, f"停止料斗{bucket_id}失败")
                 return
             
-            # 步骤3: 延迟600ms后读取实时重量
+            # 步骤3: 延迟1000ms后读取实时重量
             self._log(f"⏱️ 步骤5: 等待600ms后读取料斗{bucket_id}实时重量")
-            time.sleep(0.6)
+            time.sleep(1)
             
             real_weight = self._read_bucket_weight(bucket_id)
             if real_weight is None:
@@ -634,37 +663,47 @@ class AdaptiveLearningController:
                     state.record_success()
                     consecutive_count = state.consecutive_success_count
                 
-                if consecutive_count >= state.consecutive_success_required:
-                    # 连续3次成功，自适应学习完成，但不立即弹窗
+                self._log(f"✅ 料斗{bucket_id}第{consecutive_count}次符合条件")
+                
+                # 检查是否达到连续成功要求
+                if state.is_learning_successful():
+                    # 连续3次成功，自适应学习完成
                     self._handle_bucket_success(bucket_id)
                 else:
                     # 还需要继续测定
-                    self._log(f"✅ 料斗{bucket_id}第{consecutive_count}次符合条件，需连续{state.consecutive_success_required}次")
+                    self._log(f"📈 料斗{bucket_id}需连续{state.consecutive_success_required}次成功，当前已成功{consecutive_count}次")
                     time.sleep(1.0)  # 等待1秒后开始下次尝试
                     self._start_single_attempt(bucket_id)
             else:
                 # 不符合条件，处理失败或重测
-                self._handle_adaptive_learning_adjustment(bucket_id, new_params, analysis_msg)
+                self._handle_adaptive_learning_not_compliant(bucket_id, new_params, analysis_msg)
             
         except Exception as e:
             error_msg = f"处理料斗{bucket_id}自适应学习到量流程异常: {str(e)}"
             self.logger.error(error_msg)
-            self.logger.exception("🔍 完整异常堆栈:")  # 🔥 打印完整异常堆栈
+            self.logger.exception("🔍 完整异常堆栈:")
             self._handle_bucket_failure(bucket_id, error_msg)
     
-    def _handle_adaptive_learning_adjustment(self, bucket_id: int, new_params: dict, reason: str):
+    def _handle_adaptive_learning_not_compliant(self, bucket_id: int, new_params: dict, reason: str):
         """
-        处理自适应学习参数调整 - 修复版本
+        处理自适应学习不符合条件的情况
+        
+        逻辑说明：
+        1. 重置连续成功次数为0（这是关键修复）
+        2. 检查当前轮次是否已用完尝试次数
+        3. 如果当前轮次未用完，继续在当前轮次内重试
+        4. 如果当前轮次已用完，开始新一轮（如果未超过最大轮次）
+        5. 如果已超过最大轮次，判定为失败
         
         Args:
             bucket_id (int): 料斗ID
             new_params (dict): 新的参数
-            reason (str): 调整原因
+            reason (str): 不符合的原因
         """
         try:
-            # 🔥 调试日志：打印输入参数
+            # 调试日志：打印输入参数
             self.logger.info("=" * 60)
-            self.logger.info(f"🔍 处理料斗{bucket_id}参数调整 - 输入参数调试:")
+            self.logger.info(f"🔍 处理料斗{bucket_id}不符合条件 - 输入参数调试:")
             self.logger.info(f"  bucket_id: {bucket_id}")
             self.logger.info(f"  new_params: {new_params} (类型: {type(new_params)})")
             self.logger.info(f"  reason: {reason}")
@@ -695,20 +734,11 @@ class AdaptiveLearningController:
                 state = self.bucket_states[bucket_id]
                 
                 # 重置连续成功次数
+                old_consecutive_count = state.consecutive_success_count
                 state.reset_consecutive_success()
+                self._log(f"🔄 料斗{bucket_id}不符合条件，连续成功次数从{old_consecutive_count}重置为0")
                 
-                # 检查是否轮次完成
-                if state.is_round_complete():
-                    if state.current_round >= state.max_rounds:
-                        # 已达到最大轮次，测定失败
-                        self._handle_bucket_failure(bucket_id, f"已达最大轮次({state.max_rounds})，自适应学习测定失败")
-                        return
-                    else:
-                        # 开始新一轮
-                        state.start_new_round()
-                        self._log(f"🔄 料斗{bucket_id}开始第{state.current_round}轮测定")
-
-                # 🔥 调试：记录调整前的参数值
+                # 记录调整前的参数值
                 old_coarse_advance = state.current_coarse_advance
                 old_fall_value = state.current_fall_value
                 
@@ -724,13 +754,17 @@ class AdaptiveLearningController:
                     params_updated.append(f"落差值: {old_fall_value}g → {new_params['fall_value']}g")
                     self.logger.info(f"📝 料斗{bucket_id}落差值更新: {old_fall_value}g → {new_params['fall_value']}g")
                 
-                # 🔥 调试：打印更新的参数
-                if params_updated:
-                    self.logger.info(f"🔍 料斗{bucket_id}参数更新详情: {'; '.join(params_updated)}")
-                else:
-                    self.logger.warning(f"⚠️ 料斗{bucket_id}没有参数需要更新")
+                # 检查当前轮次是否已用完尝试次数
+                current_round = state.current_round
+                current_attempt = state.current_attempt
+                is_round_exhausted = state.is_current_round_exhausted()
+                has_reached_max_rounds = state.has_reached_max_rounds()
+                
+                self._log(f"📊 料斗{bucket_id}状态检查: 第{current_round}轮第{current_attempt}次尝试，轮次用完={is_round_exhausted}，达到最大轮次={has_reached_max_rounds}")
         
-            self._log(f"🔄 料斗{bucket_id}不符合条件，调整参数: {reason}")
+            self._log(f"🔄 料斗{bucket_id}不符合条件，原因: {reason}")
+            if params_updated:
+                self._log(f"📝 参数更新: {'; '.join(params_updated)}")
             
             # 步骤1: 更新PLC中的参数
             success = self._update_bucket_parameters(bucket_id, new_params)
@@ -738,28 +772,34 @@ class AdaptiveLearningController:
                 self._handle_bucket_failure(bucket_id, f"更新料斗{bucket_id}参数失败，无法继续测定")
                 return
             
-            # 🔥 修复：更新PLC参数后，立即更新状态中的当前参数值
-            with self.lock:
-                state = self.bucket_states[bucket_id]
-                # 更新状态中的参数（与PLC保持同步）
-                if 'coarse_advance' in new_params:
-                    state.current_coarse_advance = new_params['coarse_advance']
-                if 'fall_value' in new_params:
-                    state.current_fall_value = new_params['fall_value']
-            
             # 步骤2: 等待100ms确保参数写入生效
             time.sleep(0.1)
             
-            # 步骤3: 重新开始测定
-            time.sleep(1.0)  # 等待1秒后开始下次尝试
-            self._start_single_attempt(bucket_id)
+            # 步骤3: 决定下一步行动
+            with self.lock:
+                state = self.bucket_states[bucket_id]
+                
+                if is_round_exhausted:
+                    # 当前轮次已用完，需要开始新一轮
+                    if has_reached_max_rounds:
+                        # 已达到最大轮次，测定失败
+                        self._handle_bucket_failure(bucket_id, 
+                            f"已达最大轮次({state.max_rounds})且连续成功次数未达到要求，自适应学习测定失败")
+                        return
+                    else:
+                        # 开始新一轮
+                        state.start_new_round()
+                        self._log(f"🔄 料斗{bucket_id}当前轮次已用完，开始第{state.current_round}轮测定")
+                
+                # 在当前轮次内继续尝试（无论是新轮次的第一次还是当前轮次的继续）
+                time.sleep(1.0)  # 等待1秒后开始下次尝试
+                self._start_single_attempt(bucket_id)
             
         except Exception as e:
-            error_msg = f"处理料斗{bucket_id}参数调整异常: {str(e)}"
+            error_msg = f"处理料斗{bucket_id}不符合条件异常: {str(e)}"
             self.logger.error(error_msg)
-            self.logger.exception("🔍 完整异常堆栈:")  # 🔥 打印完整异常堆栈
+            self.logger.exception("🔍 完整异常堆栈:")
             self._handle_bucket_failure(bucket_id, f"{error_msg}，无法继续测定")
-
     
     def _update_bucket_parameters(self, bucket_id: int, new_params: dict) -> bool:
         """
@@ -1005,11 +1045,11 @@ class AdaptiveLearningController:
             bucket_id (int): 料斗ID
             
         Returns:
-            int: 慢加速度，失败返回48
+            int: 慢加速度，失败返回44
         """
         try:
             if bucket_id not in BUCKET_PARAMETER_ADDRESSES:
-                return 48
+                return 44
             
             fine_speed_address = BUCKET_PARAMETER_ADDRESSES[bucket_id]['FineSpeed']
             data = self.modbus_client.read_holding_registers(fine_speed_address, 1)
@@ -1017,11 +1057,11 @@ class AdaptiveLearningController:
             if data and len(data) > 0:
                 return data[0]
             else:
-                return 48
+                return 44
                 
         except Exception as e:
             self.logger.error(f"读取料斗{bucket_id}慢加速度异常: {e}")
-            return 48
+            return 44
     
     def _check_all_buckets_completed(self):
         """

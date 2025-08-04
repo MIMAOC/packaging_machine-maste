@@ -310,7 +310,6 @@ class PackagingMachineGUI:
         # API操作按钮
         api_buttons_frame = tk.Frame(api_frame, bg='white')
         api_buttons_frame.pack(side=tk.RIGHT, padx=10)
-        
         api_test_btn = tk.Button(api_buttons_frame, text="测试连接", 
                                font=tkFont.Font(family="微软雅黑", size=9),
                                command=self.test_backend_api_connection, bg='#e0e0e0')

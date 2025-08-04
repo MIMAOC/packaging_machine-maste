@@ -32,7 +32,7 @@ class BucketFineTimeState:
         self.start_time = None             # 开始时间
         self.target_reached_time = None    # 到量时间
         self.fine_time_ms = 0             # 慢加时间（毫秒）
-        self.current_fine_speed = 48      # 当前慢加速度（默认48）
+        self.current_fine_speed = 44      # 当前慢加速度（默认44）
         self.error_message = ""            # 错误消息
         self.average_flight_material = 0.0  # 存储平均飞料值（来自飞料值测定阶段）
         # 新增：存储慢加流速
@@ -46,7 +46,7 @@ class BucketFineTimeState:
         self.start_time = None
         self.target_reached_time = None
         self.fine_time_ms = 0
-        self.current_fine_speed = 48
+        self.current_fine_speed = 44
         self.error_message = ""
         self.average_flight_material = average_flight_material  # 存储平均飞料值为飞料值测定阶段的值
         self.fine_flow_rate = None         # 重置慢加流速

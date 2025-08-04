@@ -75,6 +75,7 @@ class ProductionInterface:
         self.is_production_running = False
         self.production_start_time = None
         self.monitoring_threads_running = False
+        self.is_paused = False  # ✅ 新增：暂停状态标志
         
         # 界面数据
         self.bucket_weights = {i: 0.0 for i in range(1, 7)}  # 料斗重量
@@ -90,6 +91,7 @@ class ProductionInterface:
         self.package_count_label = None  # 包装数量标签
         self.completion_rate_label = None  # 完成率标签
         self.avg_weight_label = None  # 平均重量标签
+        self.pause_resume_btn = None  # ✅ 新增：暂停/启动按钮引用
         
         # 设置窗口属性
         self.setup_window()
@@ -184,14 +186,14 @@ class ProductionInterface:
         right_frame = tk.Frame(title_frame, bg='white')
         right_frame.pack(side=tk.RIGHT)
         
-        # 暂停按钮
-        pause_btn = tk.Button(right_frame, text="⏸ 暂停", 
-                            font=self.button_font,
-                            bg='#ffc107', fg='white',
-                            relief='flat', bd=0,
-                            padx=20, pady=8,
-                            command=self.on_pause_click)
-        pause_btn.pack(side=tk.LEFT, padx=(0, 10))
+        # 暂停/启动切换按钮
+        self.pause_resume_btn = tk.Button(right_frame, text="⏸ 暂停", 
+                                        font=self.button_font,
+                                        bg='#ffc107', fg='white',
+                                        relief='flat', bd=0,
+                                        padx=20, pady=8,
+                                        command=self.on_pause_resume_click)
+        self.pause_resume_btn.pack(side=tk.LEFT, padx=(0, 10))
         
         # 取消按钮
         cancel_btn = tk.Button(right_frame, text="✖ 取消", 
@@ -323,8 +325,8 @@ class ProductionInterface:
         
         self.progress_var = tk.DoubleVar()
         progress_bar = ttk.Progressbar(progress_frame, variable=self.progress_var, 
-                                     maximum=100, length=600, height=25)
-        progress_bar.pack(fill=tk.X)
+                                     maximum=100, length=600)
+        progress_bar.pack(fill=tk.X, pady=5)
         
         # 平均重量显示
         avg_frame = tk.Frame(parent, bg='white')
@@ -447,8 +449,13 @@ class ProductionInterface:
         """开始监控生产状态"""
         try:
             self.is_production_running = True
+            self.is_paused = False  # ✅ 新增：确保初始状态为非暂停
             self.production_start_time = datetime.now()
             self.monitoring_threads_running = True
+            
+            # 确保按钮状态正确
+            if self.pause_resume_btn:
+                self.pause_resume_btn.config(text="⏸ 暂停", bg='#ffc107')
             
             print("开始生产监控...")
             
@@ -526,12 +533,20 @@ class ProductionInterface:
                 
                 if raw_weight_data is not None and len(raw_weight_data) > 0:
                     # 重量值需要除以10
-                    weight_value = raw_weight_data[0] / 10.0
-                    
+                    raw_value = raw_weight_data[0]
+  
+                # 如果大于32767，说明是负数（16位补码）
+                    if raw_value > 32767:
+                        signed_value = raw_value - 65536  # 转换为负数
+                    else:
+                        signed_value = raw_value
+                
+                    weight_value = signed_value / 10.0
+                
                     if weight_value != self.bucket_weights[bucket_id]:
                         self.bucket_weights[bucket_id] = weight_value
                         weights_updated = True
-                        
+
                         # 在主线程更新界面
                         self.root.after(0, lambda bid=bucket_id, w=weight_value: 
                                       self.bucket_weight_labels[bid].config(text=f"{w:.1f}g"))
@@ -656,21 +671,172 @@ class ProductionInterface:
         except Exception as e:
             print(f"添加故障记录异常: {e}")
     
-    def on_pause_click(self):
-        """暂停按钮点击事件"""
+    def on_pause_resume_click(self):
+        """暂停/启动按钮点击事件"""
+        try:
+            if not self.is_paused:
+                # 当前是运行状态，执行暂停操作
+                self._pause_production()
+            else:
+                # 当前是暂停状态，执行启动操作
+                self._resume_production()
+
+        except Exception as e:
+            print(f"暂停/启动操作异常: {e}")
+            self.add_fault_record(f"暂停/启动操作异常: {str(e)}")
+
+    def _pause_production(self):
+        """暂停生产"""
         try:
             if self.is_production_running:
-                # 暂停生产
+                # 停止监控线程
                 self.monitoring_threads_running = False
-                if self.modbus_client and self.modbus_client.is_connected:
-                    self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStart'], False)
                 
+                # 发送停止命令到PLC
+                if self.modbus_client and self.modbus_client.is_connected:
+                    # 发送总启动=0（停止）
+                    success = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStart'], False)
+                    if not success:
+                        self.add_fault_record("发送暂停命令失败")
+                        return
+                
+                # 更新状态
+                self.is_paused = True
+                self.is_production_running = False
+                
+                # 更新按钮文本和颜色
+                self.pause_resume_btn.config(text="▶ 启动", bg='#28a745')
+                
+                # 记录日志
                 self.add_fault_record("生产已暂停")
-                messagebox.showinfo("生产暂停", "生产已暂停")
-            
+                print("生产已暂停")
+                
         except Exception as e:
             print(f"暂停生产异常: {e}")
-            self.add_fault_record(f"暂停操作异常: {str(e)}")
+            self.add_fault_record(f"暂停生产异常: {str(e)}")
+    
+    def _resume_production(self):
+        """恢复生产"""
+        try:
+            if self.modbus_client and self.modbus_client.is_connected:
+                # 在后台线程执行PLC操作，避免阻塞界面
+                def resume_thread():
+                    try:
+                        # 互斥保护：先发送总停止=0
+                        print("恢复生产：发送总停止=0命令（互斥保护）")
+                        if not self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStop'], False):
+                            self.root.after(0, lambda: self.add_fault_record("发送总停止=0命令失败"))
+                            return
+                        
+                        # 等待50ms
+                        time.sleep(0.05)
+                        
+                        # 发送总启动=1
+                        print("恢复生产：发送总启动=1命令")
+                        if not self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStart'], True):
+                            self.root.after(0, lambda: self.add_fault_record("发送总启动=1命令失败"))
+                            return
+                        
+                        # 在主线程更新状态
+                        self.root.after(0, self._handle_resume_success)
+                        
+                    except Exception as e:
+                        error_msg = f"恢复生产异常: {str(e)}"
+                        print(error_msg)
+                        self.root.after(0, lambda: self.add_fault_record(error_msg))
+                
+                # 启动恢复操作线程
+                resume_operation_thread = threading.Thread(target=resume_thread, daemon=True)
+                resume_operation_thread.start()
+            else:
+                self.add_fault_record("PLC未连接，无法恢复生产")
+                
+        except Exception as e:
+            print(f"恢复生产异常: {e}")
+            self.add_fault_record(f"恢复生产异常: {str(e)}")
+    
+    def _handle_resume_success(self):
+        """处理恢复生产成功（在主线程中调用）"""
+        try:
+            # 更新状态
+            self.is_paused = False
+            self.is_production_running = True
+            
+            # 更新按钮文本和颜色
+            self.pause_resume_btn.config(text="⏸ 暂停", bg='#ffc107')
+            
+            # 重新启动监控线程
+            self._restart_monitoring()
+            
+            # 记录日志
+            self.add_fault_record("生产已恢复")
+            print("生产已恢复")
+            
+        except Exception as e:
+            print(f"处理恢复生产成功异常: {e}")
+            self.add_fault_record(f"处理恢复生产异常: {str(e)}")
+    
+    def _restart_monitoring(self):
+        """重新启动监控线程"""
+        try:
+            self.monitoring_threads_running = True
+            
+            print("重新启动生产监控...")
+            
+            # 启动计时器更新线程
+            def timer_update_thread():
+                while self.monitoring_threads_running:
+                    try:
+                        if self.production_start_time:
+                            elapsed = datetime.now() - self.production_start_time
+                            self.elapsed_time = elapsed
+                            
+                            # 格式化时间显示
+                            total_seconds = int(elapsed.total_seconds())
+                            hours = total_seconds // 3600
+                            minutes = (total_seconds % 3600) // 60
+                            seconds = total_seconds % 60
+                            time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                            
+                            # 在主线程更新界面
+                            self.root.after(0, lambda: self.timer_label.config(text=time_str))
+                        
+                        time.sleep(1)  # 每1秒更新一次计时器
+                    except Exception as e:
+                        print(f"计时器更新异常: {e}")
+                        break
+                    
+            # 启动料斗重量监控线程（每100ms）
+            def weight_monitoring_thread():
+                while self.monitoring_threads_running:
+                    try:
+                        self._read_bucket_weights()
+                        time.sleep(0.1)  # 每100ms读取一次
+                    except Exception as e:
+                        print(f"重量监控异常: {e}")
+                        self.root.after(0, lambda: self.add_fault_record(f"重量监控异常: {str(e)}"))
+                        break
+                    
+            # 启动包装数量监控线程（每1s）
+            def package_monitoring_thread():
+                while self.monitoring_threads_running:
+                    try:
+                        self._read_package_count()
+                        time.sleep(1)  # 每1秒读取一次
+                    except Exception as e:
+                        print(f"包装数量监控异常: {e}")
+                        self.root.after(0, lambda: self.add_fault_record(f"包装数量监控异常: {str(e)}"))
+                        break
+                    
+            # 启动所有监控线程
+            threading.Thread(target=timer_update_thread, daemon=True).start()
+            threading.Thread(target=weight_monitoring_thread, daemon=True).start()
+            threading.Thread(target=package_monitoring_thread, daemon=True).start()
+            
+        except Exception as e:
+            error_msg = f"重新启动监控异常: {str(e)}"
+            print(error_msg)
+            self.add_fault_record(error_msg)
     
     def on_cancel_click(self):
         """取消按钮点击事件"""

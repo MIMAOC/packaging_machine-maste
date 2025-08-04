@@ -110,7 +110,7 @@ def analyze_adaptive_learning_parameters(request: AdaptiveLearningAnalysisReques
 
 def check_error_value_boundary(error_value: float) -> Dict[str, Any]:
     """
-    检查误差值边界条件：0.1g ≤ 误差值 ≤ 0.5g
+    检查误差值边界条件：0.0g ≤ 误差值 ≤ 0.4g
     
     Args:
         error_value (float): 误差值（克）
@@ -118,14 +118,14 @@ def check_error_value_boundary(error_value: float) -> Dict[str, Any]:
     Returns:
         Dict[str, Any]: 检查结果
     """
-    compliant = 0.1 <= error_value <= 0.5
+    compliant = 0.0 <= error_value <= 0.4
     
     return {
         "compliant": compliant,
         "error_value": error_value,
-        "min_required": 0.1,
-        "max_required": 0.5,
-        "description": f"误差值{error_value:.2f}g，要求范围[0.1g, 0.5g]"
+        "min_required": 0.0,
+        "max_required": 0.4,
+        "description": f"误差值{error_value:.2f}g，要求范围[0.0g, 0.4g]"
     }
 
 def check_cycle_time_boundary(actual_total_cycle_ms: int, standard_total_cycle_ms: int) -> Dict[str, Any]:
@@ -227,33 +227,33 @@ def calculate_adjustment_parameters(
     if not fine_time_check["compliant"]:
         fine_time = actual_fine_time_ms
         
-        if 0 <= fine_time < 500:
-            new_coarse_advance += 8.0
-        elif 500 <= fine_time < 1000:
+        if 0 <= fine_time < 800:
             new_coarse_advance += 5.0
-        elif 1000 <= fine_time < 1500:
+        elif 800 <= fine_time < 1600:
             new_coarse_advance += 3.0
-        elif 1500 <= fine_time < 2100:
+        elif 1600 <= fine_time < 2000:
             new_coarse_advance += 2.0
+        elif 2000 <= fine_time < 2700:
+            new_coarse_advance += 1.0
         
         logger.info(f"慢加时间{fine_time}ms不足，快加提前量增加到{new_coarse_advance}g")
     
     # 2. 处理总周期超出标准的情况
     if not cycle_check["compliant"] and request.actual_total_cycle_ms > standard_total_cycle_ms:
         if fine_flow_rate is not None:
-            cycle_diff = request.actual_total_cycle_ms - standard_total_cycle_ms
+            cycle_diff = (request.actual_total_cycle_ms - standard_total_cycle_ms)/1000
             reduction = cycle_diff * fine_flow_rate + 1
             new_coarse_advance = max(0, new_coarse_advance - reduction)
             logger.info(f"总周期超出{cycle_diff}ms，快加提前量减少到{new_coarse_advance}g")
     
     # 3. 处理误差值超出边界的情况
     if not error_check["compliant"]:        
-        if request.error_value > 0.5:
+        if request.error_value > 0.4:
             new_fall_value += 0.1
-            logger.info(f"误差值{request.error_value}g > 0.5g，落差值增加到{new_fall_value}g")
-        elif request.error_value < 0.1:
+            logger.info(f"误差值{request.error_value}g > 0.4g，落差值增加到{new_fall_value}g")
+        elif request.error_value < 0.0:
             new_fall_value = max(0.0, new_fall_value - 0.1)
-            logger.info(f"误差值{request.error_value}g < 0.1g，落差值减少到{new_fall_value}g")
+            logger.info(f"误差值{request.error_value}g < 0.0g，落差值减少到{new_fall_value}g")
     
     # 应用约束
     new_coarse_advance = max(0.0, new_coarse_advance)
@@ -301,7 +301,7 @@ def generate_analysis_message(
     issues = []
     
     if not error_check["compliant"]:
-        issues.append(f"误差值{error_check['error_value']:.2f}g超出范围[0.1g, 0.5g]")
+        issues.append(f"误差值{error_check['error_value']:.2f}g超出范围[0.0g, 0.4g]")
     
     if not cycle_check["compliant"]:
         if cycle_check["actual_cycle"] > cycle_check["standard_cycle"]:

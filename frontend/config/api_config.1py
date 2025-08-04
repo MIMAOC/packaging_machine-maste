@@ -17,8 +17,8 @@ from typing import Dict, Any
 class APIConfig:
     """API配置类"""
     
-    def __init__(self, host: str = "xiaoajia.cn", port: int = 8443, 
-                 timeout: int = 10, protocol: str = "https"):
+    def __init__(self, host: str = "localhost", port: int = 8080, 
+                 timeout: int = 10, protocol: str = "http"):
         """
         初始化API配置
         
@@ -87,7 +87,7 @@ def get_api_config() -> APIConfig:
     """
     return _global_config
 
-def set_api_config(host: str, port: int, timeout: int = 10, protocol: str = "https") -> None:
+def set_api_config(host: str, port: int, timeout: int = 10, protocol: str = "http") -> None:
     """
     设置全局API配置
     
@@ -114,10 +114,10 @@ def load_config_from_file(config_file: str = "config.json") -> None:
                 
             api_config = config_data.get('api', {})
             set_api_config(
-                host=api_config.get('host', 'xiaoajia.cn'),
-                port=api_config.get('port', 8443),
+                host=api_config.get('host', 'localhost'),
+                port=api_config.get('port', 8080),
                 timeout=api_config.get('timeout', 10),
-                protocol=api_config.get('protocol', 'https')
+                protocol=api_config.get('protocol', 'http')
             )
     except Exception as e:
         print(f"加载配置文件失败: {e}，使用默认配置")

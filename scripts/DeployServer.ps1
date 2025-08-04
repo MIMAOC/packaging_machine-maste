@@ -1,9 +1,8 @@
 # Import the helper script
 . .\DeployHelper.ps1
 
-$remoteUser = "root"
-#$remoteHost = "algormula.com"
-$remoteHost = "114.55.151.130"
-$remotePath = "/root/packaging_machine"
+$remoteUser = "229192814"
+$remoteHost = "34.87.125.160"
+$remotePath = "/home/229192814/packaging_machine"
 
 Deploy-Server -remoteUser $remoteUser -remoteHost $remoteHost -remotePath $remotePath

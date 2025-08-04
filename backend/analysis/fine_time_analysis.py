@@ -29,8 +29,8 @@ class FineTimeAnalysisService:
         self.logger = logging.getLogger(__name__)
         
         # 慢加流速边界条件（g/s）
-        self.min_flow_rate = 0.4
-        self.max_flow_rate = 0.8
+        self.min_flow_rate = 0.35
+        self.max_flow_rate = 0.55
         
         # 慢加速度范围
         self.min_fine_speed = 1
@@ -204,14 +204,12 @@ class FineTimeAnalysisService:
                 adjustment_details["offset_type"] = "low_flow_rate"
                 
                 # 根据偏移比例确定调整量
-                if offset_ratio <= 20:
+                if offset_ratio <= 60:
                     adjustment = 1
-                elif offset_ratio <= 50:
+                elif offset_ratio <= 90:
                     adjustment = 2
-                elif offset_ratio <= 80:
-                    adjustment = 3
                 else:
-                    adjustment = 4
+                    adjustment = 3
                 
                 new_fine_speed = current_fine_speed + adjustment
                 adjustment_details["adjustment"] = adjustment
@@ -224,14 +222,10 @@ class FineTimeAnalysisService:
                 adjustment_details["offset_type"] = "high_flow_rate"
                 
                 # 根据偏移比例确定调整量
-                if offset_ratio <= 20:
+                if offset_ratio <= 60:
                     adjustment = 1
-                elif offset_ratio <= 50:
-                    adjustment = 2
-                elif offset_ratio <= 80:
-                    adjustment = 3
                 else:
-                    adjustment = 4
+                    adjustment = 2
                 
                 new_fine_speed = current_fine_speed - adjustment
                 adjustment_details["adjustment"] = adjustment

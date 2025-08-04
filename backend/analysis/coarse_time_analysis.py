@@ -38,7 +38,7 @@ def analyze_coarse_time_compliance(target_weight: float, coarse_time_ms: int,
         
         # 计算快加时间边界
         max_coarse_time = standard_total_cycle * coarse_time_ratio
-        min_coarse_time = max_coarse_time * 0.7
+        min_coarse_time = max_coarse_time * 0.8
         
         analysis_details = {
             "target_weight": target_weight,
@@ -116,9 +116,9 @@ def calculate_coarse_time_ratio(target_weight: float) -> float:
         float: 快加时间占比
     """
     if 100 <= target_weight <= 300:
-        return 0.4  # 40%
+        return 0.7  # 40%
     elif 300 < target_weight <= 400:
-        return 0.5  # 50%
+        return 0.7  # 50%
     else:
         # 对于超出范围的重量，使用默认值
         return 0.4 if target_weight < 100 else 0.5
@@ -141,14 +141,18 @@ def calculate_speed_adjustment(actual_time: int, min_time: float, max_time: floa
         # 快加时间太短，需要降低速度
         time_offset_ratio = (min_time - actual_time) / min_time * 100
         
-        if time_offset_ratio <= 20:
+        if time_offset_ratio <= 15:
             speed_adjustment = -1
-        elif time_offset_ratio <= 50:
+        elif time_offset_ratio <= 30:
             speed_adjustment = -2
-        elif time_offset_ratio <= 70:
+        elif time_offset_ratio <= 45:
             speed_adjustment = -3
-        else:
+        elif time_offset_ratio <= 60:
             speed_adjustment = -4
+        elif time_offset_ratio <= 75:
+            speed_adjustment = -5
+        else:
+            speed_adjustment = -6
         
         new_speed = current_speed + speed_adjustment
         message = f"快加时间过短，时间偏移比例 {time_offset_ratio:.1f}%，速度调整 {speed_adjustment}"
@@ -157,14 +161,18 @@ def calculate_speed_adjustment(actual_time: int, min_time: float, max_time: floa
         # 快加时间太长，需要提高速度
         time_offset_ratio = (actual_time - max_time) / max_time * 100
         
-        if time_offset_ratio <= 40:
+        if time_offset_ratio <= 15:
             speed_adjustment = 1
-        elif time_offset_ratio <= 60:
+        elif time_offset_ratio <= 30:
             speed_adjustment = 2
-        elif time_offset_ratio <= 90:
+        elif time_offset_ratio <= 45:
             speed_adjustment = 3
-        else:
+        elif time_offset_ratio <= 60:
             speed_adjustment = 4
+        elif time_offset_ratio <= 75:
+            speed_adjustment = 5
+        else:
+            speed_adjustment = 6
         
         new_speed = current_speed + speed_adjustment
         message = f"快加时间过长，时间偏移比例 {time_offset_ratio:.1f}%，速度调整 +{speed_adjustment}"
