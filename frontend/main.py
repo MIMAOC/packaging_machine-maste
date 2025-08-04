@@ -409,26 +409,17 @@ class PackagingMachineGUI:
                                font=self.footer_font, bg='white', fg='#888888')
         version_label.pack(pady=(0, 10))
         
-        # 架构信息
-        arch_text = "前后端分离架构 | 前端: Python + Tkinter | 后端: FastAPI + Docker | 增强重试机制"
-        arch_label = tk.Label(footer_frame, text=arch_text, 
-                            font=tkFont.Font(family="微软雅黑", size=9), 
-                            bg='white', fg='#aaaaaa')
-        arch_label.pack(pady=(0, 10))
-        
         # 公司logo区域
         logo_frame = tk.Frame(footer_frame, bg='white')
         logo_frame.pack()
         
-        algorumla_label = tk.Label(logo_frame, text="algorumla", 
-                                 font=tkFont.Font(family="Arial", size=12, weight="bold"), 
-                                 bg='white', fg='#4a90e2')
-        algorumla_label.pack(side=tk.LEFT, padx=(0, 20))
-        
-        tianteng_label = tk.Label(logo_frame, text="TIAN TENG", 
-                                font=tkFont.Font(family="Arial", size=12, weight="bold"), 
-                                bg='white', fg='#333333')
-        tianteng_label.pack(side=tk.LEFT)
+        # 导入并使用logo处理器
+        try:
+            from logo_handler import create_logo_components
+            create_logo_components(footer_frame, bg_color='white')
+            print("[Main] Logo组件创建成功")
+        except ImportError as e:
+            print(f"[警告] 无法导入logo处理模块: {e}")
     
     def create_rounded_button(self, parent, main_text, sub_text, command, bg_color):
         """

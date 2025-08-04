@@ -163,6 +163,9 @@ class ProductionInterface:
         
         self.create_production_info_section(right_frame)
     
+        # 创建底部信息区域
+        self.create_footer_section(main_frame)
+    
     def create_title_bar(self, parent):
         """
         创建标题栏
@@ -351,6 +354,32 @@ class ProductionInterface:
         
         # 添加初始消息
         self.add_fault_record("无")
+    
+    def create_footer_section(self, parent):
+        """
+        创建底部信息区域
+
+        Args:
+            parent: 父容器
+        """
+        # 底部信息容器
+        footer_frame = tk.Frame(parent, bg='white')
+        footer_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=(10, 0))
+
+        # 版本信息
+        version_text = "MHWPM v1.5.1 ©杭州公武人工智能科技有限公司 温州天腾机械有限公司"
+        version_label = tk.Label(footer_frame, text=version_text, 
+                               font=tkFont.Font(family="微软雅黑", size=10), 
+                               bg='white', fg='#888888')
+        version_label.pack(pady=(0, 5))
+
+        # 导入logo处理模块并创建logo组件
+        try:
+            from logo_handler import create_logo_components
+            create_logo_components(footer_frame, bg_color='white')
+            print("[Production] Logo组件创建成功")
+        except ImportError as e:
+            print(f"[警告] 无法导入logo处理模块: {e}")
     
     def center_window(self):
         """将生产界面窗口居中显示"""

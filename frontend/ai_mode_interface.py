@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-AI模式界面 - 自学习自适应 - 前端版本 - 增强多斗学习状态显示
+AI模式界面 - 自学习自适应 - 增强多斗学习状态显示
 包装机AI模式操作界面，集成后端API服务
 
 功能特点：
@@ -113,7 +113,7 @@ except ImportError as e:
 
 class AIModeInterface:
     """
-    AI模式界面类 - 前端版本
+    AI模式界面类
     
     负责：
     1. 创建AI模式的用户界面
@@ -343,9 +343,9 @@ class AIModeInterface:
     
     def setup_window(self):
         """设置窗口基本属性"""
-        self.root.title("AI模式 - 自学习自适应 (前端)")
+        self.root.title("AI模式 - 自学习自适应")
         self.root.geometry("950x750")
-        self.root.configure(bg='#f8f9fa')
+        self.root.configure(bg='white')
         self.root.resizable(True, True)
         
         # 绑定窗口关闭事件（无论是否为主窗口都需要处理）
@@ -374,7 +374,7 @@ class AIModeInterface:
     def create_widgets(self):
         """创建所有界面组件"""
         # 主容器
-        main_frame = tk.Frame(self.root, bg='#f8f9fa')
+        main_frame = tk.Frame(self.root, bg='white')
         main_frame.pack(fill=tk.BOTH, expand=True, padx=50, pady=30)
         
         # 创建标题栏
@@ -400,23 +400,17 @@ class AIModeInterface:
             parent: 父容器
         """
         # 标题栏容器
-        title_frame = tk.Frame(parent, bg='#f8f9fa')
+        title_frame = tk.Frame(parent, bg='white')
         title_frame.pack(fill=tk.X, pady=(0, 10))
         
         # 左侧标题和AI图标
-        left_frame = tk.Frame(title_frame, bg='#f8f9fa')
+        left_frame = tk.Frame(title_frame, bg='white')
         left_frame.pack(side=tk.LEFT)
         
         # AI模式标题
         title_label = tk.Label(left_frame, text="AI模式 - 自学习自适应", 
-                             font=self.title_font, bg='#f8f9fa', fg='#333333')
+                             font=self.title_font, bg='white', fg='#333333')
         title_label.pack(side=tk.LEFT)
-        
-        # 前端标识
-        frontend_label = tk.Label(left_frame, text="(前端)", 
-                                font=tkFont.Font(family="微软雅黑", size=10),
-                                bg='#f8f9fa', fg='#666666')
-        frontend_label.pack(side=tk.LEFT, padx=(10, 0))
         
         # AI图标（用蓝色圆形背景 + AI文字模拟）
         ai_icon = tk.Button(left_frame, text="🤖AI", 
@@ -427,7 +421,7 @@ class AIModeInterface:
         ai_icon.pack(side=tk.LEFT, padx=(15, 0))
         
         # 右侧按钮区域
-        right_frame = tk.Frame(title_frame, bg='#f8f9fa')
+        right_frame = tk.Frame(title_frame, bg='white')
         right_frame.pack(side=tk.RIGHT)
     
         # 调试按钮（仅在开发模式下显示）
@@ -574,41 +568,35 @@ class AIModeInterface:
         Args:
             parent: 父容器
         """
-        status_frame = tk.Frame(parent, bg='#f8f9fa', relief=tk.RAISED, bd=1)
+        status_frame = tk.Frame(parent, bg='white', relief=tk.RAISED, bd=1)
         status_frame.pack(fill=tk.X, pady=(0, 20))
         
         # PLC连接状态
-        plc_frame = tk.Frame(status_frame, bg='#f8f9fa')
-        plc_frame.pack(side=tk.LEFT, padx=10, pady=5)
+        plc_frame = tk.Frame(status_frame, bg='white')
+        plc_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
         tk.Label(plc_frame, text="PLC:", font=self.small_button_font, 
-                bg='#f8f9fa', fg='#333333').pack(side=tk.LEFT)
+                bg='white', fg='#333333').pack(side=tk.LEFT)
         
         plc_status = "已连接" if (self.modbus_client and self.modbus_client.is_connected) else "未连接"
         plc_color = '#00aa00' if (self.modbus_client and self.modbus_client.is_connected) else '#ff0000'
         
         tk.Label(plc_frame, text=plc_status, font=self.small_button_font,
-                bg='#f8f9fa', fg=plc_color).pack(side=tk.LEFT, padx=(5, 0))
+                bg='white', fg=plc_color).pack(side=tk.LEFT, padx=(5, 0))
         
         # 分隔线
         tk.Frame(status_frame, width=2, bg='#ddd').pack(side=tk.LEFT, fill=tk.Y, padx=10)
         
         # 后端API状态
-        api_frame = tk.Frame(status_frame, bg='#f8f9fa')
-        api_frame.pack(side=tk.LEFT, padx=10, pady=5)
+        api_frame = tk.Frame(status_frame, bg='white')
+        api_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
         tk.Label(api_frame, text="后端API:", font=self.small_button_font, 
-                bg='#f8f9fa', fg='#333333').pack(side=tk.LEFT)
+                bg='white', fg='#333333').pack(side=tk.LEFT)
         
         self.api_status_label = tk.Label(api_frame, text="检测中...", font=self.small_button_font,
-                                       bg='#f8f9fa', fg='#ff6600')
+                                       bg='white', fg='#ff6600')
         self.api_status_label.pack(side=tk.LEFT, padx=(5, 0))
-        
-        # API地址显示
-        if self.api_config:
-            tk.Label(api_frame, text=f"({self.api_config.base_url})", 
-                    font=tkFont.Font(family="微软雅黑", size=8),
-                    bg='#f8f9fa', fg='#888888').pack(side=tk.LEFT, padx=(5, 0))
         
         # 测试API连接按钮
         test_api_btn = tk.Button(status_frame, text="测试API", 
@@ -628,11 +616,11 @@ class AIModeInterface:
             parent: 父容器
         """
         # 参数设置容器
-        param_frame = tk.Frame(parent, bg='#f8f9fa')
+        param_frame = tk.Frame(parent, bg='white')
         param_frame.pack(fill=tk.X, pady=(40, 60))
         
         # 三个参数设置区域的容器
-        params_container = tk.Frame(param_frame, bg='#f8f9fa')
+        params_container = tk.Frame(param_frame, bg='white')
         params_container.pack()
         
         # 每包重量设置区域
@@ -652,18 +640,18 @@ class AIModeInterface:
             parent: 父容器
         """
         # 每包重量容器
-        weight_frame = tk.Frame(parent, bg='#f8f9fa')
+        weight_frame = tk.Frame(parent, bg='white')
         weight_frame.pack(side=tk.LEFT, padx=(0, 60))
         
         # 标题标签
         weight_title = tk.Label(weight_frame, text="每包重量", 
-                              font=self.label_font, bg='#f8f9fa', fg='#333333')
+                              font=self.label_font, bg='white', fg='#333333')
         weight_title.pack(anchor='w')
         
         # 单位标签
         unit_label = tk.Label(weight_frame, text="克g", 
                             font=tkFont.Font(family="微软雅黑", size=12),
-                            bg='#f8f9fa', fg='#666666')
+                            bg='white', fg='#666666')
         unit_label.pack(anchor='w', pady=(0, 10))
         
         # 输入框
@@ -685,18 +673,18 @@ class AIModeInterface:
             parent: 父容器
         """
         # 包装数量容器
-        quantity_frame = tk.Frame(parent, bg='#f8f9fa')
+        quantity_frame = tk.Frame(parent, bg='white')
         quantity_frame.pack(side=tk.LEFT, padx=(0, 60))
         
         # 标题标签
         quantity_title = tk.Label(quantity_frame, text="包装数量", 
-                                font=self.label_font, bg='#f8f9fa', fg='#333333')
+                                font=self.label_font, bg='white', fg='#333333')
         quantity_title.pack(anchor='w')
         
         # 空白区域（对齐用）
         tk.Label(quantity_frame, text=" ", 
                font=tkFont.Font(family="微软雅黑", size=12),
-               bg='#f8f9fa').pack(pady=(0, 10))
+               bg='white').pack(pady=(0, 10))
         
         # 输入框
         quantity_entry = tk.Entry(quantity_frame, textvariable=self.quantity_var,
@@ -717,16 +705,16 @@ class AIModeInterface:
             parent: 父容器
         """
         # 物料选择容器
-        material_frame = tk.Frame(parent, bg='#f8f9fa')
+        material_frame = tk.Frame(parent, bg='white')
         material_frame.pack(side=tk.LEFT)
         
         # 标题和新增按钮的容器
-        title_frame = tk.Frame(material_frame, bg='#f8f9fa')
+        title_frame = tk.Frame(material_frame, bg='white')
         title_frame.pack(fill=tk.X)
         
         # 标题标签
         material_title = tk.Label(title_frame, text="物料选择", 
-                                font=self.label_font, bg='#f8f9fa', fg='#333333')
+                                font=self.label_font, bg='white', fg='#333333')
         material_title.pack(side=tk.LEFT)
         
         # 新增物料按钮
@@ -741,7 +729,7 @@ class AIModeInterface:
         # 空白区域（对齐用）
         tk.Label(material_frame, text=" ", 
                font=tkFont.Font(family="微软雅黑", size=12),
-               bg='#f8f9fa').pack(pady=(0, 10))
+               bg='white').pack(pady=(0, 10))
         
         # 下拉选择框
         material_combobox = ttk.Combobox(material_frame, textvariable=self.material_var,
@@ -763,11 +751,11 @@ class AIModeInterface:
             parent: 父容器
         """
         # 控制按钮容器
-        control_frame = tk.Frame(parent, bg='#f8f9fa')
+        control_frame = tk.Frame(parent, bg='white')
         control_frame.pack(fill=tk.X, pady=(40, 60))
         
         # 左侧按钮区域
-        left_buttons = tk.Frame(control_frame, bg='#f8f9fa')
+        left_buttons = tk.Frame(control_frame, bg='white')
         left_buttons.pack(side=tk.LEFT)
         
         # 放料+清零按钮
@@ -789,7 +777,7 @@ class AIModeInterface:
         clear_btn.pack(side=tk.LEFT)
         
         # 右侧主要操作按钮
-        right_buttons = tk.Frame(control_frame, bg='#f8f9fa')
+        right_buttons = tk.Frame(control_frame, bg='white')
         right_buttons.pack(side=tk.RIGHT)
         
         # 开始AI生产按钮
@@ -809,37 +797,26 @@ class AIModeInterface:
             parent: 父容器
         """
         # 底部信息容器
-        footer_frame = tk.Frame(parent, bg='#f8f9fa')
+        footer_frame = tk.Frame(parent, bg='white')
         footer_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=(20, 0))
         
         # 版本信息
         version_text = "MHWPM v1.5.1 ©杭州公武人工智能科技有限公司 温州天腾机械有限公司"
         version_label = tk.Label(footer_frame, text=version_text, 
-                               font=self.footer_font, bg='#f8f9fa', fg='#888888')
+                               font=self.footer_font, bg='white', fg='#888888')
         version_label.pack(pady=(0, 5))
         
-        # 架构信息
-        arch_text = "前后端分离架构 | AI分析由后端API服务提供 | MySQL数据库支持"
-        arch_label = tk.Label(footer_frame, text=arch_text, 
-                            font=tkFont.Font(family="微软雅黑", size=9), 
-                            bg='#f8f9fa', fg='#aaaaaa')
-        arch_label.pack(pady=(0, 10))
-        
         # 公司logo区域
-        logo_frame = tk.Frame(footer_frame, bg='#f8f9fa')
+        logo_frame = tk.Frame(footer_frame, bg='white')
         logo_frame.pack()
         
-        # algorumla logo
-        algorumla_label = tk.Label(logo_frame, text="algorumla", 
-                                 font=tkFont.Font(family="Arial", size=12, weight="bold"), 
-                                 bg='#f8f9fa', fg='#4a90e2')
-        algorumla_label.pack(side=tk.LEFT, padx=(0, 20))
-        
-        # TIAN TENG logo
-        tianteng_label = tk.Label(logo_frame, text="TIAN TENG", 
-                                font=tkFont.Font(family="Arial", size=12, weight="bold"), 
-                                bg='#f8f9fa', fg='#333333')
-        tianteng_label.pack(side=tk.LEFT)
+        # 导入并使用logo处理器
+        try:
+            from logo_handler import create_logo_components
+            create_logo_components(footer_frame, bg_color='white')
+            print("[Main] Logo组件创建成功")
+        except ImportError as e:
+            print(f"[警告] 无法导入logo处理模块: {e}")
     
     def setup_placeholder(self, entry_widget, placeholder_text):
         """
@@ -901,7 +878,7 @@ class AIModeInterface:
     def on_ai_icon_click(self):
         """AI图标按钮点击事件"""
         print("点击了AI图标")
-        messagebox.showinfo("AI功能", "AI语音助手功能 - 前端版本")
+        messagebox.showinfo("AI功能", "AI语音助手功能正在开发中，敬请期待...")
     
     def on_home_click(self):
         """返回首页按钮点击事件"""
