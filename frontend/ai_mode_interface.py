@@ -209,6 +209,53 @@ class AIModeInterface:
         # 居中显示窗口（新增）
         self.center_window()
     
+    def center_dialog_relative_to_main(self, dialog_window, dialog_width, dialog_height):
+        """
+        将弹窗相对于AI模式界面居中显示
+
+        Args:
+            dialog_window: 弹窗对象
+            dialog_width (int): 弹窗宽度
+            dialog_height (int): 弹窗高度
+        """
+        try:
+            # 确保窗口信息是最新的
+            dialog_window.update_idletasks()
+            self.root.update_idletasks()
+
+            # 获取AI模式界面的位置和尺寸
+            main_x = self.root.winfo_x()
+            main_y = self.root.winfo_y()
+            main_width = self.root.winfo_width()
+            main_height = self.root.winfo_height()
+
+            # 计算相对于AI模式界面居中的位置
+            x = main_x + (main_width - dialog_width) // 2
+            y = main_y + (main_height - dialog_height) // 2
+
+            # 确保弹窗不会超出屏幕边界
+            screen_width = dialog_window.winfo_screenwidth()
+            screen_height = dialog_window.winfo_screenheight()
+
+            # 调整坐标，确保不超出屏幕边界
+            if x + dialog_width > screen_width:
+                x = screen_width - dialog_width - 20
+            if x < 20:
+                x = 20
+            if y + dialog_height > screen_height:
+                y = screen_height - dialog_height - 20
+            if y < 20:
+                y = 20
+
+            dialog_window.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
+
+        except Exception as e:
+            print(f"[错误] 弹窗居中失败: {e}")
+            # 备用：屏幕居中
+            x = (dialog_window.winfo_screenwidth() - dialog_width) // 2
+            y = (dialog_window.winfo_screenheight() - dialog_height) // 2
+            dialog_window.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
+    
     def center_window(self):
         """将AI模式界面窗口居中显示"""
         try:
@@ -371,17 +418,14 @@ class AIModeInterface:
         """显示调试菜单"""
         debug_window = tk.Toplevel(self.root)
         debug_window.title("调试测试菜单")
-        debug_window.geometry("400x550")  # 增加高度以容纳新按钮
+        debug_window.geometry("450x650")  # 增加高度以容纳新按钮
         debug_window.configure(bg='white')
         debug_window.resizable(False, False)
         debug_window.transient(self.root)
         debug_window.grab_set()
 
         # 居中显示
-        debug_window.update_idletasks()
-        x = (debug_window.winfo_screenwidth() // 2) - (400 // 2)
-        y = (debug_window.winfo_screenheight() // 2) - (550 // 2)
-        debug_window.geometry(f"400x550+{x}+{y}")
+        self.center_dialog_relative_to_main(debug_window, 450, 650)
 
         # 标题
         tk.Label(debug_window, text="🐛 调试测试菜单", 
@@ -883,6 +927,7 @@ class AIModeInterface:
         settings_window.resizable(False, False)
         settings_window.transient(self.root)
         settings_window.grab_set()
+        self.center_dialog_relative_to_main(settings_window, 500, 400)
         
         # 配置变量
         host_var = tk.StringVar(value=self.api_config.host if self.api_config else "localhost")
@@ -1002,7 +1047,7 @@ class AIModeInterface:
         # 创建进度弹窗 - 显示"正在放料清零，请稍后"
         progress_window = tk.Toplevel(self.root)
         progress_window.title("放料清零操作")
-        progress_window.geometry("400x200")
+        progress_window.geometry("550x350")
         progress_window.configure(bg='white')
         progress_window.resizable(False, False)
         progress_window.transient(self.root)
@@ -1010,10 +1055,7 @@ class AIModeInterface:
         progress_window.protocol("WM_DELETE_WINDOW", lambda: None)
         
         # 居中显示进度弹窗
-        progress_window.update_idletasks()
-        x = (progress_window.winfo_screenwidth() // 2) - (400 // 2)
-        y = (progress_window.winfo_screenheight() // 2) - (200 // 2)
-        progress_window.geometry(f"400x200+{x}+{y}")
+        self.center_dialog_relative_to_main(progress_window, 550, 350)
         
         # 进度弹窗内容
         tk.Label(progress_window, text="正在放料清零", 
@@ -1089,17 +1131,14 @@ class AIModeInterface:
         # 创建完成确认弹窗
         completion_window = tk.Toplevel(self.root)
         completion_window.title("操作完成")
-        completion_window.geometry("400x250")
+        completion_window.geometry("550x350")
         completion_window.configure(bg='white')
         completion_window.resizable(False, False)
         completion_window.transient(self.root)
         completion_window.grab_set()
         
         # 居中显示完成确认弹窗
-        completion_window.update_idletasks()
-        x = (completion_window.winfo_screenwidth() // 2) - (400 // 2)
-        y = (completion_window.winfo_screenheight() // 2) - (250 // 2)
-        completion_window.geometry(f"400x250+{x}+{y}")
+        self.center_dialog_relative_to_main(completion_window, 550, 350)
         
         # 完成确认弹窗内容
         tk.Label(completion_window, text="已清零", 
@@ -1160,17 +1199,14 @@ class AIModeInterface:
         # 创建准备确认弹窗
         preparation_window = tk.Toplevel(self.root)
         preparation_window.title("清料准备")
-        preparation_window.geometry("400x250")
+        preparation_window.geometry("550x350")
         preparation_window.configure(bg='white')
         preparation_window.resizable(False, False)
         preparation_window.transient(self.root)
         preparation_window.grab_set()
         
         # 居中显示准备确认弹窗
-        preparation_window.update_idletasks()
-        x = (preparation_window.winfo_screenwidth() // 2) - (400 // 2)
-        y = (preparation_window.winfo_screenheight() // 2) - (250 // 2)
-        preparation_window.geometry(f"400x250+{x}+{y}")
+        self.center_dialog_relative_to_main(preparation_window, 550, 350)
         
         # 准备确认弹窗内容
         tk.Label(preparation_window, text="准备清料", 
@@ -1215,17 +1251,14 @@ class AIModeInterface:
         # 创建清料进度弹窗
         self.cleaning_progress_window = tk.Toplevel(self.root)
         self.cleaning_progress_window.title("清料操作")
-        self.cleaning_progress_window.geometry("400x200")
+        self.cleaning_progress_window.geometry("550x350")
         self.cleaning_progress_window.configure(bg='white')
         self.cleaning_progress_window.resizable(False, False)
         self.cleaning_progress_window.transient(self.root)
         self.cleaning_progress_window.grab_set()
         
         # 居中显示清料进度弹窗
-        self.cleaning_progress_window.update_idletasks()
-        x = (self.cleaning_progress_window.winfo_screenwidth() // 2) - (400 // 2)
-        y = (self.cleaning_progress_window.winfo_screenheight() // 2) - (200 // 2)
-        self.cleaning_progress_window.geometry(f"400x200+{x}+{y}")
+        self.center_dialog_relative_to_main(self.cleaning_progress_window, 550, 350)
         
         # 清料进度弹窗内容
         tk.Label(self.cleaning_progress_window, text="正在清料中", 
@@ -1295,17 +1328,14 @@ class AIModeInterface:
         # 创建完成确认弹窗
         completion_window = tk.Toplevel(self.root)
         completion_window.title("清料完成")
-        completion_window.geometry("400x200")
+        completion_window.geometry("550x350")
         completion_window.configure(bg='white')
         completion_window.resizable(False, False)
         completion_window.transient(self.root)
         completion_window.grab_set()
         
         # 居中显示完成确认弹窗
-        completion_window.update_idletasks()
-        x = (completion_window.winfo_screenwidth() // 2) - (400 // 2)
-        y = (completion_window.winfo_screenheight() // 2) - (200 // 2)
-        completion_window.geometry(f"400x200+{x}+{y}")
+        self.center_dialog_relative_to_main(completion_window, 550, 350)
         
         # 完成确认弹窗内容
         tk.Label(completion_window, text="清料完成", 
@@ -1507,17 +1537,14 @@ class AIModeInterface:
         # 创建清理进度弹窗
         self.cleaning_progress_window = tk.Toplevel(self.root)
         self.cleaning_progress_window.title("清料操作")
-        self.cleaning_progress_window.geometry("400x200")
+        self.cleaning_progress_window.geometry("550x350")
         self.cleaning_progress_window.configure(bg='white')
         self.cleaning_progress_window.resizable(False, False)
         self.cleaning_progress_window.transient(self.root)
         self.cleaning_progress_window.grab_set()
 
         # 居中显示清理进度弹窗
-        self.cleaning_progress_window.update_idletasks()
-        x = (self.cleaning_progress_window.winfo_screenwidth() // 2) - (400 // 2)
-        y = (self.cleaning_progress_window.winfo_screenheight() // 2) - (200 // 2)
-        self.cleaning_progress_window.geometry(f"400x200+{x}+{y}")
+        self.center_dialog_relative_to_main(self.cleaning_progress_window, 550, 350)
 
         # 清理进度弹窗内容
         tk.Label(self.cleaning_progress_window, text="检测到余料", 
@@ -1559,17 +1586,14 @@ class AIModeInterface:
         # 创建完成确认弹窗
         completion_window = tk.Toplevel(self.root)
         completion_window.title("操作完成")
-        completion_window.geometry("400x250")
+        completion_window.geometry("550x350")
         completion_window.configure(bg='white')
         completion_window.resizable(False, False)
         completion_window.transient(self.root)
         completion_window.grab_set()
 
         # 居中显示完成确认弹窗
-        completion_window.update_idletasks()
-        x = (completion_window.winfo_screenwidth() // 2) - (400 // 2)
-        y = (completion_window.winfo_screenheight() // 2) - (250 // 2)
-        completion_window.geometry(f"400x250+{x}+{y}")
+        self.center_dialog_relative_to_main(completion_window, 550, 350)
 
         # 完成确认弹窗内容
         tk.Label(completion_window, text="已清零", 
@@ -1850,17 +1874,14 @@ class AIModeInterface:
             # 创建重新学习选择弹窗
             relearning_window = tk.Toplevel(self.root)
             relearning_window.title("学习失败")
-            relearning_window.geometry("500x350")
+            relearning_window.geometry("600x400")
             relearning_window.configure(bg='white')
             relearning_window.resizable(False, False)
             relearning_window.transient(self.root)
             relearning_window.grab_set()
             
             # 居中显示弹窗
-            relearning_window.update_idletasks()
-            x = (relearning_window.winfo_screenwidth() // 2) - (500 // 2)
-            y = (relearning_window.winfo_screenheight() // 2) - (350 // 2)
-            relearning_window.geometry(f"500x350+{x}+{y}")
+            self.center_dialog_relative_to_main(relearning_window, 600, 400)
             
             # 获取阶段中文名称
             stage_names = {
@@ -2120,46 +2141,9 @@ class AIModeInterface:
             
             # 禁止用户关闭弹窗（除非点击确认按钮）
             self.learning_status_window.protocol("WM_DELETE_WINDOW", lambda: None)
-            
-            # 以AI模式界面为基准居中显示弹窗
-            self.learning_status_window.update_idletasks()
-            self.root.update_idletasks()  # 确保主窗口信息是最新的
 
             # 获取AI模式界面的位置和尺寸
-            main_x = self.root.winfo_x()
-            main_y = self.root.winfo_y()
-            main_width = self.root.winfo_width()
-            main_height = self.root.winfo_height()
-
-            # 获取弹窗尺寸
-            dialog_width = 800
-            dialog_height = 600
-
-            # 计算相对于AI模式界面居中的位置
-            x = main_x + (main_width - dialog_width) // 2
-            y = main_y + (main_height - dialog_height) // 2
-
-            # 确保弹窗不会超出屏幕边界
-            screen_width = self.learning_status_window.winfo_screenwidth()
-            screen_height = self.learning_status_window.winfo_screenheight()
-
-            # 调整x坐标，确保不超出屏幕右边界
-            if x + dialog_width > screen_width:
-                x = screen_width - dialog_width - 20  # 留20像素边距
-
-            # 调整x坐标，确保不超出屏幕左边界
-            if x < 20:
-                x = 20
-
-            # 调整y坐标，确保不超出屏幕下边界
-            if y + dialog_height > screen_height:
-                y = screen_height - dialog_height - 20  # 留20像素边距
-
-            # 调整y坐标，确保不超出屏幕上边界
-            if y < 20:
-                y = 20
-
-            self.learning_status_window.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
+            self.center_dialog_relative_to_main(self.learning_status_window, 800, 600)
             
             # 标题
             tk.Label(self.learning_status_window, text="多斗学习状态", 
@@ -2458,7 +2442,7 @@ class AIModeInterface:
             # 创建取消进度弹窗
             cancel_progress_window = tk.Toplevel(self.root)
             cancel_progress_window.title("取消学习")
-            cancel_progress_window.geometry("400x200")
+            cancel_progress_window.geometry("550x350")
             cancel_progress_window.configure(bg='white')
             cancel_progress_window.resizable(False, False)
             cancel_progress_window.transient(self.root)
@@ -2466,10 +2450,7 @@ class AIModeInterface:
             cancel_progress_window.protocol("WM_DELETE_WINDOW", lambda: None)
 
             # 居中显示取消进度弹窗
-            cancel_progress_window.update_idletasks()
-            x = (cancel_progress_window.winfo_screenwidth() // 2) - (400 // 2)
-            y = (cancel_progress_window.winfo_screenheight() // 2) - (200 // 2)
-            cancel_progress_window.geometry(f"400x200+{x}+{y}")
+            self.center_dialog_relative_to_main(cancel_progress_window, 550, 350)
 
             # 取消进度弹窗内容
             tk.Label(cancel_progress_window, text="正在取消学习", 
@@ -2598,28 +2579,45 @@ class AIModeInterface:
             # 创建训练完成弹窗
             training_window = tk.Toplevel(self.root)
             training_window.title("训练完成")
-            training_window.geometry("400x300")
+            training_window.geometry("550x350")
             training_window.configure(bg='white')
             training_window.resizable(False, False)
             training_window.transient(self.root)
             training_window.grab_set()
             
             # 居中显示弹窗
-            training_window.update_idletasks()
-            x = (training_window.winfo_screenwidth() // 2) - (400 // 2)
-            y = (training_window.winfo_screenheight() // 2) - (300 // 2)
-            training_window.geometry(f"400x300+{x}+{y}")
+            self.center_dialog_relative_to_main(training_window, 550, 350)
             
             # 训练完成标题
             tk.Label(training_window, text="训练完成", 
                     font=tkFont.Font(family="微软雅黑", size=18, weight="bold"),
                     bg='white', fg='#333333').pack(pady=30)
             
+            # 计时器区域容器
+            timer_frame = tk.Frame(training_window, bg='white')
+            timer_frame.pack(pady=20)
+
+            # "已过去"文字和计时器同行显示
+            timer_row_frame = tk.Frame(timer_frame, bg='white')
+            timer_row_frame.pack()
+
+            # "已过去"文字
+            elapsed_label = tk.Label(timer_row_frame, text="已过去", 
+                                    font=tkFont.Font(family="微软雅黑", size=18, weight="bold"),
+                                    bg='white', fg='#333333')
+            elapsed_label.pack(side=tk.LEFT, padx=(0, 10))
+
             # 计时器显示
-            self.timer_label = tk.Label(training_window, text="00:00:00", 
+            self.timer_label = tk.Label(timer_row_frame, text="00:00:00", 
                                        font=tkFont.Font(family="Arial", size=24, weight="bold"),
                                        bg='white', fg='#333333')
-            self.timer_label.pack(pady=20)
+            self.timer_label.pack(side=tk.LEFT)
+
+            # 提示文字（在计时器下方）
+            tip_label = tk.Label(timer_frame, text="如果要生产，请点击下方按钮", 
+                                font=tkFont.Font(family="微软雅黑", size=12),
+                                bg='white', fg='#666666')
+            tip_label.pack(pady=(15, 0))
             
             # 开始生产按钮
             def on_start_production_click():
