@@ -7,7 +7,7 @@ AI模式界面 - 自学习自适应 - 前端版本 - 增强多斗学习状态显
 功能特点：
 1. 目标重量设置
 2. 包装数量设置  
-3. 物料选择和管理
+3. 物料选择和管理（数据库支持）
 4. AI生产控制（连接后端API）
 5. 清理和重置功能
 6. 快加时间测定功能
@@ -15,11 +15,12 @@ AI模式界面 - 自学习自适应 - 前端版本 - 增强多斗学习状态显
 8. 清料功能（三个弹窗流程）
 9. 多斗学习状态管理
 10. 实时多斗学习状态弹窗显示
+11. 新建物料功能（MySQL数据库支持）
 
 文件名：ai_mode_interface.py
 作者：AI助手
 创建日期：2025-07-22
-更新日期：2025-08-04（增强多斗学习状态弹窗显示）
+更新日期：2025-08-04（增加MySQL数据库支持和新建物料功能）
 """
 
 import tkinter as tk
@@ -27,6 +28,7 @@ from tkinter import ttk, messagebox
 import tkinter.font as tkFont
 import threading
 import time
+from typing import List
 
 # 导入后端API客户端模块
 try:
@@ -99,6 +101,16 @@ except ImportError as e:
     print(f"警告：无法导入料斗学习状态管理器模块: {e}")
     LEARNING_STATE_MANAGER_AVAILABLE = False
 
+# 导入数据库相关模块
+try:
+    from database.material_dao import MaterialDAO, Material
+    from database.db_connection import db_manager
+    DATABASE_AVAILABLE = True
+except ImportError as e:
+    print(f"警告：无法导入数据库模块: {e}")
+    print("请确保已安装PyMySQL: pip install PyMySQL")
+    DATABASE_AVAILABLE = False
+
 class AIModeInterface:
     """
     AI模式界面类 - 前端版本
@@ -107,13 +119,14 @@ class AIModeInterface:
     1. 创建AI模式的用户界面
     2. 处理用户输入和交互
     3. 提供参数设置功能
-    4. 管理物料选择
+    4. 管理物料选择（数据库支持）
     5. 执行AI生产流程（通过后端API）
     6. 快加时间测定控制
     7. 增强的放料+清零功能
     8. 清料功能控制
     9. 多斗学习状态管理
     10. 实时多斗学习状态弹窗显示
+    11. 新建物料功能（MySQL数据库支持）
     """
     
     def __init__(self, parent=None, main_window=None):
@@ -165,16 +178,8 @@ class AIModeInterface:
         self.quantity_var = tk.StringVar()         # 包装数量变量
         self.material_var = tk.StringVar()         # 物料选择变量
         
-        # 预设物料列表（示例数据）
-        self.material_list = [
-            "请选择已记录物料",
-            "大米 - 密度1.2g/cm³",
-            "小麦 - 密度1.4g/cm³", 
-            "玉米 - 密度1.3g/cm³",
-            "黄豆 - 密度1.1g/cm³",
-            "绿豆 - 密度1.2g/cm³",
-            "红豆 - 密度1.15g/cm³"
-        ]
+        # 从数据库获取物料列表
+        self.material_list = self.get_material_list_from_database()
         
         # 快加时间测定控制器（新增）
         self.coarse_time_controller = None
@@ -208,6 +213,57 @@ class AIModeInterface:
         
         # 居中显示窗口（新增）
         self.center_window()
+    
+    def get_material_list_from_database(self) -> List[str]:
+        """
+        从数据库获取物料列表
+        
+        Returns:
+            List[str]: 物料名称列表，包含默认选项
+        """
+        material_list = ["请选择已记录物料"]
+        
+        if DATABASE_AVAILABLE:
+            try:
+                # 测试数据库连接
+                success, message = db_manager.test_connection()
+                if success:
+                    # 从数据库获取物料名称列表
+                    material_names = MaterialDAO.get_material_names(enabled_only=True)
+                    material_list.extend(material_names)
+                    print(f"[信息] 从数据库加载了{len(material_names)}个物料")
+                else:
+                    print(f"[警告] 数据库连接失败: {message}")
+            except Exception as e:
+                print(f"[错误] 获取物料列表异常: {e}")
+        else:
+            print("[警告] 数据库功能不可用")
+        
+        return material_list
+    
+    def refresh_material_list(self):
+        """
+        刷新物料列表
+        更新下拉选择框的内容
+        """
+        try:
+            # 重新获取物料列表
+            self.material_list = self.get_material_list_from_database()
+            
+            # 查找物料选择下拉框并更新
+            # 需要保存下拉框的引用以便更新
+            if hasattr(self, 'material_combobox'):
+                current_value = self.material_var.get()
+                self.material_combobox['values'] = self.material_list
+                
+                # 如果当前选择的值不在新列表中，重置为默认值
+                if current_value not in self.material_list:
+                    self.material_var.set(self.material_list[0])
+                
+                print("[信息] 物料列表已刷新")
+            
+        except Exception as e:
+            print(f"[错误] 刷新物料列表失败: {e}")
     
     def center_dialog_relative_to_main(self, dialog_window, dialog_width, dialog_height):
         """
@@ -695,6 +751,9 @@ class AIModeInterface:
                                        state='readonly')
         material_combobox.pack(ipady=5)
         material_combobox.set(self.material_list[0])  # 设置默认值
+        
+        # 保存下拉框引用，用于后续刷新
+        self.material_combobox = material_combobox
     
     def create_control_section(self, parent):
         """
@@ -760,7 +819,7 @@ class AIModeInterface:
         version_label.pack(pady=(0, 5))
         
         # 架构信息
-        arch_text = "前后端分离架构 | AI分析由后端API服务提供"
+        arch_text = "前后端分离架构 | AI分析由后端API服务提供 | MySQL数据库支持"
         arch_label = tk.Label(footer_frame, text=arch_text, 
                             font=tkFont.Font(family="微软雅黑", size=9), 
                             bg='#f8f9fa', fg='#aaaaaa')
@@ -1007,9 +1066,353 @@ class AIModeInterface:
         messagebox.showinfo("设置", "AI模式设置功能")
     
     def on_new_material_click(self):
-        """新增物料按钮点击事件"""
+        """新增物料按钮点击事件 - 显示第一个弹窗（输入物料名称）"""
         print("点击了新增物料")
-        messagebox.showinfo("新增物料", "新增物料功能")
+        self.show_new_material_name_dialog()
+    
+    def show_new_material_name_dialog(self):
+        """
+        显示新物料名称输入对话框（第一个弹窗）
+        """
+        try:
+            # 创建物料名称输入弹窗
+            name_dialog = tk.Toplevel(self.root)
+            name_dialog.title("新物料名称")
+            name_dialog.geometry("700x600")
+            name_dialog.configure(bg='white')
+            name_dialog.resizable(False, False)
+            name_dialog.transient(self.root)
+            name_dialog.grab_set()
+            
+            # 居中显示弹窗
+            self.center_dialog_relative_to_main(name_dialog, 700, 600)
+            
+            # 标题
+            tk.Label(name_dialog, text="新物料名称", 
+                    font=tkFont.Font(family="微软雅黑", size=16, weight="bold"),
+                    bg='white', fg='#333333').pack(pady=40)
+            
+            # 物料名称输入框
+            name_var = tk.StringVar()
+            name_entry_frame = tk.Frame(name_dialog, bg='white')
+            name_entry_frame.pack(pady=20)
+            
+            name_entry = tk.Entry(name_entry_frame, textvariable=name_var,
+                                 font=tkFont.Font(family="微软雅黑", size=12),
+                                 width=30, justify='center',
+                                 relief='solid', bd=1,
+                                 bg='white', fg='#333333')
+            name_entry.pack(ipady=8)
+            
+            # 设置占位符
+            self.setup_placeholder(name_entry, "请输入物料名称")
+            name_entry.focus()  # 设置焦点到输入框
+            
+            # 按钮区域
+            button_frame = tk.Frame(name_dialog, bg='white')
+            button_frame.pack(pady=40)
+            
+            def on_cancel_click():
+                """取消按钮点击事件"""
+                print("[信息] 用户取消输入物料名称")
+                name_dialog.destroy()
+            
+            def on_next_click():
+                """下一步按钮点击事件"""
+                material_name = name_var.get().strip()
+                
+                # 验证输入的物料名称
+                if not material_name or material_name == "请输入物料名称":
+                    messagebox.showwarning("输入错误", "请输入有效的物料名称！")
+                    return
+                
+                # 检查物料名称是否已存在
+                if DATABASE_AVAILABLE:
+                    try:
+                        existing_material = MaterialDAO.get_material_by_name(material_name)
+                        if existing_material:
+                            messagebox.showerror("物料已存在", f"物料名称'{material_name}'已存在，请使用其他名称！")
+                            return
+                    except Exception as e:
+                        print(f"[错误] 检查物料名称是否存在时发生异常: {e}")
+                        messagebox.showerror("检查错误", f"检查物料是否存在时发生错误：{str(e)}")
+                        return
+                
+                print(f"[信息] 用户输入物料名称: {material_name}")
+                name_dialog.destroy()
+                
+                # 显示第二个弹窗
+                self.show_new_material_params_dialog(material_name)
+            
+            # 取消按钮
+            cancel_btn = tk.Button(button_frame, text="取消", 
+                                  font=tkFont.Font(family="微软雅黑", size=12, weight="bold"),
+                                  bg='#6c757d', fg='white',
+                                  relief='flat', bd=0,
+                                  padx=40, pady=12,
+                                  command=on_cancel_click)
+            cancel_btn.pack(side=tk.LEFT, padx=(0, 30))
+            
+            # 下一步按钮
+            next_btn = tk.Button(button_frame, text="下一步", 
+                                font=tkFont.Font(family="微软雅黑", size=12, weight="bold"),
+                                bg='#007bff', fg='white',
+                                relief='flat', bd=0,
+                                padx=40, pady=12,
+                                command=on_next_click)
+            next_btn.pack(side=tk.LEFT, padx=(30, 0))
+            
+            # 绑定回车键到下一步按钮
+            name_dialog.bind('<Return>', lambda e: on_next_click())
+            
+            print("[信息] 显示新物料名称输入对话框")
+            
+        except Exception as e:
+            error_msg = f"显示新物料名称对话框异常: {str(e)}"
+            print(f"[错误] {error_msg}")
+            messagebox.showerror("系统错误", error_msg)
+    
+    def show_new_material_params_dialog(self, material_name: str):
+        """
+        显示新物料参数输入对话框（第二个弹窗）
+        
+        Args:
+            material_name (str): 物料名称
+        """
+        try:
+            # 创建物料参数输入弹窗
+            params_dialog = tk.Toplevel(self.root)
+            params_dialog.title("新物料名称")
+            params_dialog.geometry("700x600")
+            params_dialog.configure(bg='white')
+            params_dialog.resizable(False, False)
+            params_dialog.transient(self.root)
+            params_dialog.grab_set()
+            
+            # 居中显示弹窗
+            self.center_dialog_relative_to_main(params_dialog, 700, 600)
+            
+            # 标题
+            tk.Label(params_dialog, text="新物料名称", 
+                    font=tkFont.Font(family="微软雅黑", size=16, weight="bold"),
+                    bg='white', fg='#333333').pack(pady=30)
+            
+            # 物料名称显示（不可编辑）
+            name_frame = tk.Frame(params_dialog, bg='white')
+            name_frame.pack(pady=10)
+            
+            tk.Label(name_frame, text="物料名称", 
+                    font=tkFont.Font(family="微软雅黑", size=12, weight="bold"),
+                    bg='white', fg='#333333').pack()
+            
+            name_display = tk.Entry(name_frame,
+                                   font=tkFont.Font(family="微软雅黑", size=12),
+                                   width=30, justify='center',
+                                   relief='solid', bd=1,
+                                   bg='#f0f0f0', fg='#333333',
+                                   state='readonly')
+            name_display.pack(ipady=8, pady=(5, 0))
+            
+            # 设置物料名称显示
+            name_display.config(state='normal')
+            name_display.insert(0, material_name)
+            name_display.config(state='readonly')
+            
+            # 每包重量输入
+            weight_frame = tk.Frame(params_dialog, bg='white')
+            weight_frame.pack(pady=15)
+            
+            tk.Label(weight_frame, text="每包重量 g", 
+                    font=tkFont.Font(family="微软雅黑", size=12, weight="bold"),
+                    bg='white', fg='#333333').pack()
+            
+            weight_var = tk.StringVar()
+            weight_entry = tk.Entry(weight_frame, textvariable=weight_var,
+                                   font=tkFont.Font(family="微软雅黑", size=12),
+                                   width=30, justify='center',
+                                   relief='solid', bd=1,
+                                   bg='white', fg='#333333')
+            weight_entry.pack(ipady=8, pady=(5, 0))
+            self.setup_placeholder(weight_entry, "请输入目标重量")
+            
+            # 包装数量输入
+            quantity_frame = tk.Frame(params_dialog, bg='white')
+            quantity_frame.pack(pady=15)
+            
+            tk.Label(quantity_frame, text="包装数量", 
+                    font=tkFont.Font(family="微软雅黑", size=12, weight="bold"),
+                    bg='white', fg='#333333').pack()
+            
+            quantity_var = tk.StringVar()
+            quantity_entry = tk.Entry(quantity_frame, textvariable=quantity_var,
+                                     font=tkFont.Font(family="微软雅黑", size=12),
+                                     width=30, justify='center',
+                                     relief='solid', bd=1,
+                                     bg='white', fg='#333333')
+            quantity_entry.pack(ipady=8, pady=(5, 0))
+            self.setup_placeholder(quantity_entry, "请输入目标包数")
+            
+            # 按钮区域
+            button_frame = tk.Frame(params_dialog, bg='white')
+            button_frame.pack(pady=40)
+            
+            def on_cancel_click():
+                """取消按钮点击事件 - 返回第一个弹窗"""
+                print("[信息] 用户取消参数输入，返回物料名称输入")
+                params_dialog.destroy()
+                # 返回第一个弹窗
+                self.show_new_material_name_dialog()
+            
+            def on_start_click():
+                """开始按钮点击事件"""
+                # 验证输入参数
+                weight_str = weight_var.get().strip()
+                quantity_str = quantity_var.get().strip()
+                
+                if not weight_str or weight_str == "请输入目标重量":
+                    messagebox.showwarning("参数缺失", "请输入每包重量")
+                    return
+                
+                if not quantity_str or quantity_str == "请输入目标包数":
+                    messagebox.showwarning("参数缺失", "请输入包装数量")
+                    return
+                
+                try:
+                    target_weight = float(weight_str)
+                    if target_weight <= 0:
+                        messagebox.showerror("参数错误", "每包重量必须大于0")
+                        return
+                except ValueError:
+                    messagebox.showerror("参数错误", "请输入有效的重量数值")
+                    return
+                
+                try:
+                    package_quantity = int(quantity_str)
+                    if package_quantity <= 0:
+                        messagebox.showerror("参数错误", "包装数量必须大于0")
+                        return
+                except ValueError:
+                    messagebox.showerror("参数错误", "请输入有效的包装数量")
+                    return
+                
+                print(f"[信息] 创建新物料: {material_name}, 重量: {target_weight}g, 数量: {package_quantity}")
+                
+                # 在数据库中创建新物料
+                if DATABASE_AVAILABLE:
+                    try:
+                        success, message, material_id = MaterialDAO.create_material(
+                            material_name=material_name,
+                            ai_status="未学习",
+                            is_enabled=1
+                        )
+                        
+                        if success:
+                            print(f"[成功] {message}, 物料ID: {material_id}")
+                            
+                            # 刷新物料列表
+                            self.refresh_material_list()
+                            
+                            # 设置当前选择的物料为新创建的物料
+                            self.material_var.set(material_name)
+                            
+                            # 设置重量和数量到界面
+                            self.weight_var.set(str(target_weight))
+                            self.quantity_var.set(str(package_quantity))
+                            
+                            params_dialog.destroy()
+                            
+                            # 显示创建成功消息
+                            messagebox.showinfo("物料创建成功", 
+                                              f"物料'{material_name}'已成功创建！\n\n"
+                                              f"每包重量：{target_weight}g\n"
+                                              f"包装数量：{package_quantity}包\n\n"
+                                              f"现在将开始AI学习流程...")
+                            
+                            # 直接调用AI生产逻辑
+                            self.start_ai_production_for_new_material(target_weight, package_quantity, material_name)
+                            
+                        else:
+                            print(f"[失败] {message}")
+                            messagebox.showerror("创建物料失败", f"创建物料失败：\n{message}")
+                        
+                    except Exception as e:
+                        error_msg = f"创建物料时发生异常：{str(e)}"
+                        print(f"[错误] {error_msg}")
+                        messagebox.showerror("创建异常", error_msg)
+                else:
+                    # 数据库不可用时的处理
+                    messagebox.showwarning("数据库不可用", 
+                                         "数据库功能不可用，无法保存新物料！\n"
+                                         "新物料将仅在本次会话中有效。")
+                    
+                    # 临时添加到物料列表
+                    self.material_list.append(material_name)
+                    self.refresh_material_list()
+                    self.material_var.set(material_name)
+                    self.weight_var.set(str(target_weight))
+                    self.quantity_var.set(str(package_quantity))
+                    
+                    params_dialog.destroy()
+                    
+                    # 直接调用AI生产逻辑
+                    self.start_ai_production_for_new_material(target_weight, package_quantity, material_name)
+            
+            # 取消按钮
+            cancel_btn = tk.Button(button_frame, text="取消", 
+                                  font=tkFont.Font(family="微软雅黑", size=12, weight="bold"),
+                                  bg='#6c757d', fg='white',
+                                  relief='flat', bd=0,
+                                  padx=40, pady=12,
+                                  command=on_cancel_click)
+            cancel_btn.pack(side=tk.LEFT, padx=(0, 30))
+            
+            # 开始按钮
+            start_btn = tk.Button(button_frame, text="开始", 
+                                 font=tkFont.Font(family="微软雅黑", size=12, weight="bold"),
+                                 bg='#007bff', fg='white',
+                                 relief='flat', bd=0,
+                                 padx=40, pady=12,
+                                 command=on_start_click)
+            start_btn.pack(side=tk.LEFT, padx=(30, 0))
+            
+            # 绑定回车键到开始按钮
+            params_dialog.bind('<Return>', lambda e: on_start_click())
+            
+            print(f"[信息] 显示新物料参数输入对话框，物料名称: {material_name}")
+            
+        except Exception as e:
+            error_msg = f"显示新物料参数对话框异常: {str(e)}"
+            print(f"[错误] {error_msg}")
+            messagebox.showerror("系统错误", error_msg)
+    
+    def start_ai_production_for_new_material(self, target_weight: float, package_quantity: int, material_name: str):
+        """
+        为新物料启动AI生产流程
+        
+        Args:
+            target_weight (float): 目标重量
+            package_quantity (int): 包装数量  
+            material_name (str): 物料名称
+        """
+        try:
+            print(f"[信息] 为新物料'{material_name}'启动AI生产流程")
+            
+            # 在后台线程执行AI生产流程，避免阻塞界面
+            def ai_production_thread():
+                try:
+                    self.execute_ai_production_sequence(target_weight, package_quantity, material_name)
+                except Exception as e:
+                    # 在主线程显示错误信息
+                    self.root.after(0, lambda: messagebox.showerror("AI生产错误", f"AI生产过程中发生异常：\n{str(e)}"))
+            
+            # 启动后台线程
+            production_thread = threading.Thread(target=ai_production_thread, daemon=True)
+            production_thread.start()
+            
+        except Exception as e:
+            error_msg = f"启动AI生产流程异常: {str(e)}"
+            print(f"[错误] {error_msg}")
+            messagebox.showerror("启动异常", error_msg)
     
     def check_plc_status(self, operation_name: str = "操作") -> bool:
         """
