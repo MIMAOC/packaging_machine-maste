@@ -17,7 +17,6 @@ pip install -r requirements.txt
 
 作者：AI助手
 创建日期：2025-07-22
-更新日期：2025-07-23（前后端分离版本）
 更新日期：2025-07-30（增加API重试机制）
 """
 
@@ -559,7 +558,7 @@ class PackagingMachineGUI:
     
     def test_backend_api_connection(self, force_retry=False, max_attempts=3):
         """
-        测试后端API连接（增强版，带重试机制）
+        测试后端API连接
         
         Args:
             force_retry: 是否强制重试
@@ -882,11 +881,6 @@ def main():
     """主函数 - 程序入口点"""
     print("=" * 60)
     print("🚀 启动包装机")
-    print("=" * 60)
-    print("架构: 前后端分离")
-    print("前端: Python + Tkinter + PyModbus")  
-    print("后端: FastAPI + Docker")
-    print("增强功能: API重试机制")
     print("=" * 60)
     
     # 创建主窗口

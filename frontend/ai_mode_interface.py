@@ -1258,14 +1258,10 @@ class AIModeInterface:
             return
         
         # 显示确认信息
-        api_url = self.api_config.base_url if self.api_config else "未配置"
         confirm_msg = f"AI生产参数确认：\n\n" \
                      f"目标重量：{target_weight} 克\n" \
                      f"包装数量：{package_quantity} 包\n" \
-                     f"选择物料：{material}\n" \
-                     f"后端API：{api_url}\n\n" \
-                     f"⚠️ 注意：AI模式将通过后端API执行分析，\n" \
-                     f"并执行完整的生产流程。\n" \
+                     f"选择物料：{material}\n\n" \
                      f"确认开始AI自适应生产？"
         
         result = messagebox.askyesno("确认AI生产", confirm_msg)
