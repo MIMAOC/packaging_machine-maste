@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-AI模式界面 - 自学习自适应 - 前端版本
+AI模式界面 - 自学习自适应 - 前端版本 - 增强多斗学习状态显示
 包装机AI模式操作界面，集成后端API服务
 
 功能特点：
@@ -13,11 +13,13 @@ AI模式界面 - 自学习自适应 - 前端版本
 6. 快加时间测定功能
 7. 增强的放料+清零功能（带弹窗确认）
 8. 清料功能（三个弹窗流程）
+9. 多斗学习状态管理
+10. 实时多斗学习状态弹窗显示
 
 文件名：ai_mode_interface.py
 作者：AI助手
 创建日期：2025-07-22
-更新日期：2025-07-24（增加清料功能）
+更新日期：2025-08-04（增强多斗学习状态弹窗显示）
 """
 
 import tkinter as tk
@@ -74,6 +76,29 @@ except ImportError as e:
     print(f"警告：无法导入API配置模块: {e}")
     API_CONFIG_AVAILABLE = False
 
+# 导入快加时间测定控制器模块
+try:
+    from coarse_time_controller import create_coarse_time_test_controller
+    COARSE_TIME_CONTROLLER_AVAILABLE = True
+except ImportError as e:
+    print(f"警告：无法导入快加时间测定控制器模块: {e}")
+    COARSE_TIME_CONTROLLER_AVAILABLE = False
+    # 定义一个空的函数以避免 NameError
+    def create_coarse_time_test_controller(client):
+        return None
+
+# 导入料斗学习状态管理器
+try:
+    from bucket_learning_state_manager import (
+        create_bucket_learning_state_manager, 
+        LearningStage, 
+        LearningStatus
+    )
+    LEARNING_STATE_MANAGER_AVAILABLE = True
+except ImportError as e:
+    print(f"警告：无法导入料斗学习状态管理器模块: {e}")
+    LEARNING_STATE_MANAGER_AVAILABLE = False
+
 class AIModeInterface:
     """
     AI模式界面类 - 前端版本
@@ -87,6 +112,8 @@ class AIModeInterface:
     6. 快加时间测定控制
     7. 增强的放料+清零功能
     8. 清料功能控制
+    9. 多斗学习状态管理
+    10. 实时多斗学习状态弹窗显示
     """
     
     def __init__(self, parent=None, main_window=None):
@@ -152,6 +179,19 @@ class AIModeInterface:
         # 快加时间测定控制器（新增）
         self.coarse_time_controller = None
         
+        # 多斗学习状态弹窗相关变量
+        self.learning_status_window = None
+        self.bucket_status_labels = {}  # 存储各料斗状态标签的引用
+        
+        # 创建料斗学习状态管理器
+        if LEARNING_STATE_MANAGER_AVAILABLE:
+            self.learning_state_manager = create_bucket_learning_state_manager()
+            # 设置状态管理器事件回调
+            self.learning_state_manager.on_state_changed = self._on_bucket_state_changed
+            self.learning_state_manager.on_all_completed = self._on_all_learning_completed
+        else:
+            self.learning_state_manager = None
+        
         # 获取API配置
         self.api_config = None
         if API_CONFIG_AVAILABLE:
@@ -192,8 +232,6 @@ class AIModeInterface:
             
             # 设置窗口位置
             self.root.geometry(f'{width}x{height}+{x}+{y}')
-            
-            print(f"AI模式界面已居中显示: {width}x{height}+{x}+{y}")
             
         except Exception as e:
             print(f"AI模式界面居中显示失败: {e}")
@@ -288,6 +326,15 @@ class AIModeInterface:
         # 右侧按钮区域
         right_frame = tk.Frame(title_frame, bg='#f8f9fa')
         right_frame.pack(side=tk.RIGHT)
+    
+        # 调试按钮（仅在开发模式下显示）
+        debug_btn = tk.Button(right_frame, text="🐛调试", 
+                             font=self.small_button_font,
+                             bg='#fd7e14', fg='white',
+                             relief='flat', bd=1,
+                             padx=15, pady=8,
+                             command=self.show_debug_menu)
+        debug_btn.pack(side=tk.LEFT, padx=(0, 10))
         
         # 返回首页按钮
         home_btn = tk.Button(right_frame, text="返回首页", 
@@ -319,6 +366,106 @@ class AIModeInterface:
         # 蓝色分隔线（放在标题栏下方）
         separator = tk.Frame(parent, height=3, bg='#7fb3d3')
         separator.pack(fill=tk.X, pady=(0, 15))
+    
+    def show_debug_menu(self):
+        """显示调试菜单"""
+        debug_window = tk.Toplevel(self.root)
+        debug_window.title("调试测试菜单")
+        debug_window.geometry("400x550")  # 增加高度以容纳新按钮
+        debug_window.configure(bg='white')
+        debug_window.resizable(False, False)
+        debug_window.transient(self.root)
+        debug_window.grab_set()
+
+        # 居中显示
+        debug_window.update_idletasks()
+        x = (debug_window.winfo_screenwidth() // 2) - (400 // 2)
+        y = (debug_window.winfo_screenheight() // 2) - (550 // 2)
+        debug_window.geometry(f"400x550+{x}+{y}")
+
+        # 标题
+        tk.Label(debug_window, text="🐛 调试测试菜单", 
+                font=tkFont.Font(family="微软雅黑", size=16, weight="bold"),
+                bg='white', fg='#333333').pack(pady=20)
+
+        # 测试按钮列表 - 添加自适应学习失败测试
+        test_buttons = [
+            ("测试多斗学习状态弹窗", lambda: self.debug_show_multi_bucket_status()),
+            ("测试训练完成弹窗", lambda: self._show_training_completed_dialog()),
+            ("测试快加时间失败弹窗", lambda: self.show_relearning_choice_dialog(1, "快加时间超时", "coarse_time")),
+            ("测试飞料值失败弹窗", lambda: self.show_relearning_choice_dialog(2, "飞料值异常", "flight_material")),
+            ("测试慢加时间失败弹窗", lambda: self.show_relearning_choice_dialog(3, "慢加精度不足", "fine_time")),
+            ("测试自适应学习失败弹窗", lambda: self.show_relearning_choice_dialog(4, "自适应学习收敛失败", "adaptive_learning")),  # 新增
+            ("测试放料清零完成弹窗", lambda: self.show_discharge_clear_completion_dialog()),
+            ("测试模拟学习过程", lambda: self.debug_simulate_learning()),
+        ]
+
+        for i, (text, command) in enumerate(test_buttons):
+            btn = tk.Button(debug_window, text=text, 
+                           font=tkFont.Font(family="微软雅黑", size=11),
+                           bg='#e9ecef', fg='#333333',
+                           relief='flat', bd=1,
+                           padx=20, pady=8,
+                           command=command)
+            btn.pack(pady=5, fill=tk.X, padx=20)
+
+        # 关闭按钮
+        tk.Button(debug_window, text="关闭", 
+                 font=tkFont.Font(family="微软雅黑", size=12),
+                 bg='#6c757d', fg='white',
+                 relief='flat', bd=0,
+                 padx=20, pady=10,
+                 command=debug_window.destroy).pack(pady=20)
+        
+    def debug_show_multi_bucket_status(self):
+        """调试：显示多斗学习状态弹窗"""
+        # 确保学习状态管理器存在（调试模式）
+        if not self.learning_state_manager:
+            # 创建模拟的学习状态管理器
+            class MockLearningStateManager:
+                def get_completed_count(self):
+                    return 2, 1, 6  # 成功2个，失败1个，总共6个
+
+                def is_all_completed(self):
+                    return False
+
+            self.learning_state_manager = MockLearningStateManager()
+
+        # 显示弹窗
+        self.show_multi_bucket_learning_status_dialog()
+
+    def debug_simulate_learning(self):
+        """调试：模拟学习过程"""
+        if not self.learning_status_window:
+            messagebox.showwarning("提示", "请先打开多斗学习状态弹窗")
+            return
+
+        # 模拟不同状态
+        def update_states():
+            try:
+                import random
+                states_info = [
+                    ("学习中", "#4a90e2"),
+                    ("学习失败", "#ff0000"), 
+                    ("学习完成", "#00aa00"),
+                    ("未开始", "#888888")
+                ]
+
+                for bucket_id in range(1, 7):
+                    if bucket_id in self.bucket_status_labels:
+                        # 随机选择状态
+                        text, color = random.choice(states_info)
+                        label = self.bucket_status_labels[bucket_id]
+                        label.config(text=text, fg=color)
+
+                # 更新统计信息
+                if hasattr(self, 'stats_label'):
+                    self.stats_label.config(text="学习状态：模拟测试中...")
+
+            except Exception as e:
+                print(f"调试模拟异常: {e}")
+
+        self.root.after(100, update_states)
     
     def create_status_bar(self, parent):
         """
@@ -675,6 +822,23 @@ class AIModeInterface:
                 print("清料控制器已停止")
             except Exception as e:
                 print(f"停止清料控制器时发生错误: {e}")
+        
+        # 重置学习状态管理器
+        if self.learning_state_manager:
+            try:
+                self.learning_state_manager.reset_all_states()
+                print("学习状态管理器已重置")
+            except Exception as e:
+                print(f"重置学习状态管理器时发生错误: {e}")
+        
+        # 关闭多斗学习状态弹窗（如果存在）
+        if self.learning_status_window:
+            try:
+                self.learning_status_window.destroy()
+                self.learning_status_window = None
+                print("多斗学习状态弹窗已关闭")
+            except Exception as e:
+                print(f"关闭多斗学习状态弹窗时发生错误: {e}")
         
         # 如果有主窗口引用，重新显示主窗口
         if self.main_window:
@@ -1507,30 +1671,67 @@ class AIModeInterface:
             # 步骤4: 启动快加时间测定（如果模块可用）
             self.root.after(0, lambda: self.show_progress_message("步骤4/4", "正在启动快加时间测定..."))
             
+            # 在启动快加时间测定之前，立即显示多斗学习状态弹窗
+            self.root.after(0, lambda: self.show_multi_bucket_learning_status_dialog())
+            
+            # 重置学习状态管理器
+            if self.learning_state_manager:
+                self.learning_state_manager.reset_all_states()
+                print("[信息] 学习状态管理器已重置")
+            
             try:
                 from coarse_time_controller import create_coarse_time_test_controller
                 
                 # 创建快加时间测定控制器
                 self.coarse_time_controller = create_coarse_time_test_controller(self.modbus_client)
                 
-                # 设置事件回调（修改为处理合并结果）
+                # 设置事件回调（修改为处理学习状态）
                 def on_bucket_completed(bucket_id: int, success: bool, message: str):
-                    # 检查是否是合并的自适应学习结果
-                    if bucket_id == 0 and isinstance(message, dict):
-                        # 这是所有料斗自适应学习完成的合并结果
-                        print("[信息] 收到所有料斗自适应学习完成的合并结果")
-                        # 在主线程中显示合并弹窗
-                        self.root.after(0, lambda: self._show_all_buckets_completed_dialog(message))
-                    elif success:
-                        popup_msg = message
-                        self.root.after(0, lambda: messagebox.showinfo(f"料斗{bucket_id}测定成功", popup_msg))
-                        print(f"[测定成功] 料斗{bucket_id}完成")
-                    else:
-                        error_msg = message
-                        self.root.after(0, lambda: messagebox.showerror(f"料斗{bucket_id}测定失败", error_msg))
-                        print(f"[测定失败] 料斗{bucket_id}: {message}")
+                    # 更新学习状态管理器
+                    if self.learning_state_manager:
+                        if bucket_id == 0 and isinstance(message, dict):
+                            # 这是所有料斗自适应学习完成的合并结果，处理每个料斗的状态
+                            for bid, state_obj in message.items():
+                                final_success = state_obj.is_success if hasattr(state_obj, 'is_success') else success
+                                final_message = f"自适应学习{'成功' if final_success else '失败'}" 
+                                self.learning_state_manager.complete_bucket_stage(
+                                    bid, LearningStage.ADAPTIVE_LEARNING, final_success, final_message
+                                )
+                            return
+                        else:
+                            # 单个料斗完成事件，根据消息内容判断阶段
+                            stage = self._determine_learning_stage_from_message(message)
+                            if stage:
+                                self.learning_state_manager.complete_bucket_stage(
+                                    bucket_id, stage, success, message
+                                )
+                            else:
+                                # 如果无法判断阶段，打印调试信息
+                                print(f"[调试] 无法识别阶段，bucket_id={bucket_id}, message={message}")
+                
+                def on_bucket_failed(bucket_id: int, error_message: str, failed_stage: str):
+                    """处理料斗学习失败事件"""
+                    print(f"[失败事件] 料斗{bucket_id} {failed_stage}阶段失败: {error_message}")
+                    
+                    # 更新学习状态管理器
+                    if self.learning_state_manager:
+                        stage = self._get_learning_stage_from_failed_stage(failed_stage)
+                        if stage:
+                            self.learning_state_manager.complete_bucket_stage(
+                                bucket_id, stage, False, error_message
+                            )
+                    
+                    # 在主线程中显示重新学习选择弹窗
+                    self.root.after(0, lambda: self.show_relearning_choice_dialog(bucket_id, error_message, failed_stage))
                 
                 def on_progress_update(bucket_id: int, current_attempt: int, max_attempts: int, message: str):
+                    # 更新学习状态管理器（在第一次尝试时设置开始状态）
+                    if self.learning_state_manager and current_attempt == 1:
+                        stage = self._determine_learning_stage_from_message(message)
+                        if stage:
+                            self.learning_state_manager.start_bucket_stage(bucket_id, stage)
+                            print(f"[状态更新] 料斗{bucket_id}开始{stage.value}阶段")
+                    
                     progress_msg = f"料斗{bucket_id}进度: {current_attempt}/{max_attempts} - {message}"
                     self.root.after(0, lambda: self.show_progress_message("步骤4/4", progress_msg))
                     print(f"[测定进度] {progress_msg}")
@@ -1540,12 +1741,19 @@ class AIModeInterface:
                 
                 # 设置事件回调
                 self.coarse_time_controller.on_bucket_completed = on_bucket_completed
+                self.coarse_time_controller.on_bucket_failed = on_bucket_failed  # 新增失败回调
                 self.coarse_time_controller.on_progress_update = on_progress_update
                 self.coarse_time_controller.on_log_message = on_log_message
                 
                 # 启动快加时间测定
                 test_success, test_message = self.coarse_time_controller.start_coarse_time_test_after_parameter_writing(
                     target_weight, coarse_speed)
+                
+                # 初始化学习状态管理器中各料斗的快加时间测定状态
+                if self.learning_state_manager and test_success:
+                    for bucket_id in range(1, 7):
+                        self.learning_state_manager.start_bucket_stage(bucket_id, LearningStage.COARSE_TIME)
+                    print("[信息] 已初始化所有料斗的快加时间测定状态")
                 
                 if not test_success:
                     error_msg = f"启动快加时间测定失败：{test_message}"
@@ -1578,8 +1786,7 @@ class AIModeInterface:
                 f"  • 后端API分析：{analysis_message}\n"
                 f"  • 参数写入：成功写入所有6个料斗\n"
                 f"  • 快加时间测定：{'已启动' if 'coarse_time_controller' in locals() else '模块不可用'}\n\n"
-                f"🔍 系统正在进行自动化测定流程...\n"
-                f"测定完成后将自动弹窗显示结果。"
+                f"🔍 多斗学习状态弹窗已显示，可实时查看各料斗学习进度..."
             )
             
             self.root.after(0, lambda: messagebox.showinfo("AI生产流程启动完成", success_message))
@@ -1590,127 +1797,797 @@ class AIModeInterface:
             print(error_msg)
             self.root.after(0, lambda: messagebox.showerror("序列异常", error_msg))
     
-    def _show_all_buckets_completed_dialog(self, completed_states):
+    def _determine_learning_stage_from_message(self, message: str):
+        """从消息内容判断学习阶段"""
+        if not LEARNING_STATE_MANAGER_AVAILABLE:
+            return None
+            
+        message_lower = message.lower()
+        
+        # 更精确的阶段判断
+        if "快加时间测定" in message or ("快加" in message and "时间" in message):
+            return LearningStage.COARSE_TIME
+        elif "飞料值测定" in message or ("飞料" in message and ("测定" in message or "完成" in message)):
+            return LearningStage.FLIGHT_MATERIAL
+        elif "慢加时间测定" in message or ("慢加" in message and "时间" in message):
+            return LearningStage.FINE_TIME
+        elif "自适应学习" in message or "adaptive" in message_lower:
+            return LearningStage.ADAPTIVE_LEARNING
+        
+        # 备用判断
+        if "coarse" in message_lower and "time" in message_lower:
+            return LearningStage.COARSE_TIME
+        elif "flight" in message_lower:
+            return LearningStage.FLIGHT_MATERIAL
+        elif "fine" in message_lower and "time" in message_lower:
+            return LearningStage.FINE_TIME
+        
+        return None
+    
+    def _get_learning_stage_from_failed_stage(self, failed_stage: str):
+        """将失败阶段字符串转换为学习阶段枚举"""
+        if not LEARNING_STATE_MANAGER_AVAILABLE:
+            return None
+            
+        stage_mapping = {
+            "coarse_time": LearningStage.COARSE_TIME,
+            "flight_material": LearningStage.FLIGHT_MATERIAL,
+            "fine_time": LearningStage.FINE_TIME,
+            "adaptive_learning": LearningStage.ADAPTIVE_LEARNING
+        }
+        return stage_mapping.get(failed_stage)
+    
+    def show_relearning_choice_dialog(self, bucket_id: int, error_message: str, failed_stage: str):
         """
-        显示所有料斗自适应学习完成的合并弹窗
+        显示重新学习选择弹窗
         
         Args:
-            completed_states (dict): 所有已完成料斗的状态字典
+            bucket_id (int): 料斗ID
+            error_message (str): 错误消息
+            failed_stage (str): 失败的阶段
         """
         try:
-            # 创建合并结果弹窗
-            completed_window = tk.Toplevel(self.root)
-            completed_window.title("自适应学习完成")
-            completed_window.geometry("700x600")
-            completed_window.configure(bg='white')
-            completed_window.resizable(False, False)
-            completed_window.transient(self.root)
-            completed_window.grab_set()
+            # 创建重新学习选择弹窗
+            relearning_window = tk.Toplevel(self.root)
+            relearning_window.title("学习失败")
+            relearning_window.geometry("500x350")
+            relearning_window.configure(bg='white')
+            relearning_window.resizable(False, False)
+            relearning_window.transient(self.root)
+            relearning_window.grab_set()
             
             # 居中显示弹窗
-            completed_window.update_idletasks()
-            x = (completed_window.winfo_screenwidth() // 2) - (700 // 2)
-            y = (completed_window.winfo_screenheight() // 2) - (600 // 2)
-            completed_window.geometry(f"700x600+{x}+{y}")
+            relearning_window.update_idletasks()
+            x = (relearning_window.winfo_screenwidth() // 2) - (500 // 2)
+            y = (relearning_window.winfo_screenheight() // 2) - (350 // 2)
+            relearning_window.geometry(f"500x350+{x}+{y}")
+            
+            # 获取阶段中文名称
+            stage_names = {
+                "coarse_time": "快加时间测定",
+                "flight_material": "飞料值测定", 
+                "fine_time": "慢加时间测定",
+                "adaptive_learning": "自适应学习"
+            }
+            stage_name = stage_names.get(failed_stage, failed_stage)
             
             # 标题
-            tk.Label(completed_window, text="自适应学习阶段完成", 
+            tk.Label(relearning_window, text=f"料斗{bucket_id}学习失败", 
+                    font=tkFont.Font(family="微软雅黑", size=16, weight="bold"),
+                    bg='white', fg='#ff0000').pack(pady=20)
+            
+            # 失败阶段和错误信息
+            info_frame = tk.Frame(relearning_window, bg='white')
+            info_frame.pack(pady=10, padx=20, fill=tk.X)
+            
+            tk.Label(info_frame, text=f"失败阶段：{stage_name}", 
+                    font=tkFont.Font(family="微软雅黑", size=12),
+                    bg='white', fg='#333333').pack(anchor='w', pady=2)
+            
+            # 错误信息（限制长度）
+            error_text = error_message[:80] + "..." if len(error_message) > 80 else error_message
+            tk.Label(info_frame, text=f"错误信息：{error_text}", 
+                    font=tkFont.Font(family="微软雅黑", size=10),
+                    bg='white', fg='#666666', wraplength=450).pack(anchor='w', pady=2)
+            
+            # 提示信息
+            tip_frame = tk.LabelFrame(relearning_window, text="重要提示", bg='white', fg='#333333')
+            tip_frame.pack(fill=tk.X, padx=20, pady=15)
+            
+            tip_text = "请先检查料斗是否设置正确，再选择是否重新学习"
+            tk.Label(tip_frame, text=tip_text, 
+                    font=tkFont.Font(family="微软雅黑", size=12, weight="bold"),
+                    bg='white', fg='#ff6600', wraplength=450).pack(pady=10, padx=10)
+            
+            # 选择提示
+            tk.Label(relearning_window, text="请选择重新学习方式：", 
+                    font=tkFont.Font(family="微软雅黑", size=12),
+                    bg='white', fg='#333333').pack(pady=(10, 5))
+            
+            # 按钮区域
+            button_frame = tk.Frame(relearning_window, bg='white')
+            button_frame.pack(pady=20)
+            
+            def on_restart_from_beginning():
+                """从头开始学习按钮点击事件"""
+                print(f"[信息] 料斗{bucket_id}选择从头开始学习")
+                relearning_window.destroy()
+                
+                # 在后台线程中执行重新学习
+                def restart_thread():
+                    try:
+                        success, message = self.coarse_time_controller.restart_bucket_learning(
+                            bucket_id, "from_beginning")
+                        
+                        if success:
+                            print(f"[成功] 料斗{bucket_id}重新学习启动成功: {message}")
+                            # 更新学习状态管理器
+                            if self.learning_state_manager:
+                                self.learning_state_manager.start_bucket_stage(bucket_id, LearningStage.COARSE_TIME)
+                        else:
+                            print(f"[失败] 料斗{bucket_id}重新学习启动失败: {message}")
+                            self.root.after(0, lambda: messagebox.showerror("重新学习失败", 
+                                f"料斗{bucket_id}从头开始学习失败：\n{message}"))
+                    except Exception as e:
+                        error_msg = f"料斗{bucket_id}重新学习异常: {str(e)}"
+                        print(f"[错误] {error_msg}")
+                        self.root.after(0, lambda: messagebox.showerror("重新学习异常", error_msg))
+                
+                # 启动重新学习线程
+                threading.Thread(target=restart_thread, daemon=True).start()
+            
+            def on_restart_from_current_stage():
+                """从当前阶段开始学习按钮点击事件"""
+                print(f"[信息] 料斗{bucket_id}选择从当前阶段({failed_stage})开始学习")
+                relearning_window.destroy()
+                
+                # 在后台线程中执行重新学习
+                def restart_thread():
+                    try:
+                        success, message = self.coarse_time_controller.restart_bucket_learning(
+                            bucket_id, "from_current_stage")
+                        
+                        if success:
+                            print(f"[成功] 料斗{bucket_id}重新学习启动成功: {message}")
+                            # 更新学习状态管理器
+                            if self.learning_state_manager:
+                                stage = self._get_learning_stage_from_failed_stage(failed_stage)
+                                if stage:
+                                    self.learning_state_manager.start_bucket_stage(bucket_id, stage)
+                        else:
+                            print(f"[失败] 料斗{bucket_id}重新学习启动失败: {message}")
+                            self.root.after(0, lambda: messagebox.showerror("重新学习失败", 
+                                f"料斗{bucket_id}从当前阶段开始学习失败：\n{message}"))
+                    except Exception as e:
+                        error_msg = f"料斗{bucket_id}重新学习异常: {str(e)}"
+                        print(f"[错误] {error_msg}")
+                        self.root.after(0, lambda: messagebox.showerror("重新学习异常", error_msg))
+                
+                # 启动重新学习线程
+                threading.Thread(target=restart_thread, daemon=True).start()
+            
+            def on_cancel():
+                """取消按钮点击事件"""
+                print(f"[信息] 用户取消料斗{bucket_id}重新学习")
+                relearning_window.destroy()
+            
+            # 从头开始学习按钮
+            restart_from_beginning_btn = tk.Button(button_frame, text="从头开始学习", 
+                                                 font=tkFont.Font(family="微软雅黑", size=12, weight="bold"),
+                                                 bg='#007bff', fg='white',
+                                                 relief='flat', bd=0,
+                                                 padx=30, pady=10,
+                                                 command=on_restart_from_beginning)
+            restart_from_beginning_btn.pack(side=tk.LEFT, padx=10)
+            
+            # 从当前阶段开始学习按钮
+            restart_from_current_btn = tk.Button(button_frame, text="当前阶段开始学习", 
+                                               font=tkFont.Font(family="微软雅黑", size=12, weight="bold"),
+                                               bg='#28a745', fg='white',
+                                               relief='flat', bd=0,
+                                               padx=30, pady=10,
+                                               command=on_restart_from_current_stage)
+            restart_from_current_btn.pack(side=tk.LEFT, padx=10)
+            
+            # 取消按钮
+            cancel_btn = tk.Button(button_frame, text="取消", 
+                                 font=tkFont.Font(family="微软雅黑", size=12),
+                                 bg='#6c757d', fg='white',
+                                 relief='flat', bd=0,
+                                 padx=30, pady=10,
+                                 command=on_cancel)
+            cancel_btn.pack(side=tk.LEFT, padx=10)
+            
+            print(f"[信息] 显示料斗{bucket_id}重新学习选择弹窗")
+            
+        except Exception as e:
+            error_msg = f"显示重新学习选择弹窗异常: {str(e)}"
+            print(f"[错误] {error_msg}")
+            messagebox.showerror("系统错误", error_msg)
+    
+    def _on_bucket_state_changed(self, bucket_id: int, state):
+        """
+        处理料斗状态变化事件（实时更新弹窗显示）
+        
+        Args:
+            bucket_id (int): 料斗ID
+            state: 料斗学习状态对象
+        """
+        print(f"[状态变化] 料斗{bucket_id}: {state.get_display_text()}")
+        
+        # 如果多斗学习状态弹窗存在，更新对应料斗的状态显示
+        if self.learning_status_window and bucket_id in self.bucket_status_labels:
+            try:
+                status_label = self.bucket_status_labels[bucket_id]
+                status_text = state.get_display_text()
+                status_color = state.get_display_color()
+                
+                # 在主线程中更新标签
+                self.root.after(0, lambda: status_label.config(text=status_text, fg=status_color))
+            
+                # 触发一次按钮状态检查（新增）
+                self.root.after(100, self._check_confirm_button_state)
+                
+            except Exception as e:
+                print(f"[错误] 更新料斗{bucket_id}状态显示异常: {e}")
+                
+    def _check_confirm_button_state(self):
+        """
+        检查并更新确认按钮的启用状态
+        """
+        try:
+            if not self.learning_status_window or not self.learning_state_manager:
+                return
+
+            if not hasattr(self, 'confirm_btn') or not self.confirm_btn.winfo_exists():
+                return
+
+            # 获取统计信息
+            success_count, failed_count, total_count = self.learning_state_manager.get_completed_count()
+            learning_count = 0
+            not_started_count = 0
+
+            # 统计各状态数量
+            all_states = self.learning_state_manager.get_all_states()
+            for state in all_states.values():
+                if state.status.value == "learning":
+                    learning_count += 1
+                elif state.status.value == "not_started":
+                    not_started_count += 1
+
+            # 检查是否所有6个料斗都已完成学习
+            all_buckets_finished = (success_count + failed_count) >= 6 and learning_count == 0 and not_started_count == 0
+
+            if all_buckets_finished:
+                # 启用确认按钮
+                self.confirm_btn.config(
+                    state='normal',
+                    bg='#28a745', 
+                    fg='white',
+                    text="确认 全部完成"
+                )
+            else:
+                # 禁用确认按钮
+                self.confirm_btn.config(
+                    state='disabled',
+                    bg='#cccccc', 
+                    fg='#666666',
+                    text="确认"
+                )
+
+        except Exception as e:
+            print(f"[错误] 检查确认按钮状态异常: {e}")
+    
+    def _on_all_learning_completed(self, all_states):
+        """
+        处理所有料斗学习完成事件（不再自动显示弹窗）
+        
+        Args:
+            all_states: 所有料斗的状态字典
+        """
+        print("[信息] 所有料斗学习阶段都已完成！")
+        
+        # 调试：打印所有状态
+        if self.learning_state_manager:
+            success_count, failed_count, total_count = self.learning_state_manager.get_completed_count()
+            print(f"[统计] 成功: {success_count}, 失败: {failed_count}, 总计: {total_count}")
+            
+            for bucket_id, state in all_states.items():
+                print(f"[状态] 料斗{bucket_id}: {state.get_display_text()} (当前阶段: {state.current_stage.value})")
+        
+        # 不再自动显示弹窗，而是等待用户点击确认按钮
+        print("[信息] 等待用户在多斗学习状态弹窗中点击确认按钮")
+    
+    def show_multi_bucket_learning_status_dialog(self):
+        """
+        显示多斗学习状态弹窗（实时更新版本）
+        在参数写入完成、开启测定后立即显示
+        """
+        try:
+            # 如果弹窗已存在，先关闭
+            if self.learning_status_window:
+                self.learning_status_window.destroy()
+                self.learning_status_window = None
+                self.bucket_status_labels.clear()
+            
+            # 创建多斗学习状态弹窗
+            self.learning_status_window = tk.Toplevel(self.root)
+            self.learning_status_window.title("多斗学习状态")
+            self.learning_status_window.geometry("800x600")
+            self.learning_status_window.configure(bg='white')
+            self.learning_status_window.resizable(False, False)
+            self.learning_status_window.transient(self.root)
+            
+            # 禁止用户关闭弹窗（除非点击确认按钮）
+            self.learning_status_window.protocol("WM_DELETE_WINDOW", lambda: None)
+            
+            # 以AI模式界面为基准居中显示弹窗
+            self.learning_status_window.update_idletasks()
+            self.root.update_idletasks()  # 确保主窗口信息是最新的
+
+            # 获取AI模式界面的位置和尺寸
+            main_x = self.root.winfo_x()
+            main_y = self.root.winfo_y()
+            main_width = self.root.winfo_width()
+            main_height = self.root.winfo_height()
+
+            # 获取弹窗尺寸
+            dialog_width = 800
+            dialog_height = 600
+
+            # 计算相对于AI模式界面居中的位置
+            x = main_x + (main_width - dialog_width) // 2
+            y = main_y + (main_height - dialog_height) // 2
+
+            # 确保弹窗不会超出屏幕边界
+            screen_width = self.learning_status_window.winfo_screenwidth()
+            screen_height = self.learning_status_window.winfo_screenheight()
+
+            # 调整x坐标，确保不超出屏幕右边界
+            if x + dialog_width > screen_width:
+                x = screen_width - dialog_width - 20  # 留20像素边距
+
+            # 调整x坐标，确保不超出屏幕左边界
+            if x < 20:
+                x = 20
+
+            # 调整y坐标，确保不超出屏幕下边界
+            if y + dialog_height > screen_height:
+                y = screen_height - dialog_height - 20  # 留20像素边距
+
+            # 调整y坐标，确保不超出屏幕上边界
+            if y < 20:
+                y = 20
+
+            self.learning_status_window.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
+            
+            # 标题
+            tk.Label(self.learning_status_window, text="多斗学习状态", 
                     font=tkFont.Font(family="微软雅黑", size=16, weight="bold"),
                     bg='white', fg='#333333').pack(pady=20)
+
+            # 计时器显示
+            self.learning_timer_label = tk.Label(self.learning_status_window, text="00:00:00", 
+                                               font=tkFont.Font(family="Arial", size=20, weight="bold"),
+                                               bg='white', fg='#007bff')
+            self.learning_timer_label.pack(pady=(0, 10))
             
-            # 创建滚动区域
-            canvas = tk.Canvas(completed_window, bg='white', highlightthickness=0)
-            scrollbar = ttk.Scrollbar(completed_window, orient="vertical", command=canvas.yview)
-            scrollable_frame = tk.Frame(canvas, bg='white')
+
+            # 启动学习计时器（新增这行）
+            self._start_learning_timer()
             
-            scrollable_frame.bind(
-                "<Configure>",
-                lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-            )
+            # 状态网格容器
+            grid_frame = tk.Frame(self.learning_status_window, bg='white')
+            grid_frame.pack(expand=True, fill='both', padx=20, pady=0)
             
-            canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-            canvas.configure(yscrollcommand=scrollbar.set)
-            
-            canvas.pack(side="left", fill="both", expand=True, padx=20)
-            scrollbar.pack(side="right", fill="y")
-            
-            # 显示每个料斗的结果
-            for bucket_id in sorted(completed_states.keys()):
-                state = completed_states[bucket_id]
+            # 创建6个料斗的状态显示区域（2行3列布局）
+            for i in range(6):
+                bucket_id = i + 1
+                row = i // 3
+                col = i % 3
                 
-                # 料斗结果框架
-                bucket_frame = tk.LabelFrame(scrollable_frame, 
-                                           text=f"料斗{bucket_id}", 
-                                           font=tkFont.Font(family="微软雅黑", size=12, weight="bold"),
-                                           bg='white', fg='#333333',
-                                           padx=10, pady=10)
-                bucket_frame.pack(fill='x', padx=10, pady=5)
+                # 料斗状态框架
+                bucket_frame = tk.Frame(grid_frame, bg='white', relief='solid', bd=1)
+                bucket_frame.grid(row=row, column=col, padx=20, pady=20, sticky='nsew')
                 
-                if state.is_success:
-                    # 成功的料斗显示详细参数
-                    success_label = tk.Label(bucket_frame, 
-                                           text="✅ 成功", 
-                                           font=tkFont.Font(family="微软雅黑", size=11, weight="bold"),
-                                           bg='white', fg='#00aa00')
-                    success_label.pack(anchor='w')
-                    
-                    # 参数信息
-                    param_info = (
-                        f"目标重量: {state.original_target_weight}g\n"
-                        f"快加速度: {state.final_coarse_speed}档\n"
-                        f"慢加速度: {state.final_fine_speed}档\n"
-                        f"快加提前量: {state.final_coarse_advance}g\n"
-                        f"落差值: {state.final_fall_value}g"
-                    )
-                    
-                    param_label = tk.Label(bucket_frame, 
-                                         text=param_info,
-                                         font=tkFont.Font(family="微软雅黑", size=10),
-                                         bg='white', fg='#666666',
-                                         justify='left')
-                    param_label.pack(anchor='w', pady=(5, 0))
-                    
+                # 配置网格权重
+                grid_frame.grid_rowconfigure(row, weight=1)
+                grid_frame.grid_columnconfigure(col, weight=1)
+                
+                # 料斗标题
+                tk.Label(bucket_frame, text=f"料斗{bucket_id}", 
+                        font=tkFont.Font(family="微软雅黑", size=12, weight="bold"),
+                        bg='white', fg='#333333').pack(pady=(10, 5))
+                
+                # 状态标签（初始状态为"未开始"）
+                if self.learning_state_manager:
+                    state = self.learning_state_manager.get_bucket_state(bucket_id)
+                    status_text = state.get_display_text() if state else "未开始"
+                    status_color = state.get_display_color() if state else "#888888"
                 else:
-                    # 失败的料斗显示失败信息
-                    failure_label = tk.Label(bucket_frame, 
-                                           text="❌ 失败", 
-                                           font=tkFont.Font(family="微软雅黑", size=11, weight="bold"),
-                                           bg='white', fg='#ff0000')
-                    failure_label.pack(anchor='w')
-                    
-                    failure_info = (
-                        f"失败阶段: {state.failure_stage}\n"
-                        f"失败原因: {state.failure_reason}"
-                    )
-                    
-                    failure_info_label = tk.Label(bucket_frame, 
-                                                text=failure_info,
-                                                font=tkFont.Font(family="微软雅黑", size=10),
-                                                bg='white', fg='#666666',
-                                                justify='left')
-                    failure_info_label.pack(anchor='w', pady=(5, 0))
+                    status_text = "未开始"
+                    status_color = "#888888"
+                
+                status_label = tk.Label(bucket_frame, text=status_text,
+                                      font=tkFont.Font(family="微软雅黑", size=14, weight="bold"),
+                                      bg='white', fg=status_color)
+                status_label.pack(pady=(5, 10))
+                
+                # 保存状态标签引用，用于实时更新
+                self.bucket_status_labels[bucket_id] = status_label
+            
+            # 统计信息标签
+            self.stats_label = tk.Label(self.learning_status_window, text="学习状态：正在初始化...", 
+                                      font=tkFont.Font(family="微软雅黑", size=10),
+                                      bg='white', fg='#666666')
+            self.stats_label.pack(pady=10)
+        
+            # 按钮区域
+            button_frame = tk.Frame(self.learning_status_window, bg='white')
+            button_frame.pack(pady=20)
             
             # 确认按钮
             def on_confirm_click():
-                """确认按钮点击事件，关闭第一个弹窗，显示第二个训练完成弹窗"""
-                completed_window.destroy()
-                # 显示第二个训练完成弹窗
+                """
+                确认按钮点击事件
+                关闭多斗学习状态弹窗，显示训练完成弹窗
+                """
+                # 最后一次检查所有料斗是否都已完成（额外保护）
+                if self.learning_state_manager:
+                    success_count, failed_count, total_count = self.learning_state_manager.get_completed_count()
+
+                    # 检查是否所有6个料斗都已完成
+                    if (success_count + failed_count) < 6:
+                        messagebox.showwarning("操作提示", "还有料斗未完成学习，请等待所有料斗学习完成后再确认！")
+                        return
+                
+                print("[信息] 用户点击确认，关闭多斗学习状态弹窗")
+    
+                # 停止学习计时器（新增）
+                self._stop_learning_timer()
+                
+                # 关闭多斗学习状态弹窗
+                self.learning_status_window.destroy()
+                self.learning_status_window = None
+                self.bucket_status_labels.clear()
+                
+                # 显示训练完成弹窗
                 self._show_training_completed_dialog()
+        
+            # 取消按钮（新增）
+            def on_cancel_click():
+                """
+                取消按钮点击事件
+                停止所有学习过程，向PLC发送停止命令，关闭弹窗并返回AI模式界面
+                """
+                print("[信息] 用户点击取消，准备停止所有学习过程")
+
+                # 显示确认对话框
+                result = messagebox.askyesno(
+                    "取消学习确认", 
+                    "您确定要取消当前的学习过程吗？\n\n"
+                    "取消后将：\n"
+                    "• 停止所有料斗的学习过程\n"
+                    "• 清除当前学习进度\n"
+                    "• 返回AI模式主界面\n\n"
+                    "此操作不可撤销，是否确认？"
+                )
             
-            confirm_btn = tk.Button(completed_window, text="确认", 
-                                   font=tkFont.Font(family="微软雅黑", size=14, weight="bold"),
-                                   bg='#007bff', fg='white',
-                                   relief='flat', bd=0,
-                                   padx=40, pady=12,
-                                   command=on_confirm_click)
-            confirm_btn.pack(pady=20)
+                if result:
+                    # 用户确认取消，执行取消操作
+                    self._execute_cancel_learning_process()
             
-            print("[信息] 显示所有料斗自适应学习完成合并弹窗")
+            # 确认按钮
+            self.confirm_btn = tk.Button(button_frame, text="确认", 
+                                        font=tkFont.Font(family="微软雅黑", size=14, weight="bold"),
+                                        bg='#cccccc', fg='#666666',  # 禁用状态的颜色
+                                        relief='flat', bd=0,
+                                        padx=40, pady=12,
+                                        command=on_confirm_click,
+                                        state='disabled')  # 初始状态为禁用
+            self.confirm_btn.pack(side=tk.LEFT, padx=(0, 30))  # 右侧留出30像素间距
+
+            # 取消按钮
+            self.cancel_btn = tk.Button(button_frame, text="取消", 
+                                      font=tkFont.Font(family="微软雅黑", size=14, weight="bold"),
+                                      bg='#dc3545', fg='white',
+                                      relief='flat', bd=0,
+                                      padx=40, pady=12,
+                                      command=on_cancel_click)
+            self.cancel_btn.pack(side=tk.LEFT, padx=(30, 0))  # 左侧留出30像素间距
+            
+            # 启动定时更新统计信息
+            self._update_learning_statistics()
+            
+            print("[信息] 多斗学习状态弹窗已显示")
             
         except Exception as e:
-            error_msg = f"显示合并完成弹窗异常: {str(e)}"
-            self.logger.error(error_msg)
+            error_msg = f"显示多斗学习状态弹窗异常: {str(e)}"
             print(f"[错误] {error_msg}")
+            
+    def _start_learning_timer(self):
+        """启动学习计时器"""
+        try:
+            import datetime
+
+            # 记录学习开始时间
+            self.learning_timer_start_time = datetime.datetime.now()
+            self.learning_timer_running = True
+
+            def update_learning_timer():
+                """更新学习计时器显示"""
+                if hasattr(self, 'learning_timer_running') and self.learning_timer_running:
+                    try:
+                        # 计算经过的时间
+                        current_time = datetime.datetime.now()
+                        elapsed_time = current_time - self.learning_timer_start_time
+
+                        # 格式化为 HH:MM:SS
+                        total_seconds = int(elapsed_time.total_seconds())
+                        hours = total_seconds // 3600
+                        minutes = (total_seconds % 3600) // 60
+                        seconds = total_seconds % 60
+
+                        time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+                        # 更新标签
+                        if hasattr(self, 'learning_timer_label') and self.learning_timer_label.winfo_exists():
+                            self.learning_timer_label.config(text=time_str)
+                            # 继续更新
+                            self.root.after(1000, update_learning_timer)
+                        else:
+                            self.learning_timer_running = False
+                    except Exception as e:
+                        print(f"[错误] 更新学习计时器异常: {e}")
+                        self.learning_timer_running = False
+
+            # 开始更新计时器
+            update_learning_timer()
+            print("[信息] 学习计时器已启动")
+
+        except Exception as e:
+            error_msg = f"启动学习计时器异常: {str(e)}"
+            print(f"[错误] {error_msg}")
+
+    def _stop_learning_timer(self):
+        """停止学习计时器"""
+        try:
+            if hasattr(self, 'learning_timer_running'):
+                self.learning_timer_running = False
+                print("[信息] 学习计时器已停止")
+        except Exception as e:
+            print(f"[错误] 停止学习计时器异常: {e}")
+
+    def _execute_cancel_learning_process(self):
+        """
+        执行取消学习过程的完整操作
+        包括停止所有控制器、发送PLC取消命令、清理状态等
+        """
+        try:
+            print("[信息] 开始执行取消学习过程操作...")
+
+            # 显示取消进度弹窗
+            cancel_progress_window = self._show_cancel_progress_dialog()
+
+            # 在后台线程中执行取消操作，避免阻塞界面
+            def cancel_thread():
+                try:
+                    cancel_success = True
+                    cancel_messages = []
+
+                    # 步骤1: 停止快加时间测定控制器
+                    if self.coarse_time_controller:
+                        try:
+                            stop_success, stop_msg = self.coarse_time_controller.stop_all_coarse_time_test()
+                            if stop_success:
+                                cancel_messages.append("✅ 快加时间测定已停止")
+                                print("[信息] 快加时间测定控制器已停止")
+                            else:
+                                cancel_messages.append(f"⚠️ 停止快加时间测定失败: {stop_msg}")
+                                print(f"[警告] 停止快加时间测定失败: {stop_msg}")
+                        except Exception as e:
+                            cancel_messages.append(f"⚠️ 停止快加时间测定异常: {str(e)}")
+                            print(f"[警告] 停止快加时间测定异常: {e}")
+
+                    # 步骤2: 向PLC发送取消命令（总启动=0, 总停止=1）
+                    if self.check_plc_status("取消学习"):
+                        try:
+                            # 调用PLC操作的放料清零序列方法来发送取消命令
+                            plc_success, plc_msg = self.plc_operations.execute_discharge_and_clear_sequence()
+                            if plc_success:
+                                cancel_messages.append("✅ PLC取消命令发送成功")
+                                print(f"[信息] PLC取消命令发送成功: {plc_msg}")
+                            else:
+                                cancel_messages.append(f"⚠️ PLC取消命令发送失败: {plc_msg}")
+                                print(f"[警告] PLC取消命令发送失败: {plc_msg}")
+                                cancel_success = False
+                        except Exception as e:
+                            cancel_messages.append(f"⚠️ PLC取消命令异常: {str(e)}")
+                            print(f"[警告] PLC取消命令异常: {e}")
+                            cancel_success = False
+                    else:
+                        cancel_messages.append("⚠️ PLC未连接，无法发送取消命令")
+                        cancel_success = False
+
+                    # 步骤3: 重置学习状态管理器
+                    if self.learning_state_manager:
+                        try:
+                            self.learning_state_manager.reset_all_states()
+                            cancel_messages.append("✅ 学习状态已重置")
+                            print("[信息] 学习状态管理器已重置")
+                        except Exception as e:
+                            cancel_messages.append(f"⚠️ 重置学习状态异常: {str(e)}")
+                            print(f"[警告] 重置学习状态异常: {e}")
+
+                    # 步骤4: 清理快加时间测定控制器资源
+                    if self.coarse_time_controller:
+                        try:
+                            self.coarse_time_controller.dispose()
+                            self.coarse_time_controller = None
+                            cancel_messages.append("✅ 控制器资源已清理")
+                            print("[信息] 快加时间测定控制器资源已清理")
+                        except Exception as e:
+                            cancel_messages.append(f"⚠️ 清理控制器资源异常: {str(e)}")
+                            print(f"[警告] 清理控制器资源异常: {e}")
+
+                    # 在主线程中处理取消完成
+                    self.root.after(0, self._handle_cancel_learning_completed, 
+                                  cancel_progress_window, cancel_success, cancel_messages)
+
+                except Exception as e:
+                    error_msg = f"取消学习过程异常: {str(e)}"
+                    print(f"[错误] {error_msg}")
+                    self.root.after(0, self._handle_cancel_learning_completed, 
+                                  cancel_progress_window, False, [f"❌ {error_msg}"])
+
+            # 启动取消操作线程
+            cancel_thread = threading.Thread(target=cancel_thread, daemon=True)
+            cancel_thread.start()
+
+        except Exception as e:
+            error_msg = f"执行取消学习过程操作异常: {str(e)}"
+            print(f"[错误] {error_msg}")
+            messagebox.showerror("取消操作失败", error_msg)
+            
+    def _show_cancel_progress_dialog(self):
+        """
+        显示取消操作进度弹窗
+        返回弹窗对象用于后续关闭
+        """
+        try:
+            # 创建取消进度弹窗
+            cancel_progress_window = tk.Toplevel(self.root)
+            cancel_progress_window.title("取消学习")
+            cancel_progress_window.geometry("400x200")
+            cancel_progress_window.configure(bg='white')
+            cancel_progress_window.resizable(False, False)
+            cancel_progress_window.transient(self.root)
+            cancel_progress_window.grab_set()
+            cancel_progress_window.protocol("WM_DELETE_WINDOW", lambda: None)
+
+            # 居中显示取消进度弹窗
+            cancel_progress_window.update_idletasks()
+            x = (cancel_progress_window.winfo_screenwidth() // 2) - (400 // 2)
+            y = (cancel_progress_window.winfo_screenheight() // 2) - (200 // 2)
+            cancel_progress_window.geometry(f"400x200+{x}+{y}")
+
+            # 取消进度弹窗内容
+            tk.Label(cancel_progress_window, text="正在取消学习", 
+                    font=tkFont.Font(family="微软雅黑", size=16, weight="bold"),
+                    bg='white', fg='#333333').pack(pady=40)
+
+            tk.Label(cancel_progress_window, text="请稍后", 
+                    font=tkFont.Font(family="微软雅黑", size=14),
+                    bg='white', fg='#666666').pack(pady=10)
+
+            print("[信息] 显示取消学习进度弹窗")
+            return cancel_progress_window
+
+        except Exception as e:
+            print(f"[错误] 显示取消进度弹窗异常: {e}")
+            return None
+        
+    def _handle_cancel_learning_completed(self, cancel_progress_window, success, messages):
+        """
+        处理取消学习完成事件（在主线程中调用）
+        
+        Args:
+            cancel_progress_window: 取消进度弹窗对象
+            success (bool): 取消操作是否成功
+            messages (list): 操作消息列表
+        """
+        try:
+            # 关闭取消进度弹窗
+            if cancel_progress_window:
+                cancel_progress_window.destroy()
+                
+            # 停止学习计时器（新增）
+            self._stop_learning_timer()
+            
+            # 关闭多斗学习状态弹窗
+            if self.learning_status_window:
+                self.learning_status_window.destroy()
+                self.learning_status_window = None
+                self.bucket_status_labels.clear()
+                print("[信息] 多斗学习状态弹窗已关闭，学习计时器已停止")
+            
+            # 准备结果消息
+            result_title = "学习已取消" if success else "取消操作完成"
+            result_message = "学习过程已成功取消！\n\n操作结果：\n" + "\n".join(messages)
+            
+            if success:
+                result_message += "\n\n✅ 已返回AI模式主界面"
+            else:
+                result_message += "\n\n⚠️ 部分操作可能未完全成功，请检查系统状态"
+            
+            # 显示结果信息
+            if success:
+                messagebox.showinfo(result_title, result_message)
+            else:
+                messagebox.showwarning(result_title, result_message)
+            
+            print(f"[信息] 取消学习操作完成，成功: {success}")
+            print(f"[信息] 已返回AI模式主界面")
+            
+        except Exception as e:
+            error_msg = f"处理取消学习完成事件异常: {str(e)}"
+            print(f"[错误] {error_msg}")
+            messagebox.showerror("系统错误", error_msg)
+    
+    def _update_learning_statistics(self):
+        """
+        定时更新学习统计信息
+        """
+        try:
+            if not self.learning_status_window or not self.learning_state_manager:
+                return
+            
+            # 获取统计信息
+            success_count, failed_count, total_count = self.learning_state_manager.get_completed_count()
+            learning_count = 0
+            not_started_count = 0
+            
+            # 统计各状态数量
+            all_states = self.learning_state_manager.get_all_states()
+            for state in all_states.values():
+                if state.status.value == "learning":
+                    learning_count += 1
+                elif state.status.value == "not_started":
+                    not_started_count += 1
+            
+            # 更新统计信息显示
+            stats_text = f"学习状态：未开始 {not_started_count}个，学习中 {learning_count}个，成功 {success_count}个，失败 {failed_count}个"
+            
+            if hasattr(self, 'stats_label') and self.stats_label.winfo_exists():
+                self.stats_label.config(text=stats_text)
+            
+            # 检查是否所有6个料斗都已完成学习（成功或失败）
+            all_buckets_finished = (success_count + failed_count) >= 6 and learning_count == 0 and not_started_count == 0
+
+            if hasattr(self, 'confirm_btn') and self.confirm_btn.winfo_exists():
+                if all_buckets_finished:
+                    # 所有料斗都完成了（成功或失败），启用确认按钮
+                    self.confirm_btn.config(
+                        state='normal',
+                        bg='#28a745', 
+                        fg='white',
+                        text="确认 全部完成"
+                    )
+                    print("[信息] 所有料斗学习完成，确认按钮已启用")
+                else:
+                    # 还有料斗未完成，保持确认按钮禁用状态
+                    self.confirm_btn.config(
+                        state='disabled',
+                        bg='#cccccc', 
+                        fg='#666666',
+                        text="确认"
+                    )
+            
+            # 继续定时更新（每秒更新一次）
+            self.root.after(1000, self._update_learning_statistics)
+            
+        except Exception as e:
+            print(f"[错误] 更新学习统计信息异常: {e}")
     
     def _show_training_completed_dialog(self):
         """
@@ -1793,7 +2670,6 @@ class AIModeInterface:
             
         except Exception as e:
             error_msg = f"显示训练完成弹窗异常: {str(e)}"
-            self.logger.error(error_msg)
             print(f"[错误] {error_msg}")
     
     def _start_timer(self):
@@ -1837,7 +2713,6 @@ class AIModeInterface:
             
         except Exception as e:
             error_msg = f"启动计时器异常: {str(e)}"
-            self.logger.error(error_msg)
             print(f"[错误] {error_msg}")
     
     def show_progress_message(self, step: str, message: str):
@@ -1870,6 +2745,23 @@ class AIModeInterface:
                 print("清料控制器已停止")
             except Exception as e:
                 print(f"停止清料控制器时发生错误: {e}")
+        
+        # 清理学习状态管理器
+        if self.learning_state_manager:
+            try:
+                self.learning_state_manager.reset_all_states()
+                print("学习状态管理器已清理")
+            except Exception as e:
+                print(f"清理学习状态管理器时发生错误: {e}")
+        
+        # 关闭多斗学习状态弹窗（如果存在）
+        if self.learning_status_window:
+            try:
+                self.learning_status_window.destroy()
+                self.learning_status_window = None
+                print("多斗学习状态弹窗已关闭")
+            except Exception as e:
+                print(f"关闭多斗学习状态弹窗时发生错误: {e}")
         
         # 如果有主窗口引用，重新显示主窗口
         if self.main_window:

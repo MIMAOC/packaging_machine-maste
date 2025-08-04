@@ -108,7 +108,7 @@ class PLCOperations:
         执行放料和清零序列操作
         
         操作流程：
-        1. 总停止=1
+        1. 总启动=0
         2. 总放料=1
         3. 延迟1.5秒
         4. 总放料=0
@@ -123,8 +123,8 @@ class PLCOperations:
         try:
             self.logger.info("开始执行放料和清零序列操作")
             
-            # 1. 总停止=1
-            self.logger.info("步骤1: 发送总启0命令")
+            # 1. 总启动=0
+            self.logger.info("步骤1: 发送总启动=0命令")
             if not self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStart'], False):
                 return False, "发送总启动命令失败"
             

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-快加时间测定控制器
+快加时间测定控制器 - 支持重新学习功能
 整合快加时间监测、分析和控制功能，实现6个料斗独立的快加时间测定
 
 作者：AI助手
 创建日期：2025-07-23
-更新日期：2025-07-24（增加慢加时间测定功能）
+更新日期：2025-08-04（增加重新学习功能）
 """
 
 import threading
@@ -37,6 +37,8 @@ class BucketCoarseTimeState:
         self.last_coarse_time_ms = 0       # 最后一次快加时间
         self.error_message = ""            # 错误消息
         self.original_target_weight = 0.0  # 保存原始目标重量（AI生产时输入的）
+        self.failed_stage = None           # 失败的阶段 ("coarse_time", "flight_material", "fine_time", "adaptive_learning")
+        self.last_flight_material_value = 0.0  # 最后一次成功的飞料值
     
     def reset_for_new_test(self, target_weight: float, coarse_speed: int):
         """重置状态开始新的测定"""
@@ -49,6 +51,9 @@ class BucketCoarseTimeState:
         self.start_time = None
         self.last_coarse_time_ms = 0
         self.error_message = ""
+        self.failed_stage = None
+        # 保留上次成功的飞料值，用于重新学习
+        # self.last_flight_material_value = 0.0  # 不重置，保留历史值
     
     def start_attempt(self):
         """开始一次尝试"""
@@ -60,12 +65,14 @@ class BucketCoarseTimeState:
         """成功完成测定"""
         self.is_testing = False
         self.is_completed = True
+        self.failed_stage = None
     
-    def fail_with_error(self, error_message: str):
+    def fail_with_error(self, error_message: str, failed_stage: str = None):
         """测定失败"""
         self.is_testing = False
         self.is_completed = True
         self.error_message = error_message
+        self.failed_stage = failed_stage
 
 class CoarseTimeTestController:
     """
@@ -73,6 +80,7 @@ class CoarseTimeTestController:
     
     负责协调监测服务、WebAPI分析服务和料斗控制服务
     实现6个料斗独立的快加时间测定流程
+    支持重新学习功能
     """
     
     def __init__(self, modbus_client: ModbusClient):
@@ -98,6 +106,7 @@ class CoarseTimeTestController:
         
         # 事件回调
         self.on_bucket_completed: Optional[Callable[[int, bool, str], None]] = None  # (bucket_id, success, message)
+        self.on_bucket_failed: Optional[Callable[[int, str, str], None]] = None      # (bucket_id, error_message, failed_stage) - 新增失败回调
         self.on_progress_update: Optional[Callable[[int, int, int, str], None]] = None  # (bucket_id, current_attempt, max_attempts, message)
         self.on_log_message: Optional[Callable[[str], None]] = None
         
@@ -188,6 +197,144 @@ class CoarseTimeTestController:
             self._log(f"❌ {error_msg}")
             return False, error_msg
     
+    def restart_bucket_learning(self, bucket_id: int, restart_mode: str = "from_beginning") -> Tuple[bool, str]:
+        """
+        重新开始指定料斗的学习流程
+        
+        Args:
+            bucket_id (int): 料斗ID
+            restart_mode (str): 重新学习模式
+                - "from_beginning": 从头开始学习（从快加时间测定开始）
+                - "from_current_stage": 从当前失败阶段开始学习
+                
+        Returns:
+            Tuple[bool, str]: (是否成功启动, 操作消息)
+        """
+        try:
+            with self.lock:
+                if bucket_id not in self.bucket_states:
+                    return False, f"无效的料斗ID: {bucket_id}"
+                
+                state = self.bucket_states[bucket_id]
+                target_weight = state.original_target_weight
+                coarse_speed = state.current_coarse_speed
+                failed_stage = state.failed_stage
+            
+            self._log(f"🔄 料斗{bucket_id}重新学习: 模式={restart_mode}, 失败阶段={failed_stage}")
+            
+            if restart_mode == "from_beginning":
+                # 从头开始学习：重置状态，从快加时间测定开始
+                with self.lock:
+                    state.reset_for_new_test(target_weight, coarse_speed)
+                
+                return self._restart_single_bucket_coarse_time(bucket_id, target_weight, coarse_speed)
+                
+            elif restart_mode == "from_current_stage":
+                # 从当前失败阶段开始学习
+                if not failed_stage:
+                    return False, f"料斗{bucket_id}没有失败阶段信息，无法从当前阶段重新学习"
+                
+                if failed_stage == "coarse_time":
+                    # 快加时间测定失败，重新开始快加时间测定
+                    with self.lock:
+                        state.reset_for_new_test(target_weight, coarse_speed)
+                    return self._restart_single_bucket_coarse_time(bucket_id, target_weight, coarse_speed)
+                    
+                elif failed_stage == "flight_material":
+                    # 飞料值测定失败，重新开始飞料值测定
+                    flight_success = self.flight_material_controller.start_flight_material_test(bucket_id, target_weight)
+                    if flight_success:
+                        with self.lock:
+                            state.is_testing = True
+                            state.failed_stage = None
+                        return True, f"料斗{bucket_id}飞料值测定重新启动成功"
+                    else:
+                        return False, f"料斗{bucket_id}飞料值测定重新启动失败"
+                        
+                elif failed_stage == "fine_time":
+                    # 慢加时间测定失败，重新开始慢加时间测定
+                    flight_material_value = state.last_flight_material_value if state.last_flight_material_value > 0 else 0.0
+                    fine_time_success = self.fine_time_controller.start_fine_time_test(
+                        bucket_id, target_weight, flight_material_value)
+                    if fine_time_success:
+                        with self.lock:
+                            state.is_testing = True
+                            state.failed_stage = None
+                        return True, f"料斗{bucket_id}慢加时间测定重新启动成功"
+                    else:
+                        return False, f"料斗{bucket_id}慢加时间测定重新启动失败"
+                        
+                elif failed_stage == "adaptive_learning":
+                    # 自适应学习失败，这通常意味着需要从头开始
+                    with self.lock:
+                        state.reset_for_new_test(target_weight, coarse_speed)
+                    return self._restart_single_bucket_coarse_time(bucket_id, target_weight, coarse_speed)
+                
+                else:
+                    return False, f"未知的失败阶段: {failed_stage}"
+            
+            else:
+                return False, f"未知的重新学习模式: {restart_mode}"
+                
+        except Exception as e:
+            error_msg = f"料斗{bucket_id}重新学习异常: {str(e)}"
+            self.logger.error(error_msg)
+            return False, error_msg
+    
+    def _restart_single_bucket_coarse_time(self, bucket_id: int, target_weight: float, coarse_speed: int) -> Tuple[bool, str]:
+        """
+        重新启动单个料斗的快加时间测定
+        
+        Args:
+            bucket_id (int): 料斗ID
+            target_weight (float): 目标重量
+            coarse_speed (int): 快加速度
+            
+        Returns:
+            Tuple[bool, str]: (是否成功启动, 操作消息)
+        """
+        try:
+            # 更新PLC中的参数
+            if bucket_id in BUCKET_PARAMETER_ADDRESSES:
+                addresses = BUCKET_PARAMETER_ADDRESSES[bucket_id]
+                
+                # 更新目标重量
+                target_weight_plc = int(target_weight * 10)
+                if not self.modbus_client.write_holding_register(addresses['TargetWeight'], target_weight_plc):
+                    return False, f"料斗{bucket_id}目标重量参数写入失败"
+                
+                # 更新快加速度
+                if not self.modbus_client.write_holding_register(addresses['CoarseSpeed'], coarse_speed):
+                    return False, f"料斗{bucket_id}快加速度参数写入失败"
+            
+            # 等待参数写入生效
+            time.sleep(0.1)
+            
+            # 重新启动该料斗
+            restart_success, restart_msg = self.bucket_control.restart_single_bucket(bucket_id)
+            if not restart_success:
+                return False, f"重新启动料斗{bucket_id}失败: {restart_msg}"
+            
+            # 更新状态
+            with self.lock:
+                state = self.bucket_states[bucket_id]
+                state.start_attempt()
+            
+            # 重新启动该料斗的监测
+            self.monitoring_service.restart_bucket_monitoring(bucket_id, "coarse_time")
+            
+            # 更新进度
+            self._update_progress(bucket_id, 1, 15, "重新开始快加时间测定...")
+            
+            success_msg = f"料斗{bucket_id}快加时间测定重新启动成功"
+            self._log(success_msg)
+            return True, success_msg
+            
+        except Exception as e:
+            error_msg = f"重新启动料斗{bucket_id}快加时间测定异常: {str(e)}"
+            self.logger.error(error_msg)
+            return False, error_msg
+    
     def _on_target_reached(self, bucket_id: int, coarse_time_ms: int):
         """
         处理料斗到量事件（监测服务回调）
@@ -241,7 +388,7 @@ class CoarseTimeTestController:
             self._log(f"🛑 步骤1: 停止料斗{bucket_id}并执行放料...")
             stop_success, stop_msg = self.bucket_control.execute_bucket_stop_and_discharge_sequence(bucket_id)
             if not stop_success:
-                self._handle_bucket_failure(bucket_id, f"停止和放料失败: {stop_msg}")
+                self._handle_bucket_failure(bucket_id, f"停止和放料失败: {stop_msg}", "coarse_time")
                 return
             
             self._log(f"✅ 料斗{bucket_id}停止和放料完成")
@@ -258,7 +405,7 @@ class CoarseTimeTestController:
                 target_weight, coarse_time_ms, current_speed)
             
             if not analysis_success:
-                self._handle_bucket_failure(bucket_id, f"快加时间分析失败: {analysis_msg}")
+                self._handle_bucket_failure(bucket_id, f"快加时间分析失败: {analysis_msg}", "coarse_time")
                 return
             
             self._log(f"📊 料斗{bucket_id}分析结果: {analysis_msg}")
@@ -271,7 +418,7 @@ class CoarseTimeTestController:
                 # 不符合条件，需要重测
                 if new_speed is None:
                     # 速度异常，测定失败
-                    self._handle_bucket_failure(bucket_id, analysis_msg)
+                    self._handle_bucket_failure(bucket_id, analysis_msg, "coarse_time")
                 else:
                     # 调整速度并重测
                     self._handle_bucket_retry(bucket_id, new_speed, analysis_msg)
@@ -279,7 +426,7 @@ class CoarseTimeTestController:
         except Exception as e:
             error_msg = f"处理料斗{bucket_id}到量流程异常: {str(e)}"
             self.logger.error(error_msg)
-            self._handle_bucket_failure(bucket_id, error_msg)
+            self._handle_bucket_failure(bucket_id, error_msg, "coarse_time")
     
     def _handle_bucket_success(self, bucket_id: int, final_speed: int, message: str):
         """
@@ -317,29 +464,44 @@ class CoarseTimeTestController:
             self.logger.error(error_msg)
             self._log(f"❌ {error_msg}")
     
-    def _handle_bucket_failure(self, bucket_id: int, error_message: str):
+    def _handle_bucket_failure(self, bucket_id: int, error_message: str, failed_stage: str = "coarse_time"):
         """
-        处理料斗测定失败
+        处理料斗测定失败（修改：不直接弹窗，而是触发失败回调）
         
         Args:
             bucket_id (int): 料斗ID
             error_message (str): 错误消息
+            failed_stage (str): 失败的阶段
         """
         try:
             with self.lock:
                 state = self.bucket_states[bucket_id]
-                state.fail_with_error(error_message)
+                state.fail_with_error(error_message, failed_stage)
             
-            failure_msg = f"❌ 料斗{bucket_id}快加时间测定失败: {error_message}（共{state.attempt_count}次尝试）"
+            failure_msg = f"❌ 料斗{bucket_id}{self._get_stage_name(failed_stage)}失败: {error_message}（共{state.attempt_count}次尝试）"
             self._log(failure_msg)
             
-            # 触发完成事件
-            self._trigger_bucket_completed(bucket_id, False, failure_msg)
+            # 触发失败回调（新增），让界面处理失败弹窗
+            if self.on_bucket_failed:
+                try:
+                    self.on_bucket_failed(bucket_id, error_message, failed_stage)
+                except Exception as e:
+                    self.logger.error(f"失败事件回调异常: {e}")
             
         except Exception as e:
             error_msg = f"处理料斗{bucket_id}失败状态异常: {str(e)}"
             self.logger.error(error_msg)
             self._log(f"❌ {error_msg}")
+    
+    def _get_stage_name(self, stage: str) -> str:
+        """获取阶段的中文名称"""
+        stage_names = {
+            "coarse_time": "快加时间测定",
+            "flight_material": "飞料值测定",
+            "fine_time": "慢加时间测定",
+            "adaptive_learning": "自适应学习"
+        }
+        return stage_names.get(stage, stage)
     
     def _handle_bucket_retry(self, bucket_id: int, new_speed: int, reason: str):
         """
@@ -357,7 +519,7 @@ class CoarseTimeTestController:
                 # 检查是否达到最大重试次数
                 if state.attempt_count >= state.max_attempts:
                     # 达到最大重试次数，判定为最终失败，触发失败事件
-                    self._handle_bucket_failure(bucket_id, f"已达最大重试次数({state.max_attempts})，快加时间测定失败")
+                    self._handle_bucket_failure(bucket_id, f"已达最大重试次数({state.max_attempts})，快加时间测定失败", "coarse_time")
                     return
                 
                 # 更新速度（不触发完成事件，继续测定）
@@ -372,7 +534,7 @@ class CoarseTimeTestController:
                 success = self.modbus_client.write_holding_register(speed_address, new_speed)
                 if not success:
                     # 更新速度失败，判定为真正的失败
-                    self._handle_bucket_failure(bucket_id, f"更新快加速度失败，无法继续测定")
+                    self._handle_bucket_failure(bucket_id, f"更新快加速度失败，无法继续测定", "coarse_time")
                     return
             
             # 步骤2: 等待100ms确保参数写入生效
@@ -382,7 +544,7 @@ class CoarseTimeTestController:
             restart_success, restart_msg = self.bucket_control.restart_single_bucket(bucket_id)
             if not restart_success:
                 # 重新启动失败，判定为真正的失败
-                self._handle_bucket_failure(bucket_id, f"重新启动失败: {restart_msg}，无法继续测定")
+                self._handle_bucket_failure(bucket_id, f"重新启动失败: {restart_msg}，无法继续测定", "coarse_time")
                 return
             
             # 步骤4: 更新状态并重新开始监测
@@ -405,7 +567,7 @@ class CoarseTimeTestController:
             error_msg = f"处理料斗{bucket_id}重测异常: {str(e)}"
             self.logger.error(error_msg)
             # 重测过程中的异常视为真正的失败
-            self._handle_bucket_failure(bucket_id, f"{error_msg}，无法继续测定")
+            self._handle_bucket_failure(bucket_id, f"{error_msg}，无法继续测定", "coarse_time")
     
     def _on_flight_material_completed(self, bucket_id: int, success: bool, message: str):
         """
@@ -423,9 +585,11 @@ class CoarseTimeTestController:
                 # 从消息中提取平均飞料值（修复：改进提取逻辑）
                 flight_material_value = self._extract_flight_material_value_from_message(message)
                 
-                # 获取原始目标重量
+                # 保存飞料值到状态中，用于重新学习
                 with self.lock:
-                    original_target_weight = self.bucket_states[bucket_id].original_target_weight
+                    state = self.bucket_states[bucket_id]
+                    original_target_weight = state.original_target_weight
+                    state.last_flight_material_value = flight_material_value
                     
                 self._log(f"📊 料斗{bucket_id}参数: 原始目标重量={original_target_weight}g, 平均飞料值={flight_material_value:.1f}g")
                 
@@ -436,20 +600,20 @@ class CoarseTimeTestController:
                 if fine_time_success:
                     self._log(f"✅ 料斗{bucket_id}慢加时间测定已启动（包含平均飞料值 {flight_material_value:.1f}g）")
                 else:
-                    # 慢加时间测定启动失败，弹窗显示飞料值成功信息
-                    self._log(f"❌ 料斗{bucket_id}慢加时间测定启动失败，显示飞料值结果")
-                    self._trigger_bucket_completed(bucket_id, True, message)
+                    # 慢加时间测定启动失败，触发失败回调
+                    self._log(f"❌ 料斗{bucket_id}慢加时间测定启动失败")
+                    self._handle_bucket_failure(bucket_id, "慢加时间测定启动失败", "fine_time")
             else:
                 self._log(f"❌ 料斗{bucket_id}飞料值测定失败: {message}")
-                # 飞料值测定失败，弹窗显示错误
-                self._trigger_bucket_completed(bucket_id, False, message)
+                # 飞料值测定失败，触发失败回调
+                self._handle_bucket_failure(bucket_id, message, "flight_material")
                 
         except Exception as e:
             error_msg = f"处理料斗{bucket_id}飞料值完成事件异常: {str(e)}"
             self.logger.error(error_msg)
             self._log(f"❌ {error_msg}")
-            # 异常情况下，弹窗显示原飞料值结果
-            self._trigger_bucket_completed(bucket_id, success, message)
+            # 异常情况下，触发失败回调
+            self._handle_bucket_failure(bucket_id, error_msg, "flight_material")
     
     def _extract_flight_material_value_from_message(self, message: str) -> float:
         """
@@ -508,8 +672,8 @@ class CoarseTimeTestController:
                 self._trigger_bucket_completed(bucket_id, True, message)
             else:
                 self._log(f"❌ 料斗{bucket_id}慢加时间测定失败: {message}")
-                # 慢加时间测定失败，弹窗显示错误
-                self._trigger_bucket_completed(bucket_id, False, message)
+                # 慢加时间测定失败，触发失败回调
+                self._handle_bucket_failure(bucket_id, message, "fine_time")
             
         except Exception as e:
             error_msg = f"处理料斗{bucket_id}慢加时间完成事件异常: {str(e)}"
@@ -713,6 +877,9 @@ if __name__ == "__main__":
         def on_bucket_completed(bucket_id: int, success: bool, message: str):
             print(f"[完成事件] 料斗{bucket_id}: {'成功' if success else '失败'} - {message}")
         
+        def on_bucket_failed(bucket_id: int, error_message: str, failed_stage: str):
+            print(f"[失败事件] 料斗{bucket_id} {failed_stage}失败: {error_message}")
+        
         def on_progress_update(bucket_id: int, current_attempt: int, max_attempts: int, message: str):
             print(f"[进度更新] 料斗{bucket_id}: {current_attempt}/{max_attempts} - {message}")
         
@@ -720,6 +887,7 @@ if __name__ == "__main__":
             print(f"[日志] {message}")
         
         controller.on_bucket_completed = on_bucket_completed
+        controller.on_bucket_failed = on_bucket_failed
         controller.on_progress_update = on_progress_update
         controller.on_log_message = on_log_message
         
