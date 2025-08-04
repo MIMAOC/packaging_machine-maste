@@ -770,7 +770,38 @@ class PackagingMachineGUI:
         
         if result:
             print("进入传统模式")
-            messagebox.showinfo("开发中", "传统模式界面正在开发中...")
+        
+        # 发送PLC模式切换命令
+        if self.modbus_client and self.connection_status:
+            try:
+                from plc_addresses import GLOBAL_CONTROL_ADDRESSES
+                
+                # 先向AI模式地址20发送=0命令
+                print("步骤1: 发送AI模式=0命令")
+                if not self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['AIMode'], False):
+                    messagebox.showerror("PLC通信失败", "发送AI模式关闭命令失败")
+                    return
+                
+                # 再向传统模式地址30发送=1命令
+                print("步骤2: 发送传统模式=1命令")
+                if not self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['TraditionalMode'], True):
+                    messagebox.showerror("PLC通信失败", "发送传统模式启用命令失败")
+                    return
+                
+                print("✅ 传统模式PLC命令发送成功")
+                messagebox.showinfo("模式切换成功", "PLC已切换至传统模式")
+                
+            except ImportError as e:
+                print(f"警告：无法导入PLC地址模块: {e}")
+                messagebox.showwarning("模块错误", "无法导入PLC地址配置")
+            except Exception as e:
+                error_msg = f"PLC模式切换异常: {str(e)}"
+                print(f"错误: {error_msg}")
+                messagebox.showerror("PLC操作失败", error_msg)
+        else:
+            messagebox.showwarning("PLC未连接", "PLC未连接，无法发送模式切换命令")
+        
+        messagebox.showinfo("开发中", "传统模式界面正在开发中...")
     
     def on_ai_click(self):
         """AI模式按钮点击事件"""
@@ -815,6 +846,36 @@ class PackagingMachineGUI:
         
         if result:
             print("进入AI模式")
+        
+            # 发送PLC模式切换命令
+            if self.modbus_client and self.connection_status:
+                try:
+                    from plc_addresses import GLOBAL_CONTROL_ADDRESSES
+
+                    # 先向传统模式地址30发送=0命令
+                    print("步骤1: 发送传统模式=0命令")
+                    if not self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['TraditionalMode'], False):
+                        messagebox.showerror("PLC通信失败", "发送传统模式关闭命令失败")
+                        return
+
+                    # 再向AI模式地址20发送=1命令
+                    print("步骤2: 发送AI模式=1命令")
+                    if not self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['AIMode'], True):
+                        messagebox.showerror("PLC通信失败", "发送AI模式启用命令失败")
+                        return
+
+                    print("✅ AI模式PLC命令发送成功")
+
+                except ImportError as e:
+                    print(f"警告：无法导入PLC地址模块: {e}")
+                    messagebox.showwarning("模块错误", "无法导入PLC地址配置")
+                except Exception as e:
+                    error_msg = f"PLC模式切换异常: {str(e)}"
+                    print(f"错误: {error_msg}")
+                    messagebox.showerror("PLC操作失败", error_msg)
+            else:
+                messagebox.showwarning("PLC未连接", "PLC未连接，无法发送模式切换命令")
+                
             try:
                 # 隐藏主界面
                 self.hide_main_window()

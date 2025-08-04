@@ -151,7 +151,10 @@ GLOBAL_CONTROL_ADDRESSES = {
     'GlobalStop': 301,       # 总停止
     'GlobalClear': 6,        # 总清零
     'GlobalDischarge': 5,    # 总放料
-    'GlobalClean': 7         # 总清料
+    'GlobalClean': 7,        # 总清料
+    'AIMode': 20,           # AI模式地址
+    'TraditionalMode': 30   # 传统模式地址
+
 }
 
 # 生产相关地址（新增）
