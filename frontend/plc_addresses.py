@@ -153,11 +153,12 @@ GLOBAL_CONTROL_ADDRESSES = {
     'GlobalDischarge': 5,    # 总放料
     'GlobalClean': 7,        # 总清料
     'AIMode': 20,           # AI模式地址
-    'TraditionalMode': 30   # 传统模式地址
+    'TraditionalMode': 30,  # 传统模式地址
+    'PackagingMachineStop': 70  # 包装机停止地址
 
 }
 
-# 生产相关地址（新增）
+# 生产相关地址
 PRODUCTION_ADDRESSES = {
     'PackageCountRegister': 41094,   # 总包装计数寄存器地址
     'PackageCountClear': 2           # 包数清零线圈地址

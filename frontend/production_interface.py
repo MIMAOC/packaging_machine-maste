@@ -33,6 +33,29 @@ try:
 except ImportError as e:
     print(f"警告：无法导入PLC相关模块: {e}")
     PLC_AVAILABLE = False
+    
+# 导入物料DAO
+try:
+    from database.material_dao import MaterialDAO, Material
+    MATERIAL_DAO_AVAILABLE = True
+except ImportError as e:
+    print(f"警告：无法导入物料DAO模块: {e}")
+    MATERIAL_DAO_AVAILABLE = False
+    
+try:
+    from database.production_detail_dao import ProductionDetailDAO, ProductionDetail
+    PRODUCTION_DETAIL_DAO_AVAILABLE = True
+except ImportError as e:
+    print(f"警告：无法导入生产明细DAO模块: {e}")
+    PRODUCTION_DETAIL_DAO_AVAILABLE = False
+
+# 导入生产记录DAO
+try:
+    from database.production_record_dao import ProductionRecordDAO, ProductionRecord
+    PRODUCTION_RECORD_DAO_AVAILABLE = True
+except ImportError as e:
+    print(f"警告：无法导入生产记录DAO模块: {e}")
+    PRODUCTION_RECORD_DAO_AVAILABLE = False
 
 class ProductionInterface:
     """
@@ -63,19 +86,28 @@ class ProductionInterface:
         self.main_window = main_window
         self.production_params = production_params
         
+        # 新增：生产相关属性
+        self.production_id = ""
+        self.target_weight = production_params.get('target_weight', 0)
+        
         # 获取主窗口的modbus_client引用
         self.modbus_client = None
         if main_window and hasattr(main_window, 'modbus_client'):
             self.modbus_client = main_window.modbus_client
         
-        # 
-        self.monitoring_service = None
+        # 修改监测服务初始化
         if self.modbus_client:
             try:
                 from bucket_monitoring import create_bucket_monitoring_service
                 self.monitoring_service = create_bucket_monitoring_service(self.modbus_client)
+                
                 # 设置物料不足回调
                 self.monitoring_service.on_material_shortage_detected = self._on_material_shortage_detected
+                
+                # 新增：设置生产监测回调
+                self.monitoring_service.on_production_detail_recorded = self._on_production_detail_recorded
+                self.monitoring_service.on_production_stop_triggered = self._on_production_stop_triggered
+                
                 print("[生产界面] 物料监测服务初始化成功")
             except ImportError as e:
                 print(f"[警告] 无法导入物料监测服务: {e}")
@@ -436,6 +468,35 @@ class ProductionInterface:
             
             print("开始启动生产流程...")
             
+            # 生成生产编号
+            if PRODUCTION_DETAIL_DAO_AVAILABLE:
+                self.production_id = ProductionDetailDAO.generate_production_id()
+                self.add_fault_record(f"生产编号: {self.production_id}")
+            else:
+                self.production_id = f"P{datetime.now().strftime('%y%m%d%H%M')}"
+                self.add_fault_record(f"生产编号: {self.production_id} (数据库不可用)")
+
+            # 新增：创建生产记录
+            if PRODUCTION_RECORD_DAO_AVAILABLE:
+                success, message, record_id = ProductionRecordDAO.create_production_record(
+                    production_id=self.production_id,
+                    material_name=self.production_params.get('material_name', ''),
+                    target_weight=self.production_params.get('target_weight', 0),
+                    package_quantity=self.production_params.get('package_quantity', 0),
+                    completed_packages=0  # 初始完成包数为0
+                )
+
+                if success:
+                    self.add_fault_record(f"生产记录已创建: {message}")
+                    print(f"[生产界面] 生产记录创建成功: {message}")
+                else:
+                    self.add_fault_record(f"生产记录创建失败: {message}")
+                    print(f"[生产界面] 生产记录创建失败: {message}")
+            else:
+                self.add_fault_record("生产记录DAO不可用，无法创建生产记录")
+
+            print(f"开始启动生产流程，生产编号: {self.production_id}")
+            
             # 启用物料监测
             if self.monitoring_service:
                 self.monitoring_service.set_material_check_enabled(True)
@@ -506,9 +567,14 @@ class ProductionInterface:
             
             # 启动物料监测服务（生产阶段）
             if self.monitoring_service:
-                bucket_ids = list(range(1, 7))  # 监测所有料斗
+                bucket_ids = list(range(1, 7))
                 self.monitoring_service.start_monitoring(bucket_ids, "production")
-                print("[生产界面] 物料监测服务已启动（生产阶段）")
+                
+                # 新增：启动生产监测
+                self.monitoring_service.start_production_monitoring(
+                    self.production_id, self.target_weight)
+                
+                print("[生产界面] 物料监测和生产监测服务已启动")
             
             # 启动计时器更新线程
             def timer_update_thread():
@@ -555,10 +621,21 @@ class ProductionInterface:
                         self.root.after(0, lambda: self.add_fault_record(f"包装数量监控异常: {str(e)}"))
                         break
             
+            # 新增：启动平均重量更新线程（每2s）
+            def avg_weight_update_thread():
+                while self.monitoring_threads_running:
+                    try:
+                        self._update_average_weight_from_database()
+                        time.sleep(2)  # 每2秒更新一次平均重量
+                    except Exception as e:
+                        print(f"平均重量更新异常: {e}")
+                        break
+            
             # 启动所有监控线程
             threading.Thread(target=timer_update_thread, daemon=True).start()
             threading.Thread(target=weight_monitoring_thread, daemon=True).start()
             threading.Thread(target=package_monitoring_thread, daemon=True).start()
+            threading.Thread(target=avg_weight_update_thread, daemon=True).start()  # 新增
             
         except Exception as e:
             error_msg = f"启动监控异常: {str(e)}"
@@ -685,26 +762,162 @@ class ProductionInterface:
         except Exception as e:
             print(f"更新料斗状态异常: {e}")
     
+    def _update_average_weight_from_database(self):
+        """从数据库更新平均重量（在后台线程中调用）"""
+        try:
+            if not PRODUCTION_DETAIL_DAO_AVAILABLE or not self.production_id:
+                return
+            
+            # 获取有效重量总和和有效记录数
+            total_weight, valid_count = ProductionDetailDAO.get_valid_weight_sum_by_production(
+                self.production_id)
+            
+            if valid_count > 0:
+                avg_weight = total_weight / valid_count
+                # 在主线程更新界面
+                self.root.after(0, lambda: self.avg_weight_label.config(text=f"{avg_weight:.1f}g"))
+            else:
+                # 没有有效数据时显示0
+                self.root.after(0, lambda: self.avg_weight_label.config(text="0.0g"))
+                
+        except Exception as e:
+            print(f"从数据库更新平均重量异常: {e}")
+            
+    def _on_production_detail_recorded(self, bucket_id: int, detail: ProductionDetail):
+        """
+        处理生产明细记录事件
+        
+        Args:
+            bucket_id: 料斗ID
+            detail: 生产明细对象
+        """
+        try:
+            # 记录到故障日志中（用于跟踪）
+            status = "有效" if detail.is_valid else "无效"
+            qualified = "合格" if detail.is_qualified else "不合格"
+            
+            log_message = (f"料斗{bucket_id}: {detail.real_weight:.1f}g, "
+                         f"误差{detail.error_value:+.1f}g, {qualified}, {status}")
+            
+            self.add_fault_record(log_message)
+            
+        except Exception as e:
+            print(f"处理生产明细记录事件异常: {e}")
+            
+    def _on_production_stop_triggered(self, bucket_id: int, reason: str):
+        """
+        处理生产停止触发事件
+        
+        Args:
+            bucket_id: 料斗ID
+            reason: 停止原因
+        """
+        try:
+            # 记录到故障日志
+            self.add_fault_record(f"生产已停止 - 料斗{bucket_id}: {reason}")
+            
+            # 自动暂停生产状态
+            self.root.after(0, self._handle_production_auto_pause)
+            
+        except Exception as e:
+            print(f"处理生产停止触发事件异常: {e}")
+            
+    def _handle_production_auto_pause(self):
+        """处理生产自动暂停（在主线程中调用）"""
+        try:
+            if self.is_production_running and not self.is_paused:
+                # 更新状态为暂停
+                self.is_paused = True
+                self.is_production_running = False
+                
+                # 更新按钮文本和颜色
+                if self.pause_resume_btn:
+                    self.pause_resume_btn.config(text="▶ 启动", bg='#28a745')
+                
+                # 记录日志
+                self.add_fault_record("生产因质量问题自动暂停")
+                print("生产因质量问题自动暂停")
+            
+        except Exception as e:
+            print(f"处理生产自动暂停异常: {e}")
+    
     def _production_completed(self):
         """生产完成处理"""
         try:
             print("生产任务完成")
-            
+
             # 停止监控
             self.monitoring_threads_running = False
             self.is_production_running = False
-            
+
             # 停止PLC
             if self.modbus_client and self.modbus_client.is_connected:
                 self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStart'], False)
-            
+
+            # 获取物料名称
+            material_name = self.production_params.get('material_name', '')
+
+            # 新增：更新生产记录
+            if PRODUCTION_RECORD_DAO_AVAILABLE and self.production_id:
+                success, message = ProductionRecordDAO.update_production_record(
+                    production_id=self.production_id,
+                    completed_packages=self.current_package_count
+                )
+
+                if success:
+                    self.add_fault_record(f"生产记录已更新: {message}")
+                    print(f"[生产界面] 生产记录更新成功: {message}")
+                else:
+                    self.add_fault_record(f"生产记录更新失败: {message}")
+                    print(f"[生产界面] 生产记录更新失败: {message}")
+
+            # 新增：更新物料AI状态为"已生产"
+            if MATERIAL_DAO_AVAILABLE and material_name:
+                try:
+                    # 获取物料信息
+                    material = MaterialDAO.get_material_by_name(material_name)
+                    if material:
+                        # 更新AI状态为"已生产"
+                        update_success, update_message = MaterialDAO.update_material_ai_status(
+                            material.id, "已生产"
+                        )
+
+                        if update_success:
+                            self.add_fault_record(f"物料AI状态已更新: {material_name} -> 已生产")
+                            print(f"[生产界面] 物料AI状态更新成功: {material_name} -> 已生产")
+                        else:
+                            self.add_fault_record(f"物料AI状态更新失败: {update_message}")
+                            print(f"[生产界面] 物料AI状态更新失败: {update_message}")
+                    else:
+                        self.add_fault_record(f"未找到物料: {material_name}")
+                        print(f"[生产界面] 未找到物料: {material_name}")
+
+                except Exception as e:
+                    error_msg = f"更新物料AI状态异常: {str(e)}"
+                    self.add_fault_record(error_msg)
+                    print(f"[生产界面] {error_msg}")
+            else:
+                if not MATERIAL_DAO_AVAILABLE:
+                    self.add_fault_record("物料DAO不可用，无法更新物料AI状态")
+                if not material_name:
+                    self.add_fault_record("物料名称为空，无法更新物料AI状态")
+
+            # 计算实际完成率
+            target_packages = self.production_params.get('package_quantity', 0)
+            actual_completion_rate = (self.current_package_count / target_packages * 100) if target_packages > 0 else 0
+
             # 显示完成消息
             messagebox.showinfo("生产完成", 
                               f"🎉 生产任务已完成！\n\n"
-                              f"目标包数: {self.production_params.get('package_quantity', 0)}\n"
+                              f"生产编号: {self.production_id}\n"
+                              f"物料名称: {material_name}\n"
+                              f"目标重量: {self.production_params.get('target_weight', 0)}g\n"
+                              f"目标包数: {target_packages}\n"
                               f"实际包数: {self.current_package_count}\n"
-                              f"用时: {self.timer_label.cget('text')}")
-            
+                              f"完成率: {actual_completion_rate:.2f}%\n"
+                              f"用时: {self.timer_label.cget('text')}\n\n"
+                              f"✅ 物料AI状态已更新为'已生产'")
+
         except Exception as e:
             print(f"生产完成处理异常: {e}")
     
@@ -1138,6 +1351,11 @@ class ProductionInterface:
             
             print("重新启动生产监控...")
             
+            # 重新启动生产监测
+            if self.monitoring_service and self.production_id and self.target_weight:
+                self.monitoring_service.start_production_monitoring(
+                    self.production_id, self.target_weight)
+            
             # 启动计时器更新线程
             def timer_update_thread():
                 while self.monitoring_threads_running:
@@ -1182,11 +1400,22 @@ class ProductionInterface:
                         print(f"包装数量监控异常: {e}")
                         self.root.after(0, lambda: self.add_fault_record(f"包装数量监控异常: {str(e)}"))
                         break
+            
+            # 新增：启动平均重量更新线程
+            def avg_weight_update_thread():
+                while self.monitoring_threads_running:
+                    try:
+                        self._update_average_weight_from_database()
+                        time.sleep(2)
+                    except Exception as e:
+                        print(f"平均重量更新异常: {e}")
+                        break
                     
             # 启动所有监控线程
             threading.Thread(target=timer_update_thread, daemon=True).start()
             threading.Thread(target=weight_monitoring_thread, daemon=True).start()
             threading.Thread(target=package_monitoring_thread, daemon=True).start()
+            threading.Thread(target=avg_weight_update_thread, daemon=True).start()
             
         except Exception as e:
             error_msg = f"重新启动监控异常: {str(e)}"
@@ -1463,6 +1692,51 @@ class ProductionInterface:
             # 停止生产
             self._pause_production()
             
+            # 获取物料名称
+            material_name = self.production_params.get('material_name', '')
+            
+            # 新增：更新生产记录（记录取消时的完成包数）
+            if PRODUCTION_RECORD_DAO_AVAILABLE and self.production_id:
+                success, message = ProductionRecordDAO.update_production_record(
+                    production_id=self.production_id,
+                    completed_packages=self.current_package_count
+                )
+                
+                if success:
+                    self.add_fault_record(f"生产记录已更新（取消）: {message}")
+                    print(f"[生产界面] 生产记录更新成功（取消）: {message}")
+            
+            # 新增：更新物料AI状态为"已生产"（即使是取消，也算作已生产过）
+            if MATERIAL_DAO_AVAILABLE and material_name:
+                try:
+                    # 获取物料信息
+                    material = MaterialDAO.get_material_by_name(material_name)
+                    if material:
+                        # 更新AI状态为"已生产"
+                        update_success, update_message = MaterialDAO.update_material_ai_status(
+                            material.id, "已生产"
+                        )
+                        
+                        if update_success:
+                            self.add_fault_record(f"物料AI状态已更新: {material_name} -> 已生产（取消）")
+                            print(f"[生产界面] 物料AI状态更新成功: {material_name} -> 已生产（取消）")
+                        else:
+                            self.add_fault_record(f"物料AI状态更新失败: {update_message}")
+                            print(f"[生产界面] 物料AI状态更新失败: {update_message}")
+                    else:
+                        self.add_fault_record(f"未找到物料: {material_name}")
+                        print(f"[生产界面] 未找到物料: {material_name}")
+                        
+                except Exception as e:
+                    error_msg = f"更新物料AI状态异常: {str(e)}"
+                    self.add_fault_record(error_msg)
+                    print(f"[生产界面] {error_msg}")
+            else:
+                if not MATERIAL_DAO_AVAILABLE:
+                    self.add_fault_record("物料DAO不可用，无法更新物料AI状态")
+                if not material_name:
+                    self.add_fault_record("物料名称为空，无法更新物料AI状态")
+            
             self.add_fault_record("用户取消生产，生产任务已终止")
             
             # 关闭生产界面，回到AI模式界面
@@ -1473,7 +1747,6 @@ class ProductionInterface:
         except Exception as e:
             error_msg = f"执行取消生产操作异常: {str(e)}"
             print(f"[错误] {error_msg}")
-            self.add_fault_record(error_msg)
     
     def _resume_production_after_material_shortage(self):
         """
@@ -1523,6 +1796,13 @@ class ProductionInterface:
             # 停止所有监控线程
             self.monitoring_threads_running = False
             self.is_production_running = False
+            
+            # 停止生产监测
+            if self.monitoring_service:
+                self.monitoring_service.stop_production_monitoring()
+                self.monitoring_service.set_material_check_enabled(False)
+                self.monitoring_service.stop_all_monitoring()
+                print("[生产界面] 生产监测和物料监测服务已停止")
             
             # 禁用物料监测
             if self.monitoring_service:

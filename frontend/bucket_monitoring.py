@@ -22,8 +22,43 @@ from plc_addresses import (
     GLOBAL_CONTROL_ADDRESSES,
     get_all_bucket_target_reached_addresses,
     get_all_bucket_coarse_add_addresses,
-    get_all_bucket_weight_addresses
+    get_all_bucket_weight_addresses,
+    get_all_bucket_discharge_addresses
 )
+
+# 导入生产明细DAO
+try:
+    from database.production_detail_dao import ProductionDetailDAO, ProductionDetail
+    PRODUCTION_DETAIL_DAO_AVAILABLE = True
+except ImportError as e:
+    print(f"警告：无法导入生产明细DAO模块: {e}")
+    PRODUCTION_DETAIL_DAO_AVAILABLE = False
+class BucketProductionState:
+    """料斗生产状态"""
+    
+    def __init__(self, bucket_id: int):
+        self.bucket_id = bucket_id
+        self.is_monitoring_target = False    # 是否正在监测到量状态
+        self.is_monitoring_discharge = False # 是否正在监测放料状态
+        self.target_reached_time = None      # 到量时间
+        self.discharge_time = None           # 放料时间
+        self.last_target_reached = False    # 上次到量状态
+        self.last_discharge_state = False   # 上次放料状态
+        self.consecutive_unqualified = 0    # 连续不合格次数
+        self.waiting_for_restart = False    # 是否等待重新开始监测
+        self.restart_time = None             # 重新开始时间
+        
+    def reset(self):
+        """重置状态"""
+        self.is_monitoring_target = False
+        self.is_monitoring_discharge = False
+        self.target_reached_time = None
+        self.discharge_time = None
+        self.last_target_reached = False
+        self.last_discharge_state = False
+        self.waiting_for_restart = False
+        self.restart_time = None
+        # 注意：连续不合格次数不在这里重置
 
 class BucketMonitoringState:
     """料斗监测状态"""
@@ -127,8 +162,30 @@ class BucketMonitoringService:
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.INFO)
         
+        # 新增：生产监测相关属性
+        self.production_states: Dict[int, BucketProductionState] = {}
+        self.production_id = ""
+        self.target_weight = 0.0
+        self.is_production_monitoring = False
+        
+        # 新增：生产监测回调
+        self.on_production_detail_recorded: Optional[Callable[[int, ProductionDetail], None]] = None
+        self.on_production_stop_triggered: Optional[Callable[[int, str], None]] = None
+        
+        self.material_check_enabled = False  # 物料检测开关
+        self.weight_threshold = 0.3  # 重量变化阈值（克）
+        
         # 初始化料斗状态
         self._initialize_bucket_states()
+        
+        # 初始化生产状态
+        self._initialize_production_states()
+    
+    def _initialize_production_states(self):
+        """初始化料斗生产状态"""
+        with self.lock:
+            for bucket_id in range(1, 7):
+                self.production_states[bucket_id] = BucketProductionState(bucket_id)
     
     def _initialize_bucket_states(self):
         """初始化料斗监测状态"""
@@ -224,17 +281,20 @@ class BucketMonitoringService:
             with self.lock:
                 # 设置停止标志
                 self.stop_monitoring_flag.set()
-                
+
+                # 停止生产监测
+                self.stop_production_monitoring()
+
                 # 停止所有料斗监测
                 for state in self.monitoring_states.values():
                     state.is_monitoring = False
-                
+
                 # 等待监测线程结束
                 if self.monitoring_thread and self.monitoring_thread.is_alive():
                     self.monitoring_thread.join(timeout=1.0)
-                
+
                 self._log("料斗监测服务已停止")
-                
+
         except Exception as e:
             error_msg = f"停止料斗监测失败: {str(e)}"
             self.logger.error(error_msg)
@@ -246,7 +306,7 @@ class BucketMonitoringService:
         
         try:
             while not self.stop_monitoring_flag.is_set():
-                # 获取当前需要监测的料斗列表
+                # 处理原有的料斗监测
                 monitoring_buckets = []
                 with self.lock:
                     for bucket_id, state in self.monitoring_states.items():
@@ -256,8 +316,13 @@ class BucketMonitoringService:
                 if monitoring_buckets:
                     # 批量读取所有料斗的到量状态和快加状态
                     self._check_target_reached_status(monitoring_buckets)
-                else:
-                    # 没有料斗需要监测，可以适当延长休眠时间
+                
+                # 处理生产监测
+                if self.is_production_monitoring:
+                    self._check_production_states()
+                
+                # 如果没有任何监测任务，适当延长休眠时间
+                if not monitoring_buckets and not self.is_production_monitoring:
                     time.sleep(0.5)
                     continue
                 
@@ -631,6 +696,312 @@ class BucketMonitoringService:
         """
         with self.lock:
             return any(state.is_monitoring for state in self.monitoring_states.values())
+        
+    def start_production_monitoring(self, production_id: str, target_weight: float):
+        """
+        开始生产监测
+        
+        Args:
+            production_id: 生产编号
+            target_weight: 目标重量
+        """
+        try:
+            with self.lock:
+                self.production_id = production_id
+                self.target_weight = target_weight
+                self.is_production_monitoring = True
+                
+                # 重置所有料斗的生产状态
+                for state in self.production_states.values():
+                    state.reset()
+                    # 开始监测到量状态
+                    state.is_monitoring_target = True
+                
+                self._log(f"开始生产监测，生产编号: {production_id}, 目标重量: {target_weight}g")
+                
+                # 如果监测线程没有运行，则启动它
+                if not self.monitoring_thread or not self.monitoring_thread.is_alive():
+                    self.stop_monitoring_flag.clear()
+                    self.monitoring_thread = threading.Thread(
+                        target=self._monitoring_thread_func,  # 使用现有的监测线程函数
+                        daemon=True,
+                        name="BucketMonitoring"
+                    )
+                    self.monitoring_thread.start()
+                
+        except Exception as e:
+            error_msg = f"启动生产监测失败: {str(e)}"
+            self.logger.error(error_msg)
+            self._log(error_msg)
+            
+    def stop_production_monitoring(self):
+        """停止生产监测"""
+        try:
+            with self.lock:
+                self.is_production_monitoring = False
+                
+                # 重置所有料斗的生产状态
+                for state in self.production_states.values():
+                    state.reset()
+                
+                self._log("生产监测已停止")
+                
+        except Exception as e:
+            error_msg = f"停止生产监测失败: {str(e)}"
+            self.logger.error(error_msg)
+            self._log(error_msg)
+            
+    def _check_production_states(self):
+        """检查料斗生产状态"""
+        try:
+            if not self.is_production_monitoring:
+                return
+            
+            # 批量读取到量状态
+            target_reached_addresses = get_all_bucket_target_reached_addresses()
+            target_states = self.modbus_client.read_coils(
+                target_reached_addresses[0], len(target_reached_addresses))
+            
+            if target_states is None:
+                return
+            
+            # 批量读取放料状态
+            discharge_addresses = get_all_bucket_discharge_addresses()
+            discharge_states = self.modbus_client.read_coils(
+                discharge_addresses[0], len(discharge_addresses))
+            
+            if discharge_states is None:
+                return
+            
+            current_time = time.time()
+            
+            with self.lock:
+                for i, bucket_id in enumerate(range(1, 7)):
+                    if i >= len(target_states) or i >= len(discharge_states):
+                        continue
+                    
+                    state = self.production_states[bucket_id]
+                    current_target = target_states[i]
+                    current_discharge = discharge_states[i]
+                    
+                    # 处理等待重新开始的状态
+                    if state.waiting_for_restart:
+                        if state.restart_time and current_time >= state.restart_time:
+                            # 2秒延迟结束，重新开始监测
+                            state.waiting_for_restart = False
+                            state.is_monitoring_target = True
+                            state.is_monitoring_discharge = False
+                            state.target_reached_time = None
+                            state.discharge_time = None
+                            self._log(f"料斗{bucket_id}重新开始监测")
+                        continue
+                    
+                    # 监测到量状态
+                    if state.is_monitoring_target:
+                        # 检测到量状态上升沿（从False变为True）
+                        if current_target and not state.last_target_reached:
+                            state.target_reached_time = current_time
+                            state.is_monitoring_target = False
+                            state.is_monitoring_discharge = True
+                            self._log(f"料斗{bucket_id}检测到到量信号")
+                            
+                            # 延迟500ms后读取重量并处理
+                            threading.Timer(0.5, self._handle_weight_measurement, 
+                                          args=(bucket_id,)).start()
+                    
+                    # 监测放料状态
+                    if state.is_monitoring_discharge:
+                        # 检测放料状态上升沿（从False变为True）
+                        if current_discharge and not state.last_discharge_state:
+                            state.discharge_time = current_time
+                            state.is_monitoring_discharge = False
+                            self._log(f"料斗{bucket_id}检测到放料信号")
+                            
+                            # 延迟2s后重新开始监测
+                            state.waiting_for_restart = True
+                            state.restart_time = current_time + 2.0
+                    
+                    # 更新上次状态
+                    state.last_target_reached = current_target
+                    state.last_discharge_state = current_discharge
+            
+        except Exception as e:
+            error_msg = f"检查生产状态异常: {str(e)}"
+            self.logger.error(error_msg)
+            self._log(error_msg)
+            
+    def _handle_weight_measurement(self, bucket_id: int):
+        """
+        处理重量测量和误差计算
+        
+        Args:
+            bucket_id: 料斗ID
+        """
+        try:
+            # 读取实时重量
+            weight_address = BUCKET_MONITORING_ADDRESSES[bucket_id]['Weight']
+            raw_weight_data = self.modbus_client.read_holding_registers(weight_address, 1)
+            
+            if raw_weight_data is None or len(raw_weight_data) == 0:
+                self._log(f"料斗{bucket_id}重量读取失败")
+                return
+            
+            # 处理重量数据
+            raw_value = raw_weight_data[0]
+            if raw_value > 32767:
+                signed_value = raw_value - 65536
+            else:
+                signed_value = raw_value
+            
+            real_weight = signed_value / 10.0
+            error_value = real_weight - self.target_weight
+            
+            # 判断是否合格（-0.2g <= 误差值 <= +0.6g）
+            is_qualified = -0.2 <= error_value <= 0.6
+            
+            self._log(f"料斗{bucket_id}重量测量 - 实重: {real_weight:.1f}g, 误差: {error_value:.1f}g, 合格: {is_qualified}")
+            
+            # 处理合格/不合格逻辑
+            if is_qualified:
+                # 合格：记录有效数据，清零不合格次数
+                self._record_production_detail(bucket_id, real_weight, error_value, True, True)
+                with self.lock:
+                    self.production_states[bucket_id].consecutive_unqualified = 0
+                
+            else:
+                # 不合格：记录无效数据，累计不合格次数
+                self._record_production_detail(bucket_id, real_weight, error_value, False, False)
+                
+                with self.lock:
+                    state = self.production_states[bucket_id]
+                    state.consecutive_unqualified += 1
+                    
+                    self._log(f"料斗{bucket_id}不合格，连续次数: {state.consecutive_unqualified}")
+                    
+                    # 检查是否需要发送停止命令
+                    if state.consecutive_unqualified >= 3:
+                        self._log(f"料斗{bucket_id}连续3次不合格，发送总停止命令")
+                        self._send_production_stop_commands()
+                        
+                        # 触发生产停止事件
+                        if self.on_production_stop_triggered:
+                            try:
+                                self.on_production_stop_triggered(bucket_id, f"连续{state.consecutive_unqualified}次不合格")
+                            except Exception as e:
+                                self.logger.error(f"处理生产停止事件异常: {e}")
+                    else:
+                        # 单次不合格也要发送停止命令
+                        self._send_production_stop_commands()
+            
+        except Exception as e:
+            error_msg = f"处理料斗{bucket_id}重量测量异常: {str(e)}"
+            self.logger.error(error_msg)
+            self._log(error_msg)
+            
+    def _record_production_detail(self, bucket_id: int, real_weight: float, 
+                                 error_value: float, is_qualified: bool, is_valid: bool):
+        """
+        记录生产明细到数据库
+        
+        Args:
+            bucket_id: 料斗ID
+            real_weight: 实时重量
+            error_value: 误差值
+            is_qualified: 是否合格
+            is_valid: 是否有效
+        """
+        try:
+            if not PRODUCTION_DETAIL_DAO_AVAILABLE:
+                self._log("生产明细DAO不可用，无法记录数据")
+                return
+            
+            # 创建生产明细对象
+            detail = ProductionDetail(
+                production_id=self.production_id,
+                bucket_id=bucket_id,
+                real_weight=real_weight,
+                error_value=error_value,
+                is_qualified=is_qualified,
+                is_valid=is_valid
+            )
+            
+            # 插入数据库
+            success, message, record_id = ProductionDetailDAO.insert_detail(detail)
+            
+            if success:
+                self._log(f"料斗{bucket_id}生产明细已记录，ID: {record_id}")
+                
+                # 触发记录事件
+                if self.on_production_detail_recorded:
+                    try:
+                        self.on_production_detail_recorded(bucket_id, detail)
+                    except Exception as e:
+                        self.logger.error(f"处理生产明细记录事件异常: {e}")
+            else:
+                self._log(f"料斗{bucket_id}生产明细记录失败: {message}")
+        
+        except Exception as e:
+            error_msg = f"记录料斗{bucket_id}生产明细异常: {str(e)}"
+            self.logger.error(error_msg)
+            self._log(error_msg)
+    
+    def _send_production_stop_commands(self):
+        """发送生产停止命令"""
+        try:
+            # 在后台线程中执行PLC操作
+            def stop_commands_thread():
+                try:
+                    # 1. 发送总启动=0
+                    success1 = self.modbus_client.write_coil(
+                        GLOBAL_CONTROL_ADDRESSES['GlobalStart'], False)
+                    
+                    # 2. 发送总停止=1
+                    success2 = self.modbus_client.write_coil(
+                        GLOBAL_CONTROL_ADDRESSES['GlobalStop'], True)
+                    
+                    # 3. 向包装机停止地址70发送0
+                    success3 = self.modbus_client.write_coil(
+                        GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], False)
+                    
+                    # 4. 向包装机停止地址70发送1
+                    success4 = self.modbus_client.write_coil(
+                        GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], True)
+                    
+                    if success1 and success2 and success3 and success4:
+                        self._log("生产停止命令发送成功")
+                    else:
+                        self._log(f"生产停止命令发送结果: 总启动=0:{success1}, 总停止=1:{success2}, 包装机停止=0:{success3}, 包装机停止=1:{success4}")
+                
+                except Exception as e:
+                    error_msg = f"发送生产停止命令异常: {str(e)}"
+                    self.logger.error(error_msg)
+                    self._log(error_msg)
+            
+            # 启动命令发送线程
+            threading.Thread(target=stop_commands_thread, daemon=True).start()
+            
+        except Exception as e:
+            error_msg = f"启动生产停止命令线程异常: {str(e)}"
+            self.logger.error(error_msg)
+            self._log(error_msg)
+    
+    def get_production_statistics(self) -> Dict:
+        """
+        获取当前生产的统计信息
+        
+        Returns:
+            Dict: 统计信息
+        """
+        try:
+            if not PRODUCTION_DETAIL_DAO_AVAILABLE or not self.production_id:
+                return {}
+            
+            return ProductionDetailDAO.get_production_statistics(self.production_id)
+            
+        except Exception as e:
+            error_msg = f"获取生产统计信息异常: {str(e)}"
+            self.logger.error(error_msg)
+            return {}
     
     def _log(self, message: str):
         """记录日志"""

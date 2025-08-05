@@ -109,6 +109,48 @@ class DatabaseManager:
                     """
                     cursor.execute(create_intelligent_learning_table)
                     
+                    # 新增：创建生产明细表
+                    create_production_details_table = """
+                    CREATE TABLE IF NOT EXISTS `production_details` (
+                        `id` int(11) NOT NULL AUTO_INCREMENT,
+                        `production_id` varchar(20) NOT NULL COMMENT '生产编号',
+                        `bucket_id` int(11) NOT NULL COMMENT '料斗编号',
+                        `real_weight` decimal(10,1) NOT NULL COMMENT '实时重量(g)',
+                        `error_value` decimal(10,1) NOT NULL COMMENT '误差值(g)',
+                        `is_qualified` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否合格(1合格，0不合格)',
+                        `is_valid` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否有效(1有效，0无效)',
+                        `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                        PRIMARY KEY (`id`),
+                        KEY `idx_production_id` (`production_id`),
+                        KEY `idx_bucket_id` (`bucket_id`),
+                        KEY `idx_is_valid` (`is_valid`),
+                        KEY `idx_create_time` (`create_time`)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='生产明细表';
+                    """
+                    cursor.execute(create_production_details_table)
+                    
+                    # 新增：创建生产记录表
+                    create_production_records_table = """
+                    CREATE TABLE IF NOT EXISTS `production_records` (
+                        `id` int(11) NOT NULL AUTO_INCREMENT,
+                        `production_date` date NOT NULL COMMENT '生产日期',
+                        `production_id` varchar(20) NOT NULL COMMENT '生产编号',
+                        `material_name` varchar(100) NOT NULL COMMENT '物料名称',
+                        `target_weight` decimal(10,1) NOT NULL COMMENT '目标重量(g)',
+                        `package_quantity` int(11) NOT NULL COMMENT '包装数量',
+                        `completed_packages` int(11) NOT NULL DEFAULT 0 COMMENT '完成包数',
+                        `completion_rate` decimal(5,2) NOT NULL DEFAULT 0.00 COMMENT '完成率(%)',
+                        `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                        `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                        PRIMARY KEY (`id`),
+                        UNIQUE KEY `uk_production_id` (`production_id`),
+                        KEY `idx_production_date` (`production_date`),
+                        KEY `idx_material_name` (`material_name`),
+                        KEY `idx_create_time` (`create_time`)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='生产记录表';
+                    """
+                    cursor.execute(create_production_records_table)
+                    
                     # 插入默认数据（如果表为空）
                     cursor.execute("SELECT COUNT(*) FROM materials")
                     count = cursor.fetchone()[0]
