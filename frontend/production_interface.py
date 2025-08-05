@@ -405,8 +405,6 @@ class ProductionInterface:
             # 设置窗口位置
             self.root.geometry(f'{width}x{height}+{x}+{y}')
             
-            print(f"生产界面已居中显示: {width}x{height}+{x}+{y}")
-            
         except Exception as e:
             print(f"生产界面居中显示失败: {e}")
             # 如果居中失败，至少确保窗口大小正确
@@ -704,8 +702,8 @@ class ProductionInterface:
         """暂停/启动按钮点击事件"""
         try:
             if not self.is_paused:
-                # 当前是运行状态，执行暂停操作
-                self._pause_production()
+                # 当前是运行状态，显示确认暂停弹窗
+                self.show_pause_confirmation_dialog()
             else:
                 # 当前是暂停状态，执行启动操作
                 self._resume_production()
@@ -713,6 +711,304 @@ class ProductionInterface:
         except Exception as e:
             print(f"暂停/启动操作异常: {e}")
             self.add_fault_record(f"暂停/启动操作异常: {str(e)}")
+            
+    def show_pause_confirmation_dialog(self):
+        """显示暂停确认对话框（图1）"""
+        try:
+            # 创建确认暂停弹窗
+            pause_confirm_window = tk.Toplevel(self.root)
+            pause_confirm_window.title("")
+            pause_confirm_window.geometry("600x400")
+            pause_confirm_window.configure(bg='white')
+            pause_confirm_window.resizable(False, False)
+            pause_confirm_window.transient(self.root)
+            pause_confirm_window.grab_set()
+            
+            # 居中显示弹窗
+            self.center_dialog_relative_to_main(pause_confirm_window, 600, 400)
+            
+            # 暂停图标和提示信息
+            tk.Label(pause_confirm_window, text="⏸", 
+                    font=tkFont.Font(family="微软雅黑", size=36, weight="bold"),
+                    bg='white', fg='#ff0000').pack(pady=30)
+            
+            tk.Label(pause_confirm_window, text="请再次确认你希望", 
+                    font=tkFont.Font(family="微软雅黑", size=16),
+                    bg='white', fg='#333333').pack(pady=5)
+            
+            tk.Label(pause_confirm_window, text="暂停运行", 
+                    font=tkFont.Font(family="微软雅黑", size=16),
+                    bg='white', fg='#333333').pack(pady=5)
+            
+            # 按钮区域
+            button_frame = tk.Frame(pause_confirm_window, bg='white')
+            button_frame.pack(pady=40)
+            
+            # 取消按钮
+            cancel_btn = tk.Button(button_frame, text="取消", 
+                                 font=tkFont.Font(family="微软雅黑", size=14),
+                                 bg='#f0f0f0', fg='#333333',
+                                 relief='flat', bd=0,
+                                 padx=40, pady=10,
+                                 command=pause_confirm_window.destroy)
+            cancel_btn.pack(side=tk.LEFT, padx=20)
+            
+            # 确认按钮
+            def on_confirm_pause():
+                pause_confirm_window.destroy()
+                self.show_pausing_progress_dialog()
+            
+            confirm_btn = tk.Button(button_frame, text="确认", 
+                                  font=tkFont.Font(family="微软雅黑", size=14),
+                                  bg='#ff4444', fg='white',
+                                  relief='flat', bd=0,
+                                  padx=40, pady=10,
+                                  command=on_confirm_pause)
+            confirm_btn.pack(side=tk.LEFT, padx=20)
+            
+            print("[信息] 显示暂停确认对话框")
+            
+        except Exception as e:
+            error_msg = f"显示暂停确认对话框异常: {str(e)}"
+            print(f"[错误] {error_msg}")
+            
+    def show_pausing_progress_dialog(self):
+        """显示暂停进行中对话框（图2）"""
+        try:
+            # 创建暂停进行中弹窗
+            self.pausing_progress_window = tk.Toplevel(self.root)
+            self.pausing_progress_window.title("")
+            self.pausing_progress_window.geometry("600x400")
+            self.pausing_progress_window.configure(bg='white')
+            self.pausing_progress_window.resizable(False, False)
+            self.pausing_progress_window.transient(self.root)
+            self.pausing_progress_window.grab_set()
+            
+            # 居中显示弹窗
+            self.center_dialog_relative_to_main(self.pausing_progress_window, 600, 400)
+            
+            # 暂停图标
+            tk.Label(self.pausing_progress_window, text="⏸", 
+                    font=tkFont.Font(family="微软雅黑", size=36, weight="bold"),
+                    bg='white', fg='#333333').pack(pady=30)
+            
+            # 状态提示
+            tk.Label(self.pausing_progress_window, text="设备正在暂停中", 
+                    font=tkFont.Font(family="微软雅黑", size=16),
+                    bg='white', fg='#333333').pack(pady=10)
+            
+            # 计时器显示
+            self.pausing_timer_label = tk.Label(self.pausing_progress_window, text="00:00:00", 
+                                               font=tkFont.Font(family="Arial", size=18, weight="bold"),
+                                               bg='white', fg='#333333')
+            self.pausing_timer_label.pack(pady=10)
+            
+            # 启动暂停计时器
+            self.pausing_timer_start_time = datetime.now()
+            self.pausing_timer_running = True
+            self.start_pausing_timer()
+            
+            # 按钮区域
+            button_frame = tk.Frame(self.pausing_progress_window, bg='white')
+            button_frame.pack(pady=40)
+            
+            # 取消生产按钮
+            cancel_production_btn = tk.Button(button_frame, text="✖ 取消生产", 
+                                            font=tkFont.Font(family="微软雅黑", size=14),
+                                            bg='#f0f0f0', fg='#333333',
+                                            relief='flat', bd=0,
+                                            padx=30, pady=10,
+                                            command=self.show_cancel_production_dialog)
+            cancel_production_btn.pack(side=tk.LEFT, padx=20)
+            
+            # 继续按钮
+            def on_continue():
+                self.stop_pausing_timer()
+                self.pausing_progress_window.destroy()
+            
+            continue_btn = tk.Button(button_frame, text="▶ 继续", 
+                                   font=tkFont.Font(family="微软雅黑", size=14),
+                                   bg='#4a90e2', fg='white',
+                                   relief='flat', bd=0,
+                                   padx=30, pady=10,
+                                   command=on_continue)
+            continue_btn.pack(side=tk.LEFT, padx=20)
+            
+            print("[信息] 显示暂停进行中对话框")
+            
+        except Exception as e:
+            error_msg = f"显示暂停进行中对话框异常: {str(e)}"
+            print(f"[错误] {error_msg}")
+            
+    def show_cancel_production_dialog(self):
+        """显示取消生产确认对话框（图3）"""
+        try:
+            # 停止暂停计时器
+            self.stop_pausing_timer()
+            
+            # 关闭暂停进行中弹窗
+            if hasattr(self, 'pausing_progress_window') and self.pausing_progress_window:
+                self.pausing_progress_window.destroy()
+            
+            # 创建取消生产确认弹窗
+            cancel_confirm_window = tk.Toplevel(self.root)
+            cancel_confirm_window.title("")
+            cancel_confirm_window.geometry("600x400")
+            cancel_confirm_window.configure(bg='white')
+            cancel_confirm_window.resizable(False, False)
+            cancel_confirm_window.transient(self.root)
+            cancel_confirm_window.grab_set()
+            
+            # 居中显示弹窗
+            self.center_dialog_relative_to_main(cancel_confirm_window, 600, 400)
+            
+            # 取消图标
+            tk.Label(cancel_confirm_window, text="✖", 
+                    font=tkFont.Font(family="微软雅黑", size=36, weight="bold"),
+                    bg='white', fg='#ff0000').pack(pady=30)
+            
+            # 确认信息
+            tk.Label(cancel_confirm_window, text="请再次确认你希望", 
+                    font=tkFont.Font(family="微软雅黑", size=16),
+                    bg='white', fg='#333333').pack(pady=5)
+            
+            tk.Label(cancel_confirm_window, text="取消生产", 
+                    font=tkFont.Font(family="微软雅黑", size=16),
+                    bg='white', fg='#333333').pack(pady=5)
+            
+            # 按钮区域
+            button_frame = tk.Frame(cancel_confirm_window, bg='white')
+            button_frame.pack(pady=40)
+            
+            # 取消按钮
+            def on_cancel():
+                cancel_confirm_window.destroy()
+                # 返回界面，不做任何操作
+            
+            cancel_btn = tk.Button(button_frame, text="取消", 
+                                 font=tkFont.Font(family="微软雅黑", size=14),
+                                 bg='#f0f0f0', fg='#333333',
+                                 relief='flat', bd=0,
+                                 padx=40, pady=10,
+                                 command=on_cancel)
+            cancel_btn.pack(side=tk.LEFT, padx=20)
+            
+            # 确认按钮
+            def on_confirm_cancel():
+                cancel_confirm_window.destroy()
+                # 执行暂停操作（实际是取消生产）
+                self._pause_production()
+            
+            confirm_btn = tk.Button(button_frame, text="确认", 
+                                  font=tkFont.Font(family="微软雅黑", size=14),
+                                  bg='#ff4444', fg='white',
+                                  relief='flat', bd=0,
+                                  padx=40, pady=10,
+                                  command=on_confirm_cancel)
+            confirm_btn.pack(side=tk.LEFT, padx=20)
+            
+            print("[信息] 显示取消生产确认对话框")
+            
+        except Exception as e:
+            error_msg = f"显示取消生产确认对话框异常: {str(e)}"
+            print(f"[错误] {error_msg}")
+            
+    def start_pausing_timer(self):
+        """启动暂停计时器"""
+        try:
+            def update_pausing_timer():
+                """更新暂停计时器显示"""
+                if (hasattr(self, 'pausing_timer_running') and self.pausing_timer_running and
+                    hasattr(self, 'pausing_progress_window') and self.pausing_progress_window and
+                    self.pausing_progress_window.winfo_exists()):
+                    try:
+                        # 计算经过的时间
+                        current_time = datetime.now()
+                        elapsed_time = current_time - self.pausing_timer_start_time
+                        
+                        # 格式化为 HH:MM:SS
+                        total_seconds = int(elapsed_time.total_seconds())
+                        hours = total_seconds // 3600
+                        minutes = (total_seconds % 3600) // 60
+                        seconds = total_seconds % 60
+                        
+                        time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                        
+                        # 更新标签
+                        if (hasattr(self, 'pausing_timer_label') and 
+                            self.pausing_timer_label.winfo_exists()):
+                            self.pausing_timer_label.config(text=time_str)
+                            # 继续更新
+                            self.root.after(1000, update_pausing_timer)
+                        else:
+                            self.pausing_timer_running = False
+                    except Exception as e:
+                        print(f"[错误] 更新暂停计时器异常: {e}")
+                        self.pausing_timer_running = False
+            
+            # 开始更新计时器
+            update_pausing_timer()
+            print("[信息] 暂停计时器已启动")
+            
+        except Exception as e:
+            error_msg = f"启动暂停计时器异常: {str(e)}"
+            print(f"[错误] {error_msg}")
+            
+    def stop_pausing_timer(self):
+        """停止暂停计时器"""
+        try:
+            if hasattr(self, 'pausing_timer_running'):
+                self.pausing_timer_running = False
+                print("[信息] 暂停计时器已停止")
+        except Exception as e:
+            print(f"[错误] 停止暂停计时器异常: {e}")
+            
+    def center_dialog_relative_to_main(self, dialog_window, dialog_width, dialog_height):
+        """
+        将弹窗相对于生产界面居中显示
+
+        Args:
+            dialog_window: 弹窗对象
+            dialog_width (int): 弹窗宽度
+            dialog_height (int): 弹窗高度
+        """
+        try:
+            # 确保窗口信息是最新的
+            dialog_window.update_idletasks()
+            self.root.update_idletasks()
+
+            # 获取生产界面的位置和尺寸
+            main_x = self.root.winfo_x()
+            main_y = self.root.winfo_y()
+            main_width = self.root.winfo_width()
+            main_height = self.root.winfo_height()
+
+            # 计算相对于生产界面居中的位置
+            x = main_x + (main_width - dialog_width) // 2
+            y = main_y + (main_height - dialog_height) // 2
+
+            # 确保弹窗不会超出屏幕边界
+            screen_width = dialog_window.winfo_screenwidth()
+            screen_height = dialog_window.winfo_screenheight()
+
+            # 调整坐标，确保不超出屏幕边界
+            if x + dialog_width > screen_width:
+                x = screen_width - dialog_width - 20
+            if x < 20:
+                x = 20
+            if y + dialog_height > screen_height:
+                y = screen_height - dialog_height - 20
+            if y < 20:
+                y = 20
+
+            dialog_window.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
+
+        except Exception as e:
+            print(f"[错误] 弹窗居中失败: {e}")
+            # 备用：屏幕居中
+            x = (dialog_window.winfo_screenwidth() - dialog_width) // 2
+            y = (dialog_window.winfo_screenheight() - dialog_height) // 2
+            dialog_window.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
 
     def _pause_production(self):
         """暂停生产"""
@@ -726,7 +1022,13 @@ class ProductionInterface:
                     # 发送总启动=0（停止）
                     success = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStart'], False)
                     if not success:
-                        self.add_fault_record("发送暂停命令失败")
+                        self.add_fault_record("发送总启动=0命令失败")
+                        return
+                    
+                    # 发送总停止=1（停止）
+                    success = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStop'], True)
+                    if not success:
+                        self.add_fault_record("发送总停止=1命令失败")
                         return
                 
                 # 更新状态
@@ -873,11 +1175,7 @@ class ProductionInterface:
             result = messagebox.askyesno("确认取消", "确定要取消当前生产任务吗？")
             if result:
                 # 停止生产
-                self.monitoring_threads_running = False
-                self.is_production_running = False
-                
-                if self.modbus_client and self.modbus_client.is_connected:
-                    self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStart'], False)
+                self._pause_production()
                 
                 self.add_fault_record("生产任务已取消")
                 
