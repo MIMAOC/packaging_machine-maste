@@ -143,6 +143,40 @@ class CoarseTimeTestController:
             for bucket_id in range(1, 7):
                 self.bucket_states[bucket_id] = BucketCoarseTimeState(bucket_id)
     
+    def set_material_name(self, material_name: str):
+        """
+        设置物料名称（传递给自适应学习控制器）
+        
+        Args:
+            material_name (str): 物料名称
+        """
+        try:
+            # 如果有自适应学习控制器，设置物料名称
+            if hasattr(self, 'adaptive_learning_controller') and self.adaptive_learning_controller:
+                if hasattr(self.adaptive_learning_controller, 'set_material_name'):
+                    self.adaptive_learning_controller.set_material_name(material_name)
+                    self._log(f"📝 已设置物料名称到自适应学习控制器: {material_name}")
+                else:
+                    self._log(f"⚠️ 自适应学习控制器不支持设置物料名称")
+            
+            # 保存到实例变量中，以便后续创建自适应学习控制器时使用
+            self.current_material_name = material_name
+            self._log(f"📝 已保存当前物料名称: {material_name}")
+            
+        except Exception as e:
+            error_msg = f"设置物料名称异常: {str(e)}"
+            self.logger.error(error_msg)
+            self._log(f"❌ {error_msg}")
+        
+    def get_current_material_name(self) -> str:
+        """
+        获取当前物料名称
+        
+        Returns:
+            str: 当前物料名称
+        """
+        return getattr(self, 'current_material_name', '未知物料')
+    
     def start_coarse_time_test_after_parameter_writing(self, target_weight: float, coarse_speed: int) -> Tuple[bool, str]:
         """
         在参数写入完成后启动快加时间测定
@@ -854,9 +888,39 @@ class CoarseTimeTestController:
         """
         try:
             if success:
-                self._log(f"🎉 料斗{bucket_id}慢加时间测定完成")
-                # 慢加时间测定成功，弹窗显示结果
+                self._log(f"🎉 料斗{bucket_id}慢加时间测定完成，准备启动自适应学习")
+                
+                # 如果还没有自适应学习控制器，创建它
+                if not hasattr(self, 'adaptive_learning_controller') or not self.adaptive_learning_controller:
+                    try:
+                        from adaptive_learning_controller import create_adaptive_learning_controller
+                        self.adaptive_learning_controller = create_adaptive_learning_controller(self.modbus_client)
+                        
+                        # 设置物料名称
+                        current_material_name = self.get_current_material_name()
+                        if hasattr(self.adaptive_learning_controller, 'set_material_name'):
+                            self.adaptive_learning_controller.set_material_name(current_material_name)
+                            self._log(f"📝 自适应学习控制器已创建并设置物料名称: {current_material_name}")
+                        
+                        # 设置自适应学习控制器的事件回调
+                        self.adaptive_learning_controller.on_all_buckets_completed = self._on_adaptive_learning_all_completed
+                        self.adaptive_learning_controller.on_bucket_failed = self._on_adaptive_learning_bucket_failed
+                        
+                        self._log("✅ 自适应学习控制器已创建并配置")
+                        
+                    except ImportError as e:
+                        self._log(f"❌ 无法导入自适应学习控制器: {e}")
+                        self._trigger_bucket_completed(bucket_id, True, message)
+                        return
+                    except Exception as e:
+                        self._log(f"❌ 创建自适应学习控制器异常: {e}")
+                        self._trigger_bucket_completed(bucket_id, True, message)
+                        return
+                
+                # 启动自适应学习（这里需要实现自适应学习启动逻辑）
+                # 暂时先触发完成事件
                 self._trigger_bucket_completed(bucket_id, True, message)
+                
             else:
                 self._log(f"❌ 料斗{bucket_id}慢加时间测定失败: {message}")
                 # 慢加时间测定失败，触发失败回调
@@ -864,6 +928,53 @@ class CoarseTimeTestController:
             
         except Exception as e:
             error_msg = f"处理料斗{bucket_id}慢加时间完成事件异常: {str(e)}"
+            self.logger.error(error_msg)
+            self._log(f"❌ {error_msg}")
+            
+    def _on_adaptive_learning_all_completed(self, all_states):
+        """
+        处理所有料斗自适应学习完成事件
+        
+        Args:
+            all_states: 所有料斗的自适应学习状态字典
+        """
+        try:
+            self._log("🎉 所有料斗自适应学习阶段完成！")
+            
+            # 触发合并的完成事件，传递所有状态
+            if self.on_bucket_completed:
+                try:
+                    # 使用特殊的bucket_id=0来标识这是合并结果
+                    self.on_bucket_completed(0, True, all_states)
+                except Exception as e:
+                    self.logger.error(f"自适应学习完成事件回调异常: {e}")
+            
+        except Exception as e:
+            error_msg = f"处理所有料斗自适应学习完成事件异常: {str(e)}"
+            self.logger.error(error_msg)
+            self._log(f"❌ {error_msg}")
+    
+    def _on_adaptive_learning_bucket_failed(self, bucket_id: int, error_message: str, failed_stage: str):
+        """
+        处理自适应学习料斗失败事件
+        
+        Args:
+            bucket_id (int): 料斗ID
+            error_message (str): 错误消息
+            failed_stage (str): 失败阶段
+        """
+        try:
+            self._log(f"❌ 料斗{bucket_id}自适应学习失败: {error_message}")
+            
+            # 转发失败事件
+            if self.on_bucket_failed:
+                try:
+                    self.on_bucket_failed(bucket_id, error_message, failed_stage)
+                except Exception as e:
+                    self.logger.error(f"自适应学习失败事件回调异常: {e}")
+                    
+        except Exception as e:
+            error_msg = f"处理料斗{bucket_id}自适应学习失败事件异常: {str(e)}"
             self.logger.error(error_msg)
             self._log(f"❌ {error_msg}")
     

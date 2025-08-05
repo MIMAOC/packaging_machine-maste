@@ -33,6 +33,7 @@ class BucketFlightMaterialState:
         self.start_time = None             # 开始时间
         self.error_message = ""            # 错误消息
         self.average_flight_material = 0.0 # 平均飞料值
+        self.material_name = "未知物料"    # 物料名称存储
     
     def reset_for_new_test(self, target_weight: float):
         """重置状态开始新的测定"""
@@ -87,6 +88,7 @@ class FlightMaterialTestController:
         self.modbus_client = modbus_client
         self.bucket_states: Dict[int, BucketFlightMaterialState] = {}
         self.lock = threading.RLock()
+        self.material_name = "未知物料"  # 存储物料名称
         
         # 创建服务实例
         self.monitoring_service = create_bucket_monitoring_service(modbus_client)
@@ -120,6 +122,22 @@ class FlightMaterialTestController:
         with self.lock:
             for bucket_id in range(1, 7):
                 self.bucket_states[bucket_id] = BucketFlightMaterialState(bucket_id)
+                
+    def set_material_name(self, material_name: str):
+        """
+        设置物料名称（新增方法）
+        
+        Args:
+            material_name (str): 物料名称
+        """
+        try:
+            self.material_name = material_name
+            with self.lock:
+                for state in self.bucket_states.values():
+                    state.material_name = material_name
+            self._log(f"📝 飞料值控制器设置物料名称: {material_name}")
+        except Exception as e:
+            self._log(f"❌ 设置物料名称异常: {str(e)}")
                 
     def _on_material_shortage_detected(self, bucket_id: int, stage: str, is_production: bool):
         """
@@ -718,6 +736,16 @@ class FlightMaterialTestController:
         """触发料斗完成事件"""
         if self.on_bucket_completed:
             try:
+                # 获取平均飞料值用于后续阶段
+                with self.lock:
+                    state = self.bucket_states[bucket_id]
+                    avg_flight_material = state.average_flight_material
+                
+                # 如果有慢加时间控制器的引用，传递物料名称
+                if hasattr(self, 'fine_time_controller'):
+                    if hasattr(self.fine_time_controller, 'set_material_name'):
+                        self.fine_time_controller.set_material_name(self.material_name)
+                
                 self.on_bucket_completed(bucket_id, success, message)
             except Exception as e:
                 self.logger.error(f"料斗完成事件回调异常: {e}")

@@ -87,6 +87,28 @@ class DatabaseManager:
                     """
                     cursor.execute(create_material_table)
                     
+                    # 创建智能学习表
+                    create_intelligent_learning_table = """
+                    CREATE TABLE IF NOT EXISTS `intelligent_learning` (
+                        `id` int(11) NOT NULL AUTO_INCREMENT,
+                        `material_name` varchar(100) NOT NULL COMMENT '物料名称',
+                        `target_weight` decimal(10,1) NOT NULL COMMENT '目标重量(g)',
+                        `bucket_id` int(11) NOT NULL COMMENT '料斗编号',
+                        `coarse_speed` int(11) NOT NULL COMMENT '快加速度',
+                        `fine_speed` int(11) NOT NULL COMMENT '慢加速度',
+                        `coarse_advance` decimal(10,1) NOT NULL COMMENT '快加提前量(g)',
+                        `fall_value` decimal(10,1) NOT NULL COMMENT '落差值(g)',
+                        `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                        `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                        PRIMARY KEY (`id`),
+                        UNIQUE KEY `uk_material_weight_bucket` (`material_name`, `target_weight`, `bucket_id`),
+                        KEY `idx_material_name` (`material_name`),
+                        KEY `idx_target_weight` (`target_weight`),
+                        KEY `idx_bucket_id` (`bucket_id`)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='智能学习表';
+                    """
+                    cursor.execute(create_intelligent_learning_table)
+                    
                     # 插入默认数据（如果表为空）
                     cursor.execute("SELECT COUNT(*) FROM materials")
                     count = cursor.fetchone()[0]

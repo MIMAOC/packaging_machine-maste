@@ -24,6 +24,13 @@ from bucket_monitoring import BucketMonitoringService, create_bucket_monitoring_
 from clients.adaptive_learning_webapi import analyze_adaptive_learning_parameters
 from plc_addresses import BUCKET_PARAMETER_ADDRESSES, BUCKET_MONITORING_ADDRESSES, get_bucket_control_address
 
+try:
+    from database.intelligent_learning_dao import IntelligentLearningDAO
+    INTELLIGENT_LEARNING_DAO_AVAILABLE = True
+except ImportError as e:
+    print(f"警告：无法导入智能学习DAO模块: {e}")
+    INTELLIGENT_LEARNING_DAO_AVAILABLE = False
+
 class BucketAdaptiveLearningState:
     """料斗自适应学习阶段状态"""
     
@@ -39,6 +46,7 @@ class BucketAdaptiveLearningState:
         self.consecutive_success_count = 0 # 连续成功次数
         self.consecutive_success_required = 3  # 需要连续成功3次
         self.parameters_initialized = False  # 标记目标重量和落差值是否已初始化
+        self.material_name = "未知物料"    # 物料名称（新增）
         
         # 测定过程变量
         self.start_time = None             # 启动时间
@@ -1035,6 +1043,9 @@ class AdaptiveLearningController:
                 
                 # 从活跃料斗集合中移除
                 self.active_buckets.discard(bucket_id)
+                
+                # 保存智能学习结果到数据库
+                self._save_learning_result_to_database(bucket_id, state)
             
             success_msg = f"🎉 料斗{bucket_id}自适应学习阶段测定成功！连续成功{state.consecutive_success_count}次"
             self._log(success_msg)
@@ -1046,6 +1057,78 @@ class AdaptiveLearningController:
             error_msg = f"处理料斗{bucket_id}成功状态异常: {str(e)}"
             self.logger.error(error_msg)
             self._log(f"❌ {error_msg}")
+            
+    def _save_learning_result_to_database(self, bucket_id: int, state):
+        """
+        保存智能学习结果到数据库
+        
+        Args:
+            bucket_id (int): 料斗ID
+            state: 料斗状态对象
+        """
+        try:
+            if not INTELLIGENT_LEARNING_DAO_AVAILABLE:
+                self._log(f"⚠️ 智能学习DAO不可用，无法保存料斗{bucket_id}的学习结果")
+                return
+            
+            # 获取物料名称（需要从外部传入或存储）
+            material_name = getattr(state, 'material_name', '未知物料')
+            
+            # 保存学习结果
+            success, message = IntelligentLearningDAO.save_learning_result(
+                material_name=material_name,
+                target_weight=state.original_target_weight,
+                bucket_id=bucket_id,
+                coarse_speed=state.final_coarse_speed,
+                fine_speed=state.final_fine_speed,
+                coarse_advance=state.final_coarse_advance,
+                fall_value=state.final_fall_value
+            )
+            
+            if success:
+                self._log(f"✅ 料斗{bucket_id}智能学习结果已保存到数据库: {message}")
+                
+                # 更新物料状态为"已学习"
+                self._update_material_ai_status(material_name)
+            else:
+                self._log(f"❌ 料斗{bucket_id}智能学习结果保存失败: {message}")
+                
+        except Exception as e:
+            error_msg = f"保存料斗{bucket_id}智能学习结果到数据库异常: {str(e)}"
+            self.logger.error(error_msg)
+            self._log(f"❌ {error_msg}")
+            
+    def _update_material_ai_status(self, material_name: str):
+        """
+        更新物料AI状态为"已学习"
+        
+        Args:
+            material_name (str): 物料名称
+        """
+        try:
+            from database.material_dao import MaterialDAO
+            success, message = MaterialDAO.update_material_ai_status_by_name(material_name, "已学习")
+            if success:
+                self._log(f"✅ 物料'{material_name}'状态已更新为'已学习'")
+            else:
+                self._log(f"⚠️ 更新物料'{material_name}'状态失败: {message}")
+        except Exception as e:
+            self._log(f"⚠️ 更新物料AI状态异常: {str(e)}")
+            
+    def set_material_name(self, material_name: str):
+        """
+        设置物料名称（供外部调用）
+        
+        Args:
+            material_name (str): 物料名称
+        """
+        try:
+            with self.lock:
+                for state in self.bucket_states.values():
+                    state.material_name = material_name
+            self._log(f"📝 设置物料名称: {material_name}")
+        except Exception as e:
+            self._log(f"❌ 设置物料名称异常: {str(e)}")
     
     def _handle_bucket_failure(self, bucket_id: int, error_message: str, failed_stage: str = "adaptive_learning"):
         """

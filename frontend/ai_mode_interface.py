@@ -110,6 +110,13 @@ except ImportError as e:
     print(f"警告：无法导入数据库模块: {e}")
     print("请确保已安装PyMySQL: pip install PyMySQL")
     DATABASE_AVAILABLE = False
+    
+try:
+    from database.intelligent_learning_dao import IntelligentLearningDAO, IntelligentLearning
+    INTELLIGENT_LEARNING_DAO_AVAILABLE = True
+except ImportError as e:
+    print(f"警告：无法导入智能学习DAO模块: {e}")
+    INTELLIGENT_LEARNING_DAO_AVAILABLE = False
 
 class AIModeInterface:
     """
@@ -2043,45 +2050,81 @@ class AIModeInterface:
         try:
             print(f"继续执行AI生产序列后续步骤: 重量={target_weight}g, 数量={package_quantity}, 物料={material}")
             
-            # 步骤2: 通过后端API分析快加速度
-            self.root.after(0, lambda: self.show_progress_message("步骤2/4", "正在通过后端API分析目标重量对应的快加速度..."))
+            # 步骤2: 查询数据库是否有已学习的参数
+            self.root.after(0, lambda: self.show_progress_message("步骤2/4", "正在查询智能学习数据库..."))
             
-            if not WEBAPI_AVAILABLE:
-                error_msg = "WebAPI客户端模块不可用，无法进行参数分析"
-                self.root.after(0, lambda: messagebox.showerror("WebAPI错误", error_msg))
-                return
+            learned_params = None
+            use_learned_params = False
             
-            # 调用后端API分析
-            analysis_success, coarse_speed, analysis_message = analyze_target_weight(target_weight)
+            if INTELLIGENT_LEARNING_DAO_AVAILABLE:
+                # 检查是否有该物料和重量的学习数据
+                has_data = IntelligentLearningDAO.has_learning_data(material, target_weight)
+                
+                if has_data:
+                    # 获取所有料斗的学习结果
+                    learned_results = IntelligentLearningDAO.get_all_learning_results_by_material(material, target_weight)
+                    
+                    if learned_results:
+                        use_learned_params = True
+                        learned_params = {result.bucket_id: result for result in learned_results}
+                        self._log(f"✅ 发现{len(learned_results)}个料斗的智能学习数据，将使用已学习参数")
+                        
+                        # 将智能学习参数写入到PLC
+                        self.root.after(0, lambda: self.show_progress_message("步骤2/4", "正在使用智能学习参数写入PLC..."))
+                        
+                        write_success = self._write_learned_parameters_to_plc(learned_params, target_weight)
+                        if not write_success:
+                            error_msg = "写入智能学习参数失败，回退到API分析模式"
+                            self._log(f"❌ {error_msg}")
+                            self.root.after(0, lambda: messagebox.showwarning("参数写入失败", error_msg))
+                            use_learned_params = False
+                    else:
+                        self._log("⚠️ 数据库查询无结果，使用API分析模式")
+                else:
+                    self._log(f"📊 物料'{material}'重量{target_weight}g暂无智能学习数据，使用API分析模式")
+            else:
+                self._log("⚠️ 智能学习DAO不可用，使用API分析模式")
             
-            if not analysis_success:
-                error_msg = f"后端API分析失败：{analysis_message}\n\n" \
-                           f"可能原因：\n" \
-                           f"1. 后端API服务器未启动\n" \
-                           f"2. 网络连接问题\n" \
-                           f"3. API配置错误\n" \
-                           f"4. 目标重量超出支持范围\n\n" \
-                           f"请检查后端服务状态和API配置后重试。"
-                self.root.after(0, lambda: messagebox.showerror("后端API分析失败", error_msg))
-                return
-            
-            print(f"后端API分析完成：速度={coarse_speed}档, 消息={analysis_message}")
-            
-            # 步骤3: 写入参数到所有料斗
-            self.root.after(0, lambda: self.show_progress_message("步骤3/4", "正在写入参数到所有料斗..."))
-            
-            write_success, write_message = self.plc_operations.write_bucket_parameters_all(
-                target_weight=target_weight,
-                coarse_speed=coarse_speed,
-                fine_speed=44,
-                coarse_advance=0,
-                fall_value=0
-            )
-            
-            if not write_success:
-                error_msg = f"参数写入失败：{write_message}"
-                self.root.after(0, lambda: messagebox.showerror("写入失败", error_msg))
-                return
+            # 如果没有使用已学习参数，则通过后端API分析
+            if not use_learned_params:
+                self.root.after(0, lambda: self.show_progress_message("步骤2/4", "正在通过后端API分析目标重量对应的快加速度..."))
+                
+                if not WEBAPI_AVAILABLE:
+                    error_msg = "WebAPI客户端模块不可用，无法进行参数分析"
+                    self.root.after(0, lambda: messagebox.showerror("WebAPI错误", error_msg))
+                    return
+                
+                # 调用后端API分析
+                analysis_success, coarse_speed, analysis_message = analyze_target_weight(target_weight)
+                
+                if not analysis_success:
+                    error_msg = f"后端API分析失败：{analysis_message}\n\n" \
+                               f"可能原因：\n" \
+                               f"1. 后端API服务器未启动\n" \
+                               f"2. 网络连接问题\n" \
+                               f"3. API配置错误\n" \
+                               f"4. 目标重量超出支持范围\n\n" \
+                               f"请检查后端服务状态和API配置后重试。"
+                    self.root.after(0, lambda: messagebox.showerror("后端API分析失败", error_msg))
+                    return
+                
+                print(f"后端API分析完成：速度={coarse_speed}档, 消息={analysis_message}")
+                
+                # 步骤3: 写入参数到所有料斗
+                self.root.after(0, lambda: self.show_progress_message("步骤3/4", "正在写入参数到所有料斗..."))
+                
+                write_success, write_message = self.plc_operations.write_bucket_parameters_all(
+                    target_weight=target_weight,
+                    coarse_speed=coarse_speed,
+                    fine_speed=44,
+                    coarse_advance=0,
+                    fall_value=0
+                )
+                
+                if not write_success:
+                    error_msg = f"参数写入失败：{write_message}"
+                    self.root.after(0, lambda: messagebox.showerror("写入失败", error_msg))
+                    return
             
             # 步骤4: 启动快加时间测定（如果模块可用）
             self.root.after(0, lambda: self.show_progress_message("步骤4/4", "正在启动快加时间测定..."))
@@ -2100,7 +2143,11 @@ class AIModeInterface:
                 # 创建快加时间测定控制器
                 self.coarse_time_controller = create_coarse_time_test_controller(self.modbus_client)
                 
-                # 设置事件回调（修改为处理学习状态）
+                # 设置物料名称到自适应学习控制器（如果有的话）
+                if hasattr(self.coarse_time_controller, 'set_material_name'):
+                    self.coarse_time_controller.set_material_name(material)
+                
+                # 设置事件回调（保持原有逻辑）
                 def on_bucket_completed(bucket_id: int, success: bool, message: str):
                     # 更新学习状态管理器
                     if self.learning_state_manager:
@@ -2112,6 +2159,11 @@ class AIModeInterface:
                                 self.learning_state_manager.complete_bucket_stage(
                                     bid, LearningStage.ADAPTIVE_LEARNING, final_success, final_message
                                 )
+                                
+                                # 如果是自适应学习成功，设置物料名称到自适应学习控制器
+                                if final_success and hasattr(self.coarse_time_controller, 'adaptive_learning_controller'):
+                                    if hasattr(self.coarse_time_controller.adaptive_learning_controller, 'set_material_name'):
+                                        self.coarse_time_controller.adaptive_learning_controller.set_material_name(material)
                             return
                         else:
                             # 单个料斗完成事件，根据消息内容判断阶段
@@ -2161,8 +2213,15 @@ class AIModeInterface:
                 self.coarse_time_controller.on_log_message = on_log_message
                 
                 # 启动快加时间测定
-                test_success, test_message = self.coarse_time_controller.start_coarse_time_test_after_parameter_writing(
-                    target_weight, coarse_speed)
+                if use_learned_params:
+                    # 使用智能学习参数，启动测定时使用已学习的快加速度
+                    first_learned_result = next(iter(learned_params.values()))
+                    test_success, test_message = self.coarse_time_controller.start_coarse_time_test_after_parameter_writing(
+                        target_weight, first_learned_result.coarse_speed)
+                else:
+                    # 使用API分析结果
+                    test_success, test_message = self.coarse_time_controller.start_coarse_time_test_after_parameter_writing(
+                        target_weight, coarse_speed)
                 
                 # 初始化学习状态管理器中各料斗的快加时间测定状态
                 if self.learning_state_manager and test_success:
@@ -2187,22 +2246,38 @@ class AIModeInterface:
                 # 不中断流程，继续显示完成信息
             
             # 成功完成所有步骤
-            success_message = (
-                f"🎉 AI生产流程启动完成！\n\n"
-                f"📊 后端API分析结果：\n"
-                f"  • API地址：{self.api_config.base_url if self.api_config else '未配置'}\n"
-                f"  • 目标重量：{target_weight}g\n"
-                f"  • 推荐快加速度：{coarse_speed} 档\n"
-                f"  • 慢加速度：44 档\n"
-                f"  • 快加提前量：0\n"
-                f"  • 落差值：0\n\n"
-                f"📝 操作摘要：\n"
-                f"  • 料斗检查：已清料\n"
-                f"  • 后端API分析：{analysis_message}\n"
-                f"  • 参数写入：成功写入所有6个料斗\n"
-                f"  • 快加时间测定：{'已启动' if 'coarse_time_controller' in locals() else '模块不可用'}\n\n"
-                f"🔍 多斗学习状态弹窗已显示，可实时查看各料斗学习进度..."
-            )
+            if use_learned_params:
+                success_message = (
+                    f"🎉 AI生产流程启动完成！\n\n"
+                    f"📊 智能学习参数应用：\n"
+                    f"  • 物料：{material}\n"
+                    f"  • 目标重量：{target_weight}g\n"
+                    f"  • 使用已学习参数：{len(learned_params)}个料斗\n"
+                    f"  • 参数来源：智能学习数据库\n\n"
+                    f"📝 操作摘要：\n"
+                    f"  • 料斗检查：已清料\n"
+                    f"  • 参数来源：智能学习数据库\n"
+                    f"  • 参数写入：成功写入所有6个料斗\n"
+                    f"  • 快加时间测定：已启动（跳过学习阶段）\n\n"
+                    f"🔍 多斗学习状态弹窗已显示，可实时查看各料斗学习进度..."
+                )
+            else:
+                success_message = (
+                    f"🎉 AI生产流程启动完成！\n\n"
+                    f"📊 后端API分析结果：\n"
+                    f"  • API地址：{self.api_config.base_url if self.api_config else '未配置'}\n"
+                    f"  • 目标重量：{target_weight}g\n"
+                    f"  • 推荐快加速度：{coarse_speed} 档\n"
+                    f"  • 慢加速度：44 档\n"
+                    f"  • 快加提前量：0\n"
+                    f"  • 落差值：0\n\n"
+                    f"📝 操作摘要：\n"
+                    f"  • 料斗检查：已清料\n"
+                    f"  • 后端API分析：{analysis_message}\n"
+                    f"  • 参数写入：成功写入所有6个料斗\n"
+                    f"  • 快加时间测定：已启动\n\n"
+                    f"🔍 多斗学习状态弹窗已显示，可实时查看各料斗学习进度..."
+                )
             
             self.root.after(0, lambda: messagebox.showinfo("AI生产流程启动完成", success_message))
             print("AI生产序列执行完成，后端API分析和自动化测定正在进行中")
@@ -2211,6 +2286,97 @@ class AIModeInterface:
             error_msg = f"AI生产序列后续步骤异常：{str(e)}"
             print(error_msg)
             self.root.after(0, lambda: messagebox.showerror("序列异常", error_msg))
+            
+    def _write_learned_parameters_to_plc(self, learned_params: Dict[int, IntelligentLearning], target_weight: float) -> bool:
+        """
+        将智能学习参数写入到PLC
+        
+        Args:
+            learned_params: 学习参数字典 {bucket_id: IntelligentLearning}
+            target_weight: 目标重量
+            
+        Returns:
+            bool: 是否成功
+        """
+        try:
+            from plc_addresses import BUCKET_PARAMETER_ADDRESSES
+            
+            success_count = 0
+            total_buckets = 6
+            
+            for bucket_id in range(1, 7):
+                if bucket_id not in BUCKET_PARAMETER_ADDRESSES:
+                    self._log(f"❌ 料斗{bucket_id}地址配置不存在")
+                    continue
+                
+                addresses = BUCKET_PARAMETER_ADDRESSES[bucket_id]
+                
+                # 如果有该料斗的学习参数，使用学习参数；否则使用默认值
+                if bucket_id in learned_params:
+                    learned_result = learned_params[bucket_id]
+                    coarse_speed = learned_result.coarse_speed
+                    fine_speed = learned_result.fine_speed
+                    coarse_advance = learned_result.coarse_advance
+                    fall_value = learned_result.fall_value
+                    self._log(f"📊 料斗{bucket_id}使用智能学习参数：快加速度={coarse_speed}档，慢加速度={fine_speed}档")
+                else:
+                    # 使用默认值（与API分析相同）
+                    coarse_speed = 72  # 默认快加速度
+                    fine_speed = 44    # 默认慢加速度
+                    coarse_advance = 0
+                    fall_value = 0
+                    self._log(f"📊 料斗{bucket_id}使用默认参数：快加速度={coarse_speed}档，慢加速度={fine_speed}档")
+                
+                # 写入参数到PLC
+                bucket_success = True
+                
+                # 目标重量
+                target_weight_plc = int(target_weight * 10)
+                if not self.modbus_client.write_holding_register(addresses['TargetWeight'], target_weight_plc):
+                    self._log(f"❌ 料斗{bucket_id}目标重量写入失败")
+                    bucket_success = False
+                
+                # 快加速度
+                if not self.modbus_client.write_holding_register(addresses['CoarseSpeed'], coarse_speed):
+                    self._log(f"❌ 料斗{bucket_id}快加速度写入失败")
+                    bucket_success = False
+                
+                # 慢加速度
+                if not self.modbus_client.write_holding_register(addresses['FineSpeed'], fine_speed):
+                    self._log(f"❌ 料斗{bucket_id}慢加速度写入失败")
+                    bucket_success = False
+                
+                # 快加提前量
+                coarse_advance_plc = int(coarse_advance * 10)
+                if not self.modbus_client.write_holding_register(addresses['CoarseAdvance'], coarse_advance_plc):
+                    self._log(f"❌ 料斗{bucket_id}快加提前量写入失败")
+                    bucket_success = False
+                
+                # 落差值
+                fall_value_plc = int(fall_value * 10)
+                if not self.modbus_client.write_holding_register(addresses['FallValue'], fall_value_plc):
+                    self._log(f"❌ 料斗{bucket_id}落差值写入失败")
+                    bucket_success = False
+                
+                if bucket_success:
+                    success_count += 1
+                    self._log(f"✅ 料斗{bucket_id}参数写入成功")
+            
+            if success_count == total_buckets:
+                self._log(f"✅ 所有{total_buckets}个料斗的智能学习参数写入成功")
+                return True
+            else:
+                self._log(f"⚠️ 只有{success_count}/{total_buckets}个料斗参数写入成功")
+                return False
+                
+        except Exception as e:
+            error_msg = f"写入智能学习参数到PLC异常: {str(e)}"
+            self._log(f"❌ {error_msg}")
+            return False
+    
+    def _log(self, message: str):
+        """记录日志"""
+        print(f"[AI模式] {message}")
     
     def _determine_learning_stage_from_message(self, message: str):
         """从消息内容判断学习阶段"""

@@ -35,8 +35,8 @@ class BucketFineTimeState:
         self.current_fine_speed = 44      # 当前慢加速度（默认44）
         self.error_message = ""            # 错误消息
         self.average_flight_material = 0.0  # 存储平均飞料值（来自飞料值测定阶段）
-        # 新增：存储慢加流速
         self.fine_flow_rate = None         # 慢加流速（g/s）
+        self.material_name = "未知物料"    # 物料名称存储
     
     def reset_for_new_test(self, average_flight_material: float = 0.0):
         """重置状态开始新的测定"""
@@ -96,8 +96,9 @@ class FineTimeTestController:
         """
         self.modbus_client = modbus_client
         self.bucket_states: Dict[int, BucketFineTimeState] = {}
-        self.bucket_original_weights: Dict[int, float] = {}  # 新增：存储每个料斗的原始目标重量
+        self.bucket_original_weights: Dict[int, float] = {}  # 存储每个料斗的原始目标重量
         self.lock = threading.RLock()
+        self.material_name = "未知物料"  # 存储物料名称
         
         # 创建服务实例
         self.monitoring_service = create_bucket_monitoring_service(modbus_client)
@@ -130,6 +131,22 @@ class FineTimeTestController:
         with self.lock:
             for bucket_id in range(1, 7):
                 self.bucket_states[bucket_id] = BucketFineTimeState(bucket_id)
+    
+    def set_material_name(self, material_name: str):
+        """
+        设置物料名称（新增方法）
+        
+        Args:
+            material_name (str): 物料名称
+        """
+        try:
+            self.material_name = material_name
+            with self.lock:
+                for state in self.bucket_states.values():
+                    state.material_name = material_name
+            self._log(f"📝 慢加时间控制器设置物料名称: {material_name}")
+        except Exception as e:
+            self._log(f"❌ 设置物料名称异常: {str(e)}")
                 
     def _on_material_shortage_detected(self, bucket_id: int, stage: str, is_production: bool):
         """
@@ -709,6 +726,11 @@ class FineTimeTestController:
                 # 创建自适应学习控制器（如果尚未创建）
                 if not hasattr(self, 'adaptive_learning_controller'):
                     self.adaptive_learning_controller = create_adaptive_learning_controller(self.modbus_client)
+                
+                    # 🔥 新增：设置物料名称到自适应学习控制器
+                    if hasattr(self.adaptive_learning_controller, 'set_material_name'):
+                        self.adaptive_learning_controller.set_material_name(self.material_name)
+                        self._log(f"📝 已将物料名称'{self.material_name}'传递给自适应学习控制器")
                     
                     # 设置事件回调（修改为合并弹窗回调）
                     def on_all_adaptive_completed(completed_states):
