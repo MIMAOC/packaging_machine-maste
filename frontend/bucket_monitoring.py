@@ -12,13 +12,17 @@
 import threading
 import time
 import logging
-from typing import Dict, List, Optional, Callable
+from typing import Dict, List, Optional, Callable, Deque
 from datetime import datetime
+from collections import deque
 from modbus_client import ModbusClient
 from plc_addresses import (
     BUCKET_MONITORING_ADDRESSES,
+    BUCKET_CONTROL_ADDRESSES,
+    GLOBAL_CONTROL_ADDRESSES,
     get_all_bucket_target_reached_addresses,
-    get_all_bucket_coarse_add_addresses
+    get_all_bucket_coarse_add_addresses,
+    get_all_bucket_weight_addresses
 )
 
 class BucketMonitoringState:
@@ -31,9 +35,15 @@ class BucketMonitoringState:
         self.target_reached_time = None    # 到量时间
         self.coarse_time_ms = 0           # 快加时间（毫秒）
         self.last_target_reached = False  # 上次到量状态
-        self.last_coarse_active = None    # 🔥 修复：初始值改为None，表示未知状态
+        self.last_coarse_active = None    # 初始值改为None，表示未知状态
         self.monitoring_type = "coarse_time"  # 监测类型：coarse_time 或 flight_material 或 adaptive_learning
-        self.coarse_active_initialized = False  # 🔥 新增：标记快加状态是否已初始化
+        self.coarse_active_initialized = False  # 标记快加状态是否已初始化
+        
+        self.weight_history: Deque[tuple] = deque(maxlen=150)  # 重量历史记录(时间戳, 重量)，保存15秒数据
+        self.last_start_active = None      # 上次启动状态
+        self.start_active_initialized = False  # 启动状态是否已初始化
+        self.material_shortage_detected = False  # 是否检测到物料不足
+        self.material_shortage_time = None  # 物料不足检测时间
     
     def reset(self):
         """重置状态"""
@@ -42,9 +52,15 @@ class BucketMonitoringState:
         self.target_reached_time = None
         self.coarse_time_ms = 0
         self.last_target_reached = False
-        self.last_coarse_active = None  # 🔥 修复：重置为None
+        self.last_coarse_active = None  # 重置为None
         self.monitoring_type = "coarse_time"
-        self.coarse_active_initialized = False  # 🔥 新增：重置初始化标记
+        self.coarse_active_initialized = False  # 重置初始化标记
+        
+        self.weight_history.clear() # 重置物料监测状态
+        self.last_start_active = None
+        self.start_active_initialized = False
+        self.material_shortage_detected = False
+        self.material_shortage_time = None
     
     def start_monitoring(self, monitoring_type: str = "coarse_time"):
         """开始监测"""
@@ -52,6 +68,30 @@ class BucketMonitoringState:
         self.is_monitoring = True
         self.start_time = datetime.now()
         self.monitoring_type = monitoring_type
+    
+    def add_weight_record(self, weight: float):
+        """添加重量记录"""
+        current_time = time.time()
+        self.weight_history.append((current_time, weight))
+    
+    def get_weight_15s_ago(self) -> Optional[float]:
+        """获取15秒前的重量"""
+        if not self.weight_history:
+            return None
+        
+        current_time = time.time()
+        target_time = current_time - 15.0  # 15秒前
+        
+        # 找到最接近15秒前的重量记录
+        for timestamp, weight in self.weight_history:
+            if timestamp <= target_time:
+                return weight
+        
+        # 如果没有15秒前的数据，返回最早的记录
+        if self.weight_history:
+            return self.weight_history[0][1]
+        
+        return None
 
 class BucketMonitoringService:
     """
@@ -80,6 +120,9 @@ class BucketMonitoringService:
         self.on_coarse_status_changed: Optional[Callable[[int, bool], None]] = None  # (bucket_id, coarse_active) 新增回调
         self.on_monitoring_log: Optional[Callable[[str], None]] = None
         
+        # 物料不足相关回调
+        self.on_material_shortage_detected: Optional[Callable[[int, str, bool], None]] = None  # (bucket_id, stage, is_production)
+        
         # 配置日志
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.INFO)
@@ -92,6 +135,12 @@ class BucketMonitoringService:
         with self.lock:
             for bucket_id in range(1, 7):
                 self.monitoring_states[bucket_id] = BucketMonitoringState(bucket_id)
+    
+    def set_material_check_enabled(self, enabled: bool):
+        """设置物料监测开关"""
+        with self.lock:
+            self.material_check_enabled = enabled
+            self._log(f"物料监测{'已启用' if enabled else '已禁用'}")
     
     def start_monitoring(self, bucket_ids: List[int], monitoring_type: str = "coarse_time"):
         """
@@ -224,7 +273,7 @@ class BucketMonitoringService:
     
     def _check_target_reached_status(self, monitoring_buckets: List[int]):
         """
-        检查料斗到量状态和快加状态（扩展）
+        检查料斗到量状态和快加状态
         
         Args:
             monitoring_buckets (List[int]): 需要监测的料斗ID列表
@@ -241,6 +290,28 @@ class BucketMonitoringService:
                 self._log("读取到量线圈状态失败")
                 return
             
+            # 读取启动线圈状态（用于物料监测）
+            start_states = None
+            if self.material_check_enabled:
+                start_addresses = [BUCKET_CONTROL_ADDRESSES[i]['StartAddress'] for i in range(1, 7)]
+                start_states = self.modbus_client.read_coils(start_addresses[0], len(start_addresses))
+                
+                if start_states is None:
+                    self._log("读取启动线圈状态失败")
+            
+            # 读取重量数据（用于物料监测）
+            weight_data = None
+            if self.material_check_enabled:
+                weight_addresses = get_all_bucket_weight_addresses()
+                weight_registers = []
+                for addr in weight_addresses:
+                    weight_reg = self.modbus_client.read_holding_registers(addr, 1)
+                    if weight_reg:
+                        weight_registers.append(weight_reg[0] / 10.0)  # 转换重量单位
+                    else:
+                        weight_registers.append(0.0)
+                weight_data = weight_registers
+
             # 对于自适应学习监测，还需要读取快加状态
             coarse_states = None
             if any(self.monitoring_states[bid].monitoring_type == "adaptive_learning" 
@@ -271,6 +342,13 @@ class BucketMonitoringService:
                     
                     current_target_reached = coil_states[i] if i < len(coil_states) else False
                     
+                    # 物料不足检测逻辑
+                    if (self.material_check_enabled and start_states and weight_data and 
+                        i < len(start_states) and i < len(weight_data)):
+                        
+                        self._check_material_shortage(bucket_id, state, start_states[i], 
+                                                    current_target_reached, weight_data[i])
+                    
                     # 检测到量状态的上升沿（从False变为True）
                     if current_target_reached and not state.last_target_reached:
                         # 第一次到量
@@ -287,20 +365,20 @@ class BucketMonitoringService:
                             except Exception as e:
                                 self.logger.error(f"处理料斗{bucket_id}到量事件异常: {e}")
                     
-                    # 🔥 修复：改进快加状态检测逻辑
+                    # 改进快加状态检测逻辑
                     if (state.monitoring_type == "adaptive_learning" and 
                         coarse_states is not None and i < len(coarse_states)):
                         
                         current_coarse_active = coarse_states[i]
                         
-                        # 🔥 修复：处理初始状态
+                        # 处理初始状态
                         if not state.coarse_active_initialized:
                             # 第一次读取，初始化状态
                             state.last_coarse_active = current_coarse_active
                             state.coarse_active_initialized = True
                             self._log(f"料斗{bucket_id}快加状态初始化: {current_coarse_active}")
                         else:
-                            # 🔥 修复：检测状态变化（包括上升沿和下降沿）
+                            # 检测状态变化（包括上升沿和下降沿）
                             if state.last_coarse_active != current_coarse_active:
                                 if current_coarse_active:
                                     # 上升沿：快加开始
@@ -326,6 +404,200 @@ class BucketMonitoringService:
             error_msg = f"检查状态异常: {str(e)}"
             self.logger.error(error_msg)
             self._log(error_msg)
+    
+    def _check_material_shortage(self, bucket_id: int, state: BucketMonitoringState, 
+                               start_active: bool, target_reached: bool, current_weight: float):
+        """
+        检查物料不足
+        
+        Args:
+            bucket_id: 料斗ID
+            state: 料斗状态
+            start_active: 启动状态
+            target_reached: 到量状态
+            current_weight: 当前重量
+        """
+        try:
+            # 添加重量记录
+            state.add_weight_record(current_weight)
+            
+            # 初始化启动状态
+            if not state.start_active_initialized:
+                state.last_start_active = start_active
+                state.start_active_initialized = True
+                return
+            
+            # 检查条件：启动=1 且 到量=0
+            if start_active and not target_reached:
+                # 获取15秒前的重量
+                weight_15s_ago = state.get_weight_15s_ago()
+                
+                if weight_15s_ago is not None:
+                    weight_change = current_weight - weight_15s_ago
+                    
+                    # 判断是否物料不足（重量变化 < 0.3g）
+                    if weight_change < self.weight_threshold and not state.material_shortage_detected:
+                        state.material_shortage_detected = True
+                        state.material_shortage_time = datetime.now()
+                        
+                        # 判断是否为生产阶段
+                        is_production = (state.monitoring_type == "production")
+                        
+                        self._log(f"料斗{bucket_id}检测到物料不足！当前重量: {current_weight:.1f}g, "
+                                f"15秒前重量: {weight_15s_ago:.1f}g, 重量变化: {weight_change:.1f}g")
+                        
+                        # 发送停止命令
+                        self._handle_material_shortage_stop(bucket_id, is_production)
+                        
+                        # 触发物料不足事件
+                        if self.on_material_shortage_detected:
+                            try:
+                                self.on_material_shortage_detected(bucket_id, state.monitoring_type, is_production)
+                            except Exception as e:
+                                self.logger.error(f"处理料斗{bucket_id}物料不足事件异常: {e}")
+            
+            # 更新启动状态
+            state.last_start_active = start_active
+            
+        except Exception as e:
+            self.logger.error(f"检查料斗{bucket_id}物料不足异常: {e}")
+    
+    def _handle_material_shortage_stop(self, bucket_id: int, is_production: bool):
+        """
+        处理物料不足时的停止命令
+        
+        Args:
+            bucket_id: 料斗ID
+            is_production: 是否为生产阶段
+        """
+        try:
+            if is_production:
+                # 生产阶段：发送总停止命令
+                self._log(f"生产阶段物料不足，发送总停止命令")
+                
+                # 先发送总启动=0命令
+                success1 = self.modbus_client.write_coil(
+                    GLOBAL_CONTROL_ADDRESSES['GlobalStart'], False)
+                
+                # 再发送总停止=1命令
+                success2 = self.modbus_client.write_coil(
+                    GLOBAL_CONTROL_ADDRESSES['GlobalStop'], True)
+                
+                if success1 and success2:
+                    self._log("总停止命令发送成功")
+                else:
+                    self._log("总停止命令发送失败")
+            else:
+                # 非生产阶段：发送该斗停止命令
+                self._log(f"非生产阶段料斗{bucket_id}物料不足，发送该斗停止命令")
+                
+                # 先发送该斗启动=0命令
+                success1 = self.modbus_client.write_coil(
+                    BUCKET_CONTROL_ADDRESSES[bucket_id]['StartAddress'], False)
+                
+                # 再发送该斗停止=1命令
+                success2 = self.modbus_client.write_coil(
+                    BUCKET_CONTROL_ADDRESSES[bucket_id]['StopAddress'], True)
+                
+                if success1 and success2:
+                    self._log(f"料斗{bucket_id}停止命令发送成功")
+                else:
+                    self._log(f"料斗{bucket_id}停止命令发送失败")
+                    
+        except Exception as e:
+            self.logger.error(f"处理物料不足停止命令异常: {e}")
+            
+    def handle_material_shortage_continue(self, bucket_id: int, is_production: bool):
+        """
+        处理物料不足时的继续命令
+        
+        Args:
+            bucket_id: 料斗ID
+            is_production: 是否为生产阶段
+        """
+        try:
+            with self.lock:
+                state = self.monitoring_states.get(bucket_id)
+                if state:
+                    state.material_shortage_detected = False
+                    state.material_shortage_time = None
+            
+            if is_production:
+                # 生产阶段：发送总启动命令
+                self._log("生产阶段物料不足恢复，发送总启动命令")
+                
+                # 先发送总停止=0命令
+                success1 = self.modbus_client.write_coil(
+                    GLOBAL_CONTROL_ADDRESSES['GlobalStop'], False)
+                
+                # 再发送总启动=1命令
+                success2 = self.modbus_client.write_coil(
+                    GLOBAL_CONTROL_ADDRESSES['GlobalStart'], True)
+                
+                if success1 and success2:
+                    self._log("总启动命令发送成功")
+                else:
+                    self._log("总启动命令发送失败")
+            else:
+                # 非生产阶段：发送该斗启动命令
+                self._log(f"非生产阶段料斗{bucket_id}物料不足恢复，发送该斗启动命令")
+                
+                # 先发送该斗停止=0命令
+                success1 = self.modbus_client.write_coil(
+                    BUCKET_CONTROL_ADDRESSES[bucket_id]['StopAddress'], False)
+                
+                # 再发送该斗启动=1命令
+                success2 = self.modbus_client.write_coil(
+                    BUCKET_CONTROL_ADDRESSES[bucket_id]['StartAddress'], True)
+                
+                if success1 and success2:
+                    self._log(f"料斗{bucket_id}启动命令发送成功")
+                else:
+                    self._log(f"料斗{bucket_id}启动命令发送失败")
+                    
+        except Exception as e:
+            self.logger.error(f"处理物料不足继续命令异常: {e}")
+            
+    def handle_material_shortage_cancel(self):
+        """
+        处理物料不足时的取消生产命令
+        """
+        try:
+            self._log("用户选择取消生产，准备返回AI模式自适应自学习界面")
+            
+            # 停止所有监测
+            self.stop_all_monitoring()
+            
+            # 这里可以添加其他需要的清理逻辑
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"处理取消生产命令异常: {e}")
+            return False
+        
+    def get_bucket_material_shortage_status(self, bucket_id: int) -> dict:
+        """
+        获取料斗物料不足状态
+        
+        Args:
+            bucket_id: 料斗ID
+            
+        Returns:
+            dict: 物料不足状态信息
+        """
+        with self.lock:
+            state = self.monitoring_states.get(bucket_id)
+            if not state:
+                return {'detected': False, 'time': None, 'weight_records': 0}
+            
+            return {
+                'detected': state.material_shortage_detected,
+                'time': state.material_shortage_time,
+                'weight_records': len(state.weight_history),
+                'current_weight': state.weight_history[-1][1] if state.weight_history else 0.0,
+                'weight_15s_ago': state.get_weight_15s_ago()
+            }
     
     def get_bucket_monitoring_state(self, bucket_id: int) -> Optional[BucketMonitoringState]:
         """

@@ -17,7 +17,7 @@
 import threading
 import time
 import logging
-from typing import Dict, Optional, Callable
+from typing import Dict, Optional, Callable, Tuple
 from datetime import datetime
 from modbus_client import ModbusClient
 from bucket_monitoring import BucketMonitoringService, create_bucket_monitoring_service
@@ -196,6 +196,9 @@ class AdaptiveLearningController:
         self.on_progress_update: Optional[Callable[[int, int, int, str], None]] = None  # (bucket_id, current_attempt, max_attempts, message)
         self.on_log_message: Optional[Callable[[str], None]] = None
         
+        # 物料不足相关回调
+        self.on_material_shortage: Optional[Callable[[int, str, bool], None]] = None  # (bucket_id, stage, is_production)
+        
         # 新增：跟踪活跃料斗
         self.active_buckets: set = set()  # 正在进行自适应学习的料斗集合
         
@@ -210,12 +213,71 @@ class AdaptiveLearningController:
         self.monitoring_service.on_target_reached = self._on_target_reached
         self.monitoring_service.on_coarse_status_changed = self._on_coarse_status_changed
         self.monitoring_service.on_monitoring_log = self._on_monitoring_log
+        
+        # 设置物料不足回调
+        self.monitoring_service.on_material_shortage_detected = self._on_material_shortage_detected
     
     def _initialize_bucket_states(self):
         """初始化料斗状态"""
         with self.lock:
             for bucket_id in range(1, 7):
                 self.bucket_states[bucket_id] = BucketAdaptiveLearningState(bucket_id)
+                
+    def _on_material_shortage_detected(self, bucket_id: int, stage: str, is_production: bool):
+        """
+        处理物料不足检测事件
+        
+        Args:
+            bucket_id (int): 料斗ID
+            stage (str): 当前阶段
+            is_production (bool): 是否为生产阶段
+        """
+        try:
+            # 只处理自适应学习阶段的物料不足
+            if stage == "adaptive_learning" and not is_production:
+                self._log(f"⚠️ 料斗{bucket_id}在自适应学习阶段检测到物料不足，停止该料斗测定")
+                
+                # 停止该料斗的自适应学习测定
+                self._handle_material_shortage_for_bucket(bucket_id)
+                
+                # 触发物料不足回调，让界面显示弹窗
+                if self.on_material_shortage:
+                    try:
+                        self.on_material_shortage(bucket_id, "自适应学习阶段", is_production)
+                    except Exception as e:
+                        self.logger.error(f"物料不足事件回调异常: {e}")
+            
+        except Exception as e:
+            error_msg = f"处理料斗{bucket_id}物料不足事件异常: {str(e)}"
+            self.logger.error(error_msg)
+            self._log(f"❌ {error_msg}")
+    
+    def _handle_material_shortage_for_bucket(self, bucket_id: int):
+        """
+        处理单个料斗的物料不足
+        
+        Args:
+            bucket_id (int): 料斗ID
+        """
+        try:
+            # 停止该料斗的自适应学习测定
+            self.stop_bucket_adaptive_learning_test(bucket_id)
+            
+            # 更新料斗状态为失败
+            with self.lock:
+                state = self.bucket_states.get(bucket_id)
+                if state:
+                    state.fail_with_error("物料不足", "自适应学习阶段")
+            
+            self._log(f"✅ 料斗{bucket_id}自适应学习测定已因物料不足而停止")
+            
+            # 检查是否所有料斗都完成了
+            self._check_all_buckets_completed()
+            
+        except Exception as e:
+            error_msg = f"处理料斗{bucket_id}物料不足停止逻辑异常: {str(e)}"
+            self.logger.error(error_msg)
+            self._log(f"❌ {error_msg}")
     
     def start_adaptive_learning_test(self, bucket_id: int, original_target_weight: float, 
                                     fine_flow_rate: float = None) -> bool:
@@ -262,6 +324,10 @@ class AdaptiveLearningController:
                         self._log(f"⚠️ 料斗{bucket_id}慢加流速为无效值: {fine_flow_rate}g/s，自适应学习分析可能不准确")
                     else:
                         self._log(f"⚠️ 料斗{bucket_id}慢加流速验证失败: {fine_flow_rate}，自适应学习分析可能不准确")
+            
+            # 启用物料监测
+            self.monitoring_service.set_material_check_enabled(True)
+            self._log(f"🔍 料斗{bucket_id}自适应学习阶段物料监测已启用")
             
             self._log(f"🚀 料斗{bucket_id}开始自适应学习阶段测定，原始目标重量: {original_target_weight}g")
             
@@ -392,7 +458,7 @@ class AdaptiveLearningController:
                 self._handle_bucket_failure(bucket_id, f"启动料斗{bucket_id}失败")
                 return
             
-            # 步骤3: 启动监测（同时监测到量状态和快加状态）
+            # 步骤3: 启动监测（指定监测类型为adaptive_learning）
             self._log(f"🔍 步骤3: 启动料斗{bucket_id}自适应学习监测")
             self.monitoring_service.start_monitoring([bucket_id], "adaptive_learning")
             
@@ -1093,8 +1159,85 @@ class AdaptiveLearningController:
             error_msg = f"检查所有料斗完成状态异常: {str(e)}"
             self.logger.error(error_msg)
             self._log(f"❌ {error_msg}")
+            
+    def handle_material_shortage_continue(self, bucket_id: int) -> Tuple[bool, str]:
+        """
+        处理物料不足继续操作
+        
+        Args:
+            bucket_id (int): 料斗ID
+            
+        Returns:
+            Tuple[bool, str]: (是否成功, 操作消息)
+        """
+        try:
+            # 调用监测服务的继续方法
+            self.monitoring_service.handle_material_shortage_continue(bucket_id, False)  # 非生产阶段
+            
+            # 获取料斗状态
+            with self.lock:
+                state = self.bucket_states.get(bucket_id)
+                if not state:
+                    return False, f"无效的料斗ID: {bucket_id}"
+                
+                # 重置失败状态，准备重新启动
+                state.is_testing = False
+                state.is_completed = False
+                state.error_message = ""
+                state.failure_stage = ""
+                state.failure_reason = ""
+                original_target_weight = state.original_target_weight
+                fine_flow_rate = state.bucket_fine_flow_rates.get(bucket_id)
+                
+                # 重新添加到活跃料斗集合
+                self.active_buckets.add(bucket_id)
+            
+            # 重新启动该料斗的自适应学习测定
+            restart_success = self.start_adaptive_learning_test(bucket_id, original_target_weight, fine_flow_rate)
+            
+            if restart_success:
+                success_msg = f"料斗{bucket_id}物料不足已恢复，自适应学习测定重新启动成功"
+                self._log(f"✅ {success_msg}")
+                return True, success_msg
+            else:
+                error_msg = f"料斗{bucket_id}自适应学习测定重新启动失败"
+                self._log(f"❌ {error_msg}")
+                return False, error_msg
+            
+        except Exception as e:
+            error_msg = f"处理料斗{bucket_id}物料不足继续操作异常: {str(e)}"
+            self.logger.error(error_msg)
+            self._log(f"❌ {error_msg}")
+            return False, error_msg
     
-    def stop_adaptive_learning_test(self, bucket_id: int):
+    def handle_material_shortage_cancel(self) -> Tuple[bool, str]:
+        """
+        处理物料不足取消生产操作
+        
+        Returns:
+            Tuple[bool, str]: (是否成功, 操作消息)
+        """
+        try:
+            self._log("📢 用户选择取消生产，停止所有自适应学习测定...")
+            
+            # 停止所有自适应学习测定
+            self.stop_all_adaptive_learning_test()
+            
+            # 调用监测服务的取消方法
+            cancel_success = self.monitoring_service.handle_material_shortage_cancel()
+            
+            success_msg = "✅ 已取消生产，所有自适应学习测定已停止，准备返回AI模式自适应自学习界面"
+            self._log(success_msg)
+            
+            return cancel_success, success_msg
+            
+        except Exception as e:
+            error_msg = f"处理取消生产操作异常: {str(e)}"
+            self.logger.error(error_msg)
+            self._log(f"❌ {error_msg}")
+            return False, error_msg
+    
+    def stop_bucket_adaptive_learning_test(self, bucket_id: int):
         """
         停止指定料斗的自适应学习测定
         
@@ -1107,13 +1250,20 @@ class AdaptiveLearningController:
                     state = self.bucket_states[bucket_id]
                     if state.is_testing:
                         state.is_testing = False
-                        self._log(f"🛑 料斗{bucket_id}自适应学习测定已手动停止")
+                        self._log(f"🛑 料斗{bucket_id}自适应学习测定已停止")
                 
                 # 从活跃料斗集合中移除
                 self.active_buckets.discard(bucket_id)
             
-            # 停止监测
+            # 停止该料斗的监测
             self.monitoring_service.stop_bucket_monitoring(bucket_id)
+            
+            # 发送该料斗的停止命令（互斥保护）
+            success = self._stop_bucket_with_mutex_protection(bucket_id)
+            if success:
+                self._log(f"✅ 料斗{bucket_id}PLC停止命令发送成功")
+            else:
+                self._log(f"⚠️ 料斗{bucket_id}PLC停止命令发送失败")
             
         except Exception as e:
             error_msg = f"停止料斗{bucket_id}自适应学习测定异常: {str(e)}"
@@ -1129,6 +1279,10 @@ class AdaptiveLearningController:
                 
                 # 清空活跃料斗集合
                 self.active_buckets.clear()
+            
+            # 禁用物料监测
+            self.monitoring_service.set_material_check_enabled(False)
+            self._log("⏸️ 自适应学习阶段物料监测已禁用")
             
             # 停止监测服务
             self.monitoring_service.stop_all_monitoring()

@@ -110,6 +110,9 @@ class CoarseTimeTestController:
         self.on_progress_update: Optional[Callable[[int, int, int, str], None]] = None  # (bucket_id, current_attempt, max_attempts, message)
         self.on_log_message: Optional[Callable[[str], None]] = None
         
+        # 物料不足相关回调
+        self.on_material_shortage: Optional[Callable[[int, str, bool], None]] = None  # (bucket_id, stage, is_production)
+        
         # 配置日志
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.INFO)
@@ -120,6 +123,9 @@ class CoarseTimeTestController:
         # 设置监测服务事件回调
         self.monitoring_service.on_target_reached = self._on_target_reached
         self.monitoring_service.on_monitoring_log = self._on_monitoring_log
+        
+        # 设置物料不足回调
+        self.monitoring_service.on_material_shortage_detected = self._on_material_shortage_detected
         
         # 设置飞料值测定控制器事件回调
         self.flight_material_controller.on_bucket_completed = self._on_flight_material_completed
@@ -162,6 +168,10 @@ class CoarseTimeTestController:
             
             self._log(f"📊 测定参数: 目标重量={target_weight}g, 快加速度={coarse_speed}档")
             
+            # 启用物料监测
+            self.monitoring_service.set_material_check_enabled(True)
+            self._log("🔍 物料不足监测已启用")
+            
             # 步骤2: 一次性启动所有6个料斗（带互斥保护）
             self._log("🔄 步骤1: 启动所有6个料斗...")
             start_success, start_msg = self.bucket_control.start_all_buckets_with_mutex_protection()
@@ -196,6 +206,182 @@ class CoarseTimeTestController:
             self.logger.error(error_msg)
             self._log(f"❌ {error_msg}")
             return False, error_msg
+        
+    def _on_material_shortage_detected(self, bucket_id: int, stage: str, is_production: bool):
+        """
+        处理物料不足检测事件
+        
+        Args:
+            bucket_id (int): 料斗ID
+            stage (str): 当前阶段
+            is_production (bool): 是否为生产阶段
+        """
+        try:
+            stage_name = self._get_stage_name(stage)
+            
+            # 非生产阶段（快加时间测定、飞料值测定、慢加时间测定、自适应学习）
+            if not is_production:
+                self._log(f"⚠️ 料斗{bucket_id}在{stage_name}阶段检测到物料不足，停止该料斗")
+                
+                # 停止该料斗的相关测定流程
+                self._handle_material_shortage_for_bucket(bucket_id, stage)
+                
+                # 触发物料不足回调，让界面显示弹窗
+                if self.on_material_shortage:
+                    try:
+                        self.on_material_shortage(bucket_id, stage_name, is_production)
+                    except Exception as e:
+                        self.logger.error(f"物料不足事件回调异常: {e}")
+            else:
+                # 生产阶段的处理在生产控制器中处理
+                self._log(f"⚠️ 生产阶段检测到物料不足，应由生产控制器处理")
+            
+        except Exception as e:
+            error_msg = f"处理料斗{bucket_id}物料不足事件异常: {str(e)}"
+            self.logger.error(error_msg)
+            self._log(f"❌ {error_msg}")
+            
+    def _handle_material_shortage_for_bucket(self, bucket_id: int, stage: str):
+        """
+        处理单个料斗的物料不足
+        
+        Args:
+            bucket_id (int): 料斗ID
+            stage (str): 当前阶段
+        """
+        try:
+            # 根据不同阶段停止相应的测定流程
+            if stage == "coarse_time":
+                # 快加时间测定阶段：停止该料斗的监测
+                self.monitoring_service.stop_bucket_monitoring(bucket_id)
+                
+                # 更新料斗状态为失败
+                with self.lock:
+                    state = self.bucket_states.get(bucket_id)
+                    if state:
+                        state.fail_with_error("物料不足", "coarse_time")
+                
+            elif stage == "flight_material":
+                # 飞料值测定阶段：停止该料斗的飞料值测定
+                if hasattr(self.flight_material_controller, 'stop_bucket_flight_material_test'):
+                    self.flight_material_controller.stop_bucket_flight_material_test(bucket_id)
+                
+            elif stage == "fine_time":
+                # 慢加时间测定阶段：停止该料斗的慢加时间测定
+                if hasattr(self.fine_time_controller, 'stop_bucket_fine_time_test'):
+                    self.fine_time_controller.stop_bucket_fine_time_test(bucket_id)
+                
+            elif stage == "adaptive_learning":
+                # 自适应学习阶段：停止该料斗的监测
+                self.monitoring_service.stop_bucket_monitoring(bucket_id)
+            
+            self._log(f"✅ 料斗{bucket_id}在{self._get_stage_name(stage)}阶段的测定已停止")
+            
+        except Exception as e:
+            error_msg = f"处理料斗{bucket_id}物料不足停止逻辑异常: {str(e)}"
+            self.logger.error(error_msg)
+            self._log(f"❌ {error_msg}")
+            
+    def handle_material_shortage_continue(self, bucket_id: int, stage: str) -> Tuple[bool, str]:
+        """
+        处理物料不足继续操作
+        
+        Args:
+            bucket_id (int): 料斗ID
+            stage (str): 当前阶段
+            
+        Returns:
+            Tuple[bool, str]: (是否成功, 操作消息)
+        """
+        try:
+            # 调用监测服务的继续方法
+            self.monitoring_service.handle_material_shortage_continue(bucket_id, False)  # 非生产阶段
+            
+            # 根据不同阶段重新启动相应的测定流程
+            if stage == "coarse_time":
+                # 快加时间测定阶段：重新启动该料斗
+                with self.lock:
+                    state = self.bucket_states.get(bucket_id)
+                    if not state:
+                        return False, f"无效的料斗ID: {bucket_id}"
+                    
+                    # 重置失败状态
+                    state.is_testing = True
+                    state.is_completed = False
+                    state.error_message = ""
+                    state.failed_stage = None
+                
+                # 重新启动该料斗的监测
+                self.monitoring_service.restart_bucket_monitoring(bucket_id, "coarse_time")
+                
+                # 更新进度
+                self._update_progress(bucket_id, state.attempt_count, state.max_attempts, 
+                                    "物料不足已恢复，继续快加时间测定...")
+                
+            elif stage == "flight_material":
+                # 飞料值测定阶段：重新启动飞料值测定
+                with self.lock:
+                    state = self.bucket_states.get(bucket_id)
+                    target_weight = state.target_weight if state else 200.0
+                
+                flight_success = self.flight_material_controller.start_flight_material_test(bucket_id, target_weight)
+                if not flight_success:
+                    return False, f"料斗{bucket_id}飞料值测定重新启动失败"
+                
+            elif stage == "fine_time":
+                # 慢加时间测定阶段：重新启动慢加时间测定
+                with self.lock:
+                    state = self.bucket_states.get(bucket_id)
+                    if not state:
+                        return False, f"无效的料斗ID: {bucket_id}"
+                    target_weight = state.target_weight
+                    flight_material_value = state.last_flight_material_value
+                
+                fine_time_success = self.fine_time_controller.start_fine_time_test(
+                    bucket_id, target_weight, flight_material_value)
+                if not fine_time_success:
+                    return False, f"料斗{bucket_id}慢加时间测定重新启动失败"
+                
+            elif stage == "adaptive_learning":
+                # 自适应学习阶段：重新启动监测
+                self.monitoring_service.restart_bucket_monitoring(bucket_id, "adaptive_learning")
+            
+            success_msg = f"料斗{bucket_id}物料不足已恢复，{self._get_stage_name(stage)}继续进行"
+            self._log(f"✅ {success_msg}")
+            return True, success_msg
+            
+        except Exception as e:
+            error_msg = f"处理料斗{bucket_id}物料不足继续操作异常: {str(e)}"
+            self.logger.error(error_msg)
+            self._log(f"❌ {error_msg}")
+            return False, error_msg
+        
+    def handle_material_shortage_cancel(self) -> Tuple[bool, str]:
+        """
+        处理物料不足取消生产操作
+        
+        Returns:
+            Tuple[bool, str]: (是否成功, 操作消息)
+        """
+        try:
+            self._log("📢 用户选择取消生产，停止所有测定流程...")
+            
+            # 停止所有测定流程
+            self.stop_all_coarse_time_test()
+            
+            # 调用监测服务的取消方法
+            cancel_success = self.monitoring_service.handle_material_shortage_cancel()
+            
+            success_msg = "✅ 已取消生产，所有测定流程已停止，准备返回AI模式自适应自学习界面"
+            self._log(success_msg)
+            
+            return cancel_success, success_msg
+            
+        except Exception as e:
+            error_msg = f"处理取消生产操作异常: {str(e)}"
+            self.logger.error(error_msg)
+            self._log(f"❌ {error_msg}")
+            return False, error_msg
     
     def restart_bucket_learning(self, bucket_id: int, restart_mode: str = "from_beginning") -> Tuple[bool, str]:
         """
@@ -221,6 +407,9 @@ class CoarseTimeTestController:
                 failed_stage = state.failed_stage
             
             self._log(f"🔄 料斗{bucket_id}重新学习: 模式={restart_mode}, 失败阶段={failed_stage}")
+            
+            # 重新启用物料监测（如果之前被禁用）
+            self.monitoring_service.set_material_check_enabled(True)
             
             if restart_mode == "from_beginning":
                 # 从头开始学习：重置状态，从快加时间测定开始
@@ -753,6 +942,10 @@ class CoarseTimeTestController:
         """
         try:
             self._log("🛑 停止所有料斗的快加时间测定...")
+            
+            # 🔥 新增：禁用物料监测
+            self.monitoring_service.set_material_check_enabled(False)
+            self._log("⏸️ 物料不足监测已禁用")
             
             # 停止监测服务
             self.monitoring_service.stop_all_monitoring()

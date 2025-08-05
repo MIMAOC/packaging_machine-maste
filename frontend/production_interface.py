@@ -68,6 +68,19 @@ class ProductionInterface:
         if main_window and hasattr(main_window, 'modbus_client'):
             self.modbus_client = main_window.modbus_client
         
+        # 
+        self.monitoring_service = None
+        if self.modbus_client:
+            try:
+                from bucket_monitoring import create_bucket_monitoring_service
+                self.monitoring_service = create_bucket_monitoring_service(self.modbus_client)
+                # 设置物料不足回调
+                self.monitoring_service.on_material_shortage_detected = self._on_material_shortage_detected
+                print("[生产界面] 物料监测服务初始化成功")
+            except ImportError as e:
+                print(f"[警告] 无法导入物料监测服务: {e}")
+                self.monitoring_service = None
+        
         # 创建生产界面窗口
         self.root = tk.Toplevel(parent)
         
@@ -91,7 +104,7 @@ class ProductionInterface:
         self.package_count_label = None  # 包装数量标签
         self.completion_rate_label = None  # 完成率标签
         self.avg_weight_label = None  # 平均重量标签
-        self.pause_resume_btn = None  # ✅ 新增：暂停/启动按钮引用
+        self.pause_resume_btn = None  # 暂停/启动按钮引用
         
         # 设置窗口属性
         self.setup_window()
@@ -423,6 +436,11 @@ class ProductionInterface:
             
             print("开始启动生产流程...")
             
+            # 启用物料监测
+            if self.monitoring_service:
+                self.monitoring_service.set_material_check_enabled(True)
+                print("[生产界面] 物料不足监测已启用")
+            
             # 在后台线程执行PLC操作
             def production_startup_thread():
                 try:
@@ -476,7 +494,7 @@ class ProductionInterface:
         """开始监控生产状态"""
         try:
             self.is_production_running = True
-            self.is_paused = False  # ✅ 新增：确保初始状态为非暂停
+            self.is_paused = False  # 确保初始状态为非暂停
             self.production_start_time = datetime.now()
             self.monitoring_threads_running = True
             
@@ -485,6 +503,12 @@ class ProductionInterface:
                 self.pause_resume_btn.config(text="⏸ 暂停", bg='#ffc107')
             
             print("开始生产监控...")
+            
+            # 启动物料监测服务（生产阶段）
+            if self.monitoring_service:
+                bucket_ids = list(range(1, 7))  # 监测所有料斗
+                self.monitoring_service.start_monitoring(bucket_ids, "production")
+                print("[生产界面] 物料监测服务已启动（生产阶段）")
             
             # 启动计时器更新线程
             def timer_update_thread():
@@ -1185,6 +1209,316 @@ class ProductionInterface:
         except Exception as e:
             print(f"取消生产异常: {e}")
             self.add_fault_record(f"取消操作异常: {str(e)}")
+            
+    def _on_material_shortage_detected(self, bucket_id: int, stage: str, is_production: bool):
+        """
+        处理物料不足检测事件
+        
+        Args:
+            bucket_id (int): 料斗ID
+            stage (str): 当前阶段
+            is_production (bool): 是否为生产阶段
+        """
+        try:
+            # 只处理生产阶段的物料不足
+            if is_production and stage == "production":
+                print(f"[生产界面] 料斗{bucket_id}在生产阶段检测到物料不足，发送总停止命令")
+                
+                # 发送总停止命令
+                self._handle_material_shortage_stop()
+                
+                # 在主线程显示物料不足弹窗
+                self.root.after(0, lambda: self._show_material_shortage_dialog(bucket_id))
+            
+        except Exception as e:
+            error_msg = f"处理料斗{bucket_id}物料不足事件异常: {str(e)}"
+            print(f"[错误] {error_msg}")
+            self.root.after(0, lambda: self.add_fault_record(error_msg))
+    
+    def _handle_material_shortage_stop(self):
+        """
+        处理物料不足时的总停止命令
+        """
+        try:
+            if self.modbus_client and self.modbus_client.is_connected:
+                # 在后台线程执行PLC操作
+                def stop_thread():
+                    try:
+                        print("[生产界面] 物料不足，发送总启动=0命令")
+                        success1 = self.modbus_client.write_coil(
+                            GLOBAL_CONTROL_ADDRESSES['GlobalStart'], False)
+                        
+                        print("[生产界面] 物料不足，发送总停止=1命令")
+                        success2 = self.modbus_client.write_coil(
+                            GLOBAL_CONTROL_ADDRESSES['GlobalStop'], True)
+                        
+                        if success1 and success2:
+                            self.root.after(0, lambda: self.add_fault_record("物料不足，生产已自动停止"))
+                            print("[生产界面] 物料不足总停止命令发送成功")
+                        else:
+                            self.root.after(0, lambda: self.add_fault_record("物料不足总停止命令发送失败"))
+                            print("[生产界面] 物料不足总停止命令发送失败")
+                    
+                    except Exception as e:
+                        error_msg = f"物料不足停止命令异常: {str(e)}"
+                        print(f"[错误] {error_msg}")
+                        self.root.after(0, lambda: self.add_fault_record(error_msg))
+                
+                # 启动停止操作线程
+                threading.Thread(target=stop_thread, daemon=True).start()
+        
+        except Exception as e:
+            error_msg = f"处理物料不足停止命令异常: {str(e)}"
+            print(f"[错误] {error_msg}")
+            self.add_fault_record(error_msg)
+    
+    def _show_material_shortage_dialog(self, bucket_id: int):
+        """
+        显示物料不足弹窗(类似图1的样式)
+        
+        Args:
+            bucket_id (int): 料斗ID
+        """
+        try:
+            # 创建物料不足弹窗
+            material_shortage_window = tk.Toplevel(self.root)
+            material_shortage_window.title("")
+            material_shortage_window.geometry("600x400")
+            material_shortage_window.configure(bg='#ff9800')  # 橙色背景
+            material_shortage_window.resizable(False, False)
+            material_shortage_window.transient(self.root)
+            material_shortage_window.grab_set()
+            
+            # 居中显示弹窗
+            self.center_dialog_relative_to_main(material_shortage_window, 600, 400)
+            
+            # 关闭按钮
+            close_btn = tk.Button(material_shortage_window, text="✕", 
+                                font=tkFont.Font(family="微软雅黑", size=14, weight="bold"),
+                                bg='#ff9800', fg='white', relief='flat', bd=0,
+                                command=material_shortage_window.destroy)
+            close_btn.place(x=560, y=10)
+            
+            # 故障代码
+            tk.Label(material_shortage_window, text="故障代码：E001", 
+                    font=tkFont.Font(family="微软雅黑", size=14),
+                    bg='#ff9800', fg='white').place(x=50, y=50)
+            
+            # 故障类型
+            tk.Label(material_shortage_window, text="故障类型：物料不足/闭合异常", 
+                    font=tkFont.Font(family="微软雅黑", size=14),
+                    bg='#ff9800', fg='white').place(x=50, y=90)
+            
+            # 故障描述
+            tk.Label(material_shortage_window, text=f"故障描述：料斗物料低于最低水平线或闭合不正常", 
+                    font=tkFont.Font(family="微软雅黑", size=14),
+                    bg='#ff9800', fg='white').place(x=50, y=130)
+            
+            # 处理方法
+            processing_text = ("处理方法：1.请检查料斗物料是否低于最低水平线，如果是请加料\n"
+                             "        2.请检查料斗闭合是否正常，如闭合不正常，请手动归位完全闭合")
+            tk.Label(material_shortage_window, text=processing_text, 
+                    font=tkFont.Font(family="微软雅黑", size=14),
+                    bg='#ff9800', fg='white', justify='left').place(x=50, y=170)
+            
+            # 按钮区域
+            button_frame = tk.Frame(material_shortage_window, bg='#ff9800')
+            button_frame.place(x=150, y=300)
+            
+            # 取消生产按钮
+            cancel_btn = tk.Button(button_frame, text="✕ 取消生产", 
+                                 font=tkFont.Font(family="微软雅黑", size=14),
+                                 bg='white', fg='#333333',
+                                 relief='flat', bd=0,
+                                 padx=30, pady=10,
+                                 command=lambda: self._handle_material_shortage_cancel(material_shortage_window))
+            cancel_btn.pack(side=tk.LEFT, padx=20)
+            
+            # 继续按钮
+            continue_btn = tk.Button(button_frame, text="▶ 继续", 
+                                   font=tkFont.Font(family="微软雅黑", size=14),
+                                   bg='#2196f3', fg='white',
+                                   relief='flat', bd=0,
+                                   padx=30, pady=10,
+                                   command=lambda: self._handle_material_shortage_continue(material_shortage_window))
+            continue_btn.pack(side=tk.LEFT, padx=20)
+            
+            print(f"[生产界面] 显示料斗{bucket_id}物料不足弹窗")
+            
+        except Exception as e:
+            error_msg = f"显示物料不足弹窗异常: {str(e)}"
+            print(f"[错误] {error_msg}")
+            self.add_fault_record(error_msg)
+    
+    def _handle_material_shortage_continue(self, dialog_window):
+        """
+        处理物料不足继续操作
+        
+        Args:
+            dialog_window: 弹窗对象
+        """
+        try:
+            # 关闭弹窗
+            dialog_window.destroy()
+            
+            # 调用物料监测服务的继续方法（生产阶段）
+            if self.monitoring_service:
+                self.monitoring_service.handle_material_shortage_continue(0, True)  # bucket_id=0表示生产阶段, is_production=True
+            
+            # 恢复生产
+            self._resume_production_after_material_shortage()
+            
+            print("[生产界面] 物料不足问题已处理，继续生产")
+            
+        except Exception as e:
+            error_msg = f"处理物料不足继续操作异常: {str(e)}"
+            print(f"[错误] {error_msg}")
+            self.add_fault_record(error_msg)
+    
+    def _handle_material_shortage_cancel(self, dialog_window):
+        """
+        处理物料不足取消生产操作
+        
+        Args:
+            dialog_window: 弹窗对象
+        """
+        try:
+            # 关闭弹窗
+            dialog_window.destroy()
+            
+            # 显示取消生产确认弹窗（类似图2的样式）
+            self._show_cancel_production_confirm_dialog()
+            
+            print("[生产界面] 用户选择取消生产")
+            
+        except Exception as e:
+            error_msg = f"处理物料不足取消操作异常: {str(e)}"
+            print(f"[错误] {error_msg}")
+            self.add_fault_record(error_msg)
+    
+    def _show_cancel_production_confirm_dialog(self):
+        """
+        显示取消生产确认弹窗(类似图2的样式)
+        """
+        try:
+            # 创建取消生产确认弹窗
+            cancel_confirm_window = tk.Toplevel(self.root)
+            cancel_confirm_window.title("")
+            cancel_confirm_window.geometry("600x400")
+            cancel_confirm_window.configure(bg='#ff9800')  # 橙色背景
+            cancel_confirm_window.resizable(False, False)
+            cancel_confirm_window.transient(self.root)
+            cancel_confirm_window.grab_set()
+            
+            # 居中显示弹窗
+            self.center_dialog_relative_to_main(cancel_confirm_window, 600, 400)
+            
+            # 关闭按钮
+            close_btn = tk.Button(cancel_confirm_window, text="✕", 
+                                font=tkFont.Font(family="微软雅黑", size=14, weight="bold"),
+                                bg='#ff9800', fg='white', relief='flat', bd=0,
+                                command=cancel_confirm_window.destroy)
+            close_btn.place(x=560, y=10)
+            
+            # 确认信息
+            tk.Label(cancel_confirm_window, text="你确定要取消", 
+                    font=tkFont.Font(family="微软雅黑", size=24, weight="bold"),
+                    bg='#ff9800', fg='white').place(x=230, y=150)
+            
+            tk.Label(cancel_confirm_window, text="结束此次生产", 
+                    font=tkFont.Font(family="微软雅黑", size=24, weight="bold"),
+                    bg='#ff9800', fg='white').place(x=210, y=200)
+            
+            # 按钮区域
+            button_frame = tk.Frame(cancel_confirm_window, bg='#ff9800')
+            button_frame.place(x=200, y=300)
+            
+            # 确定按钮
+            def on_confirm_cancel():
+                cancel_confirm_window.destroy()
+                # 执行取消生产操作
+                self._execute_cancel_production()
+            
+            confirm_btn = tk.Button(button_frame, text="确定", 
+                                  font=tkFont.Font(family="微软雅黑", size=14),
+                                  bg='#ff4444', fg='white',
+                                  relief='flat', bd=0,
+                                  padx=40, pady=10,
+                                  command=on_confirm_cancel)
+            confirm_btn.pack()
+            
+            print("[生产界面] 显示取消生产确认弹窗")
+            
+        except Exception as e:
+            error_msg = f"显示取消生产确认弹窗异常: {str(e)}"
+            print(f"[错误] {error_msg}")
+            self.add_fault_record(error_msg)
+    
+    def _execute_cancel_production(self):
+        """
+        执行取消生产操作
+        """
+        try:
+            # 调用物料监测服务的取消方法
+            if self.monitoring_service:
+                self.monitoring_service.handle_material_shortage_cancel()
+            
+            # 停止生产
+            self._pause_production()
+            
+            self.add_fault_record("用户取消生产，生产任务已终止")
+            
+            # 关闭生产界面，回到AI模式界面
+            self.on_closing()
+            
+            print("[生产界面] 生产已取消，返回AI模式界面")
+            
+        except Exception as e:
+            error_msg = f"执行取消生产操作异常: {str(e)}"
+            print(f"[错误] {error_msg}")
+            self.add_fault_record(error_msg)
+    
+    def _resume_production_after_material_shortage(self):
+        """
+        物料不足问题解决后恢复生产
+        """
+        try:
+            if self.modbus_client and self.modbus_client.is_connected:
+                # 在后台线程执行PLC操作
+                def resume_thread():
+                    try:
+                        print("[生产界面] 物料不足问题解决，发送总停止=0命令（互斥保护）")
+                        success1 = self.modbus_client.write_coil(
+                            GLOBAL_CONTROL_ADDRESSES['GlobalStop'], False)
+                        
+                        # 等待50ms
+                        time.sleep(0.05)
+                        
+                        print("[生产界面] 物料不足问题解决，发送总启动=1命令")
+                        success2 = self.modbus_client.write_coil(
+                            GLOBAL_CONTROL_ADDRESSES['GlobalStart'], True)
+                        
+                        if success1 and success2:
+                            self.root.after(0, lambda: self.add_fault_record("物料不足问题已解决，生产已恢复"))
+                            print("[生产界面] 物料不足问题解决，生产恢复成功")
+                        else:
+                            self.root.after(0, lambda: self.add_fault_record("恢复生产命令发送失败"))
+                            print("[生产界面] 恢复生产命令发送失败")
+                    
+                    except Exception as e:
+                        error_msg = f"恢复生产异常: {str(e)}"
+                        print(f"[错误] {error_msg}")
+                        self.root.after(0, lambda: self.add_fault_record(error_msg))
+                
+                # 启动恢复操作线程
+                threading.Thread(target=resume_thread, daemon=True).start()
+            else:
+                self.add_fault_record("PLC未连接，无法恢复生产")
+        
+        except Exception as e:
+            error_msg = f"恢复生产异常: {str(e)}"
+            print(f"[错误] {error_msg}")
+            self.add_fault_record(error_msg)
     
     def on_closing(self):
         """窗口关闭事件处理"""
@@ -1192,6 +1526,12 @@ class ProductionInterface:
             # 停止所有监控线程
             self.monitoring_threads_running = False
             self.is_production_running = False
+            
+            # 禁用物料监测
+            if self.monitoring_service:
+                self.monitoring_service.set_material_check_enabled(False)
+                self.monitoring_service.stop_all_monitoring()
+                print("[生产界面] 物料监测服务已停止")
             
             # 停止PLC
             if self.modbus_client and self.modbus_client.is_connected:

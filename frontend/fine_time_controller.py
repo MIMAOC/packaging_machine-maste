@@ -13,7 +13,7 @@
 import threading
 import time
 import logging
-from typing import Dict, Optional, Callable
+from typing import Dict, Optional, Callable, Tuple
 from datetime import datetime
 from modbus_client import ModbusClient
 from bucket_monitoring import BucketMonitoringService, create_bucket_monitoring_service
@@ -107,6 +107,9 @@ class FineTimeTestController:
         self.on_progress_update: Optional[Callable[[int, int, int, str], None]] = None  # (bucket_id, current_attempt, max_attempts, message)
         self.on_log_message: Optional[Callable[[str], None]] = None
         
+        # 物料不足相关回调
+        self.on_material_shortage: Optional[Callable[[int, str, bool], None]] = None  # (bucket_id, stage, is_production)
+        
         # 配置日志
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.INFO)
@@ -117,12 +120,68 @@ class FineTimeTestController:
         # 设置监测服务事件回调
         self.monitoring_service.on_target_reached = self._on_target_reached
         self.monitoring_service.on_monitoring_log = self._on_monitoring_log
+        
+        # 设置物料不足回调
+        self.monitoring_service.on_material_shortage_detected = self._on_material_shortage_detected
     
     def _initialize_bucket_states(self):
         """初始化料斗状态"""
         with self.lock:
             for bucket_id in range(1, 7):
                 self.bucket_states[bucket_id] = BucketFineTimeState(bucket_id)
+                
+    def _on_material_shortage_detected(self, bucket_id: int, stage: str, is_production: bool):
+        """
+        处理物料不足检测事件
+        
+        Args:
+            bucket_id (int): 料斗ID
+            stage (str): 当前阶段
+            is_production (bool): 是否为生产阶段
+        """
+        try:
+            # 只处理慢加时间测定阶段的物料不足
+            if stage == "fine_time" and not is_production:
+                self._log(f"⚠️ 料斗{bucket_id}在慢加时间测定阶段检测到物料不足，停止该料斗测定")
+                
+                # 停止该料斗的慢加时间测定
+                self._handle_material_shortage_for_bucket(bucket_id)
+                
+                # 触发物料不足回调，让界面显示弹窗
+                if self.on_material_shortage:
+                    try:
+                        self.on_material_shortage(bucket_id, "慢加时间测定", is_production)
+                    except Exception as e:
+                        self.logger.error(f"物料不足事件回调异常: {e}")
+            
+        except Exception as e:
+            error_msg = f"处理料斗{bucket_id}物料不足事件异常: {str(e)}"
+            self.logger.error(error_msg)
+            self._log(f"❌ {error_msg}")
+    
+    def _handle_material_shortage_for_bucket(self, bucket_id: int):
+        """
+        处理单个料斗的物料不足
+        
+        Args:
+            bucket_id (int): 料斗ID
+        """
+        try:
+            # 停止该料斗的慢加时间测定
+            self.stop_bucket_fine_time_test(bucket_id)
+            
+            # 更新料斗状态为失败
+            with self.lock:
+                state = self.bucket_states.get(bucket_id)
+                if state:
+                    state.fail_with_error("物料不足")
+            
+            self._log(f"✅ 料斗{bucket_id}慢加时间测定已因物料不足而停止")
+            
+        except Exception as e:
+            error_msg = f"处理料斗{bucket_id}物料不足停止逻辑异常: {str(e)}"
+            self.logger.error(error_msg)
+            self._log(f"❌ {error_msg}")
     
     def start_fine_time_test(self, bucket_id: int, original_target_weight: float = 200.0, 
                               average_flight_material: float = 0.0) -> bool:
@@ -153,6 +212,10 @@ class FineTimeTestController:
                 
                 # 存储原始目标重量
                 self.bucket_original_weights[bucket_id] = original_target_weight
+            
+            # 启用物料监测
+            self.monitoring_service.set_material_check_enabled(True)
+            self._log(f"🔍 料斗{bucket_id}慢加时间测定物料监测已启用")
             
             self._log(f"🚀 料斗{bucket_id}开始慢加时间测定，原始目标重量: {original_target_weight}g，平均飞料值: {average_flight_material:.1f}g")
             
@@ -220,7 +283,7 @@ class FineTimeTestController:
                 self._handle_bucket_failure(bucket_id, f"启动料斗{bucket_id}失败")
                 return
             
-            # 步骤3: 启动监测
+            # 步骤3: 启动监测（指定监测类型为fine_time）
             self._log(f"🔍 步骤3: 启动料斗{bucket_id}慢加监测")
             self.monitoring_service.start_monitoring([bucket_id], "fine_time")
             
@@ -777,10 +840,84 @@ class FineTimeTestController:
             error_msg = f"处理料斗{bucket_id}重测异常: {str(e)}"
             self.logger.error(error_msg)
             self._handle_bucket_failure(bucket_id, f"{error_msg}，无法继续测定")
-    
-    def stop_fine_time_test(self, bucket_id: int):
+            
+    def handle_material_shortage_continue(self, bucket_id: int) -> Tuple[bool, str]:
         """
-        停止指定料斗的慢加时间测定
+        处理物料不足继续操作
+        
+        Args:
+            bucket_id (int): 料斗ID
+            
+        Returns:
+            Tuple[bool, str]: (是否成功, 操作消息)
+        """
+        try:
+            # 调用监测服务的继续方法
+            self.monitoring_service.handle_material_shortage_continue(bucket_id, False)  # 非生产阶段
+            
+            # 获取料斗状态
+            with self.lock:
+                state = self.bucket_states.get(bucket_id)
+                if not state:
+                    return False, f"无效的料斗ID: {bucket_id}"
+                
+                # 重置失败状态，准备重新启动
+                state.is_testing = False
+                state.is_completed = False
+                state.error_message = ""
+                average_flight_material = state.average_flight_material
+                
+                # 获取原始目标重量
+                original_target_weight = self.bucket_original_weights.get(bucket_id, 200.0)
+            
+            # 重新启动该料斗的慢加时间测定
+            restart_success = self.start_fine_time_test(bucket_id, original_target_weight, average_flight_material)
+            
+            if restart_success:
+                success_msg = f"料斗{bucket_id}物料不足已恢复，慢加时间测定重新启动成功"
+                self._log(f"✅ {success_msg}")
+                return True, success_msg
+            else:
+                error_msg = f"料斗{bucket_id}慢加时间测定重新启动失败"
+                self._log(f"❌ {error_msg}")
+                return False, error_msg
+            
+        except Exception as e:
+            error_msg = f"处理料斗{bucket_id}物料不足继续操作异常: {str(e)}"
+            self.logger.error(error_msg)
+            self._log(f"❌ {error_msg}")
+            return False, error_msg
+    
+    def handle_material_shortage_cancel(self) -> Tuple[bool, str]:
+        """
+        处理物料不足取消生产操作
+        
+        Returns:
+            Tuple[bool, str]: (是否成功, 操作消息)
+        """
+        try:
+            self._log("📢 用户选择取消生产，停止所有慢加时间测定...")
+            
+            # 停止所有慢加时间测定
+            self.stop_all_fine_time_test()
+            
+            # 调用监测服务的取消方法
+            cancel_success = self.monitoring_service.handle_material_shortage_cancel()
+            
+            success_msg = "✅ 已取消生产，所有慢加时间测定已停止，准备返回AI模式自适应自学习界面"
+            self._log(success_msg)
+            
+            return cancel_success, success_msg
+            
+        except Exception as e:
+            error_msg = f"处理取消生产操作异常: {str(e)}"
+            self.logger.error(error_msg)
+            self._log(f"❌ {error_msg}")
+            return False, error_msg
+    
+    def stop_bucket_fine_time_test(self, bucket_id: int):
+        """
+        停止指定料斗的慢加时间测定（增强版）
         
         Args:
             bucket_id (int): 料斗ID
@@ -791,10 +928,17 @@ class FineTimeTestController:
                     state = self.bucket_states[bucket_id]
                     if state.is_testing:
                         state.is_testing = False
-                        self._log(f"🛑 料斗{bucket_id}慢加时间测定已手动停止")
+                        self._log(f"🛑 料斗{bucket_id}慢加时间测定已停止")
             
-            # 停止监测
+            # 停止该料斗的监测
             self.monitoring_service.stop_bucket_monitoring(bucket_id)
+            
+            # 发送该料斗的停止命令（互斥保护）
+            success = self._stop_bucket_with_mutex_protection(bucket_id)
+            if success:
+                self._log(f"✅ 料斗{bucket_id}PLC停止命令发送成功")
+            else:
+                self._log(f"⚠️ 料斗{bucket_id}PLC停止命令发送失败")
             
         except Exception as e:
             error_msg = f"停止料斗{bucket_id}慢加时间测定异常: {str(e)}"
@@ -802,11 +946,15 @@ class FineTimeTestController:
             self._log(f"❌ {error_msg}")
     
     def stop_all_fine_time_test(self):
-        """停止所有料斗的慢加时间测定"""
+        """停止所有料斗的慢加时间测定（增强版 - 禁用物料监测）"""
         try:
             with self.lock:
                 for state in self.bucket_states.values():
                     state.is_testing = False
+            
+            # 🔥 新增：禁用物料监测
+            self.monitoring_service.set_material_check_enabled(False)
+            self._log("⏸️ 慢加时间测定物料监测已禁用")
             
             # 停止监测服务
             self.monitoring_service.stop_all_monitoring()
