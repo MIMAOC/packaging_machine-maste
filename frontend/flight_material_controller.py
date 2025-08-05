@@ -94,6 +94,7 @@ class FlightMaterialTestController:
         
         # 事件回调
         self.on_bucket_completed: Optional[Callable[[int, bool, str], None]] = None  # (bucket_id, success, message)
+        self.on_bucket_failed: Optional[Callable[[int, str, str], None]] = None      # (bucket_id, error_message, failed_stage) - 新增失败回调
         self.on_progress_update: Optional[Callable[[int, int, int, str], None]] = None  # (bucket_id, current_attempt, max_attempts, message)
         self.on_log_message: Optional[Callable[[str], None]] = None
         
@@ -133,16 +134,13 @@ class FlightMaterialTestController:
             # 只处理飞料值测定阶段的物料不足
             if stage == "flight_material" and not is_production:
                 self._log(f"⚠️ 料斗{bucket_id}在飞料值测定阶段检测到物料不足，停止该料斗测定")
-                
+
                 # 停止该料斗的飞料值测定
                 self._handle_material_shortage_for_bucket(bucket_id)
                 
-                # 触发物料不足回调，让界面显示弹窗
-                if self.on_material_shortage:
-                    try:
-                        self.on_material_shortage(bucket_id, "飞料值测定", is_production)
-                    except Exception as e:
-                        self.logger.error(f"物料不足事件回调异常: {e}")
+                # 直接触发失败回调，使用指定的错误信息
+                error_message = "料斗物料低于最低水平线或闭合不正常"
+                self._handle_bucket_failure(bucket_id, error_message, stage)
             
         except Exception as e:
             error_msg = f"处理料斗{bucket_id}物料不足事件异常: {str(e)}"
@@ -553,7 +551,7 @@ class FlightMaterialTestController:
             self.logger.error(error_msg)
             self._handle_bucket_failure(bucket_id, error_msg)
     
-    def _handle_bucket_failure(self, bucket_id: int, error_message: str):
+    def _handle_bucket_failure(self, bucket_id: int, error_message: str, failed_stage: str = "flight_material"):
         """
         处理料斗测定失败
         
@@ -565,13 +563,17 @@ class FlightMaterialTestController:
             with self.lock:
                 state = self.bucket_states[bucket_id]
                 state.fail_with_error(error_message)
-            
+
             failure_msg = f"❌ 料斗{bucket_id}飞料值测定失败: {error_message}"
             self._log(failure_msg)
-            
-            # 触发完成事件
-            self._trigger_bucket_completed(bucket_id, False, failure_msg)
-            
+
+            # 触发失败回调（新增），让界面处理失败弹窗
+            if self.on_bucket_failed:
+                try:
+                    self.on_bucket_failed(bucket_id, error_message, failed_stage)
+                except Exception as e:
+                    self.logger.error(f"失败事件回调异常: {e}")
+
         except Exception as e:
             error_msg = f"处理料斗{bucket_id}失败状态异常: {str(e)}"
             self.logger.error(error_msg)

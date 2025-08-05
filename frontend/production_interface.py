@@ -223,7 +223,7 @@ class ProductionInterface:
         # 蓝色分隔线
         separator = tk.Frame(parent, height=3, bg='#7fb3d3')
         separator.pack(fill=tk.X, pady=(10, 0))
-    
+        
     def create_bucket_monitoring_section(self, parent):
         """
         创建料斗监控区域
@@ -439,7 +439,7 @@ class ProductionInterface:
             # 启用物料监测
             if self.monitoring_service:
                 self.monitoring_service.set_material_check_enabled(True)
-                print("[生产界面] 物料不足监测已启用")
+                print("[生产界面] E100监测已启用")
             
             # 在后台线程执行PLC操作
             def production_startup_thread():
@@ -1222,9 +1222,10 @@ class ProductionInterface:
         try:
             # 只处理生产阶段的物料不足
             if is_production and stage == "production":
-                print(f"[生产界面] 料斗{bucket_id}在生产阶段检测到物料不足，发送总停止命令")
+                print(f"[生产界面] 料斗{bucket_id}在生产阶段检测到物料不足")
                 
-                # 发送总停止命令
+                # 弹窗显示的同时立即执行停止命令
+                print("[生产界面] 生产阶段物料不足，立即停止全部料斗运行")
                 self._handle_material_shortage_stop()
                 
                 # 在主线程显示物料不足弹窗
@@ -1268,7 +1269,7 @@ class ProductionInterface:
                 threading.Thread(target=stop_thread, daemon=True).start()
         
         except Exception as e:
-            error_msg = f"处理物料不足停止命令异常: {str(e)}"
+            error_msg = f"处理E100停止命令异常: {str(e)}"
             print(f"[错误] {error_msg}")
             self.add_fault_record(error_msg)
     
@@ -1283,46 +1284,42 @@ class ProductionInterface:
             # 创建物料不足弹窗
             material_shortage_window = tk.Toplevel(self.root)
             material_shortage_window.title("")
-            material_shortage_window.geometry("600x400")
-            material_shortage_window.configure(bg='#ff9800')  # 橙色背景
+            material_shortage_window.geometry("700x500")
+            material_shortage_window.configure(bg='#ffb444')  # 橙色背景
             material_shortage_window.resizable(False, False)
             material_shortage_window.transient(self.root)
             material_shortage_window.grab_set()
             
-            # 居中显示弹窗
-            self.center_dialog_relative_to_main(material_shortage_window, 600, 400)
+            # 禁用窗口关闭按钮，不能被关闭
+            material_shortage_window.protocol("WM_DELETE_WINDOW", lambda: None)
             
-            # 关闭按钮
-            close_btn = tk.Button(material_shortage_window, text="✕", 
-                                font=tkFont.Font(family="微软雅黑", size=14, weight="bold"),
-                                bg='#ff9800', fg='white', relief='flat', bd=0,
-                                command=material_shortage_window.destroy)
-            close_btn.place(x=560, y=10)
+            # 居中显示弹窗
+            self.center_dialog_relative_to_main(material_shortage_window, 700, 500)
             
             # 故障代码
             tk.Label(material_shortage_window, text="故障代码：E001", 
                     font=tkFont.Font(family="微软雅黑", size=14),
-                    bg='#ff9800', fg='white').place(x=50, y=50)
+                    bg='#ffb444', fg='white').place(x=50, y=50)
             
             # 故障类型
             tk.Label(material_shortage_window, text="故障类型：物料不足/闭合异常", 
                     font=tkFont.Font(family="微软雅黑", size=14),
-                    bg='#ff9800', fg='white').place(x=50, y=90)
+                    bg='#ffb444', fg='white').place(x=50, y=90)
             
             # 故障描述
             tk.Label(material_shortage_window, text=f"故障描述：料斗物料低于最低水平线或闭合不正常", 
                     font=tkFont.Font(family="微软雅黑", size=14),
-                    bg='#ff9800', fg='white').place(x=50, y=130)
+                    bg='#ffb444', fg='white').place(x=50, y=130)
             
             # 处理方法
             processing_text = ("处理方法：1.请检查料斗物料是否低于最低水平线，如果是请加料\n"
-                             "        2.请检查料斗闭合是否正常，如闭合不正常，请手动归位完全闭合")
+                               "2.请检查料斗闭合是否正常，如闭合不正常，请手动归位完全闭合")
             tk.Label(material_shortage_window, text=processing_text, 
                     font=tkFont.Font(family="微软雅黑", size=14),
-                    bg='#ff9800', fg='white', justify='left').place(x=50, y=170)
+                    bg='#ffb444', fg='white', justify='left').place(x=50, y=170)
             
             # 按钮区域
-            button_frame = tk.Frame(material_shortage_window, bg='#ff9800')
+            button_frame = tk.Frame(material_shortage_window, bg='#ffb444')
             button_frame.place(x=150, y=300)
             
             # 取消生产按钮
@@ -1343,7 +1340,7 @@ class ProductionInterface:
                                    command=lambda: self._handle_material_shortage_continue(material_shortage_window))
             continue_btn.pack(side=tk.LEFT, padx=20)
             
-            print(f"[生产界面] 显示料斗{bucket_id}物料不足弹窗")
+            print(f"[生产界面] 显示料斗{bucket_id}物料不足弹窗（不可关闭）")
             
         except Exception as e:
             error_msg = f"显示物料不足弹窗异常: {str(e)}"
@@ -1368,7 +1365,7 @@ class ProductionInterface:
             # 恢复生产
             self._resume_production_after_material_shortage()
             
-            print("[生产界面] 物料不足问题已处理，继续生产")
+            print("[生产界面] E001已处理，继续生产")
             
         except Exception as e:
             error_msg = f"处理物料不足继续操作异常: {str(e)}"
@@ -1392,7 +1389,7 @@ class ProductionInterface:
             print("[生产界面] 用户选择取消生产")
             
         except Exception as e:
-            error_msg = f"处理物料不足取消操作异常: {str(e)}"
+            error_msg = f"处理E001取消操作异常: {str(e)}"
             print(f"[错误] {error_msg}")
             self.add_fault_record(error_msg)
     
@@ -1405,33 +1402,33 @@ class ProductionInterface:
             cancel_confirm_window = tk.Toplevel(self.root)
             cancel_confirm_window.title("")
             cancel_confirm_window.geometry("600x400")
-            cancel_confirm_window.configure(bg='#ff9800')  # 橙色背景
+            cancel_confirm_window.configure(bg='#ffb444')  # 橙色背景
             cancel_confirm_window.resizable(False, False)
             cancel_confirm_window.transient(self.root)
             cancel_confirm_window.grab_set()
             
-            # 居中显示弹窗
-            self.center_dialog_relative_to_main(cancel_confirm_window, 600, 400)
+            # 🔥 修正：X按钮点击时返回上一个弹窗（重新显示物料不足弹窗）
+            def on_window_close():
+                cancel_confirm_window.destroy()
+                # 返回上一个弹窗 - 重新显示物料不足弹窗
+                self._show_material_shortage_dialog(1)  # 默认料斗1，实际应该保存之前的bucket_id
+                print("[生产界面] 取消确认弹窗已关闭，返回物料不足弹窗")
             
-            # 关闭按钮
-            close_btn = tk.Button(cancel_confirm_window, text="✕", 
-                                font=tkFont.Font(family="微软雅黑", size=14, weight="bold"),
-                                bg='#ff9800', fg='white', relief='flat', bd=0,
-                                command=cancel_confirm_window.destroy)
-            close_btn.place(x=560, y=10)
+            cancel_confirm_window.protocol("WM_DELETE_WINDOW", on_window_close)
+            
+            # 居中显示弹窗
+            self.center_dialog_relative_to_main(cancel_confirm_window, 700, 500)
             
             # 确认信息
-            tk.Label(cancel_confirm_window, text="你确定要取消", 
+            processing_text = ("你确定要取消\n"
+                               "结束此次生产")
+            tk.Label(cancel_confirm_window, text=processing_text, 
                     font=tkFont.Font(family="微软雅黑", size=24, weight="bold"),
-                    bg='#ff9800', fg='white').place(x=230, y=150)
-            
-            tk.Label(cancel_confirm_window, text="结束此次生产", 
-                    font=tkFont.Font(family="微软雅黑", size=24, weight="bold"),
-                    bg='#ff9800', fg='white').place(x=210, y=200)
+                    bg='#ffb444', fg='white').place(x=250, y=150)
             
             # 按钮区域
-            button_frame = tk.Frame(cancel_confirm_window, bg='#ff9800')
-            button_frame.place(x=200, y=300)
+            button_frame = tk.Frame(cancel_confirm_window, bg='#ffb444')
+            button_frame.place(x=300, y=300)
             
             # 确定按钮
             def on_confirm_cancel():
@@ -1443,11 +1440,11 @@ class ProductionInterface:
                                   font=tkFont.Font(family="微软雅黑", size=14),
                                   bg='#ff4444', fg='white',
                                   relief='flat', bd=0,
-                                  padx=40, pady=10,
+                                  padx=30, pady=10,
                                   command=on_confirm_cancel)
             confirm_btn.pack()
             
-            print("[生产界面] 显示取消生产确认弹窗")
+            print("[生产界面] 显示取消生产确认弹窗（X按钮返回上一弹窗）")
             
         except Exception as e:
             error_msg = f"显示取消生产确认弹窗异常: {str(e)}"

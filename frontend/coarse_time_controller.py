@@ -218,24 +218,22 @@ class CoarseTimeTestController:
         """
         try:
             stage_name = self._get_stage_name(stage)
-            
+
             # 非生产阶段（快加时间测定、飞料值测定、慢加时间测定、自适应学习）
             if not is_production:
                 self._log(f"⚠️ 料斗{bucket_id}在{stage_name}阶段检测到物料不足，停止该料斗")
-                
+
                 # 停止该料斗的相关测定流程
                 self._handle_material_shortage_for_bucket(bucket_id, stage)
-                
-                # 触发物料不足回调，让界面显示弹窗
-                if self.on_material_shortage:
-                    try:
-                        self.on_material_shortage(bucket_id, stage_name, is_production)
-                    except Exception as e:
-                        self.logger.error(f"物料不足事件回调异常: {e}")
+
+                # 直接触发失败回调，使用指定的错误信息
+                error_message = "料斗物料低于最低水平线或闭合不正常"
+                self._handle_bucket_failure(bucket_id, error_message, stage)
+
             else:
                 # 生产阶段的处理在生产控制器中处理
                 self._log(f"⚠️ 生产阶段检测到物料不足，应由生产控制器处理")
-            
+        
         except Exception as e:
             error_msg = f"处理料斗{bucket_id}物料不足事件异常: {str(e)}"
             self.logger.error(error_msg)

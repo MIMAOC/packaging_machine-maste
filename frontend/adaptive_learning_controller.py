@@ -192,6 +192,7 @@ class AdaptiveLearningController:
         
         # 事件回调
         self.on_bucket_completed: Optional[Callable[[int, bool, str], None]] = None  # 单个料斗完成（保留但不使用）
+        self.on_bucket_failed: Optional[Callable[[int, str, str], None]] = None      # (bucket_id, error_message, failed_stage) - 新增失败回调
         self.on_all_buckets_completed: Optional[Callable[[Dict[int, BucketAdaptiveLearningState]], None]] = None  # 新增：所有料斗完成
         self.on_progress_update: Optional[Callable[[int, int, int, str], None]] = None  # (bucket_id, current_attempt, max_attempts, message)
         self.on_log_message: Optional[Callable[[str], None]] = None
@@ -236,17 +237,14 @@ class AdaptiveLearningController:
             # 只处理自适应学习阶段的物料不足
             if stage == "adaptive_learning" and not is_production:
                 self._log(f"⚠️ 料斗{bucket_id}在自适应学习阶段检测到物料不足，停止该料斗测定")
-                
+
                 # 停止该料斗的自适应学习测定
                 self._handle_material_shortage_for_bucket(bucket_id)
                 
-                # 触发物料不足回调，让界面显示弹窗
-                if self.on_material_shortage:
-                    try:
-                        self.on_material_shortage(bucket_id, "自适应学习阶段", is_production)
-                    except Exception as e:
-                        self.logger.error(f"物料不足事件回调异常: {e}")
-            
+                # 直接触发失败回调，使用指定的错误信息
+                error_message = "料斗物料低于最低水平线或闭合不正常"
+                self._handle_bucket_failure(bucket_id, error_message, stage)
+
         except Exception as e:
             error_msg = f"处理料斗{bucket_id}物料不足事件异常: {str(e)}"
             self.logger.error(error_msg)
@@ -1049,7 +1047,7 @@ class AdaptiveLearningController:
             self.logger.error(error_msg)
             self._log(f"❌ {error_msg}")
     
-    def _handle_bucket_failure(self, bucket_id: int, error_message: str):
+    def _handle_bucket_failure(self, bucket_id: int, error_message: str, failed_stage: str = "adaptive_learning"):
         """
         处理料斗测定失败（不立即弹窗，收集结果）
         
@@ -1068,6 +1066,13 @@ class AdaptiveLearningController:
             total_attempts = (state.current_round-1) * state.max_attempts_per_round + state.current_attempt
             failure_msg = f"❌ 料斗{bucket_id}自适应学习阶段测定失败: {error_message}（共{state.current_round}轮{total_attempts}次尝试）"
             self._log(failure_msg)
+            
+            # 触发失败回调（新增），让界面处理失败弹窗
+            if self.on_bucket_failed:
+                try:
+                    self.on_bucket_failed(bucket_id, error_message, failed_stage)
+                except Exception as e:
+                    self.logger.error(f"失败事件回调异常: {e}")
             
             # 检查是否所有料斗都完成了
             self._check_all_buckets_completed()
