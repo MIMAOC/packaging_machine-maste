@@ -2210,10 +2210,11 @@ class AIModeInterface:
                 
                 # 创建快加时间测定控制器
                 self.coarse_time_controller = create_coarse_time_test_controller(self.modbus_client)
-                
-                # 设置物料名称到自适应学习控制器（如果有的话）
+            
+                # 🔥 修复：立即设置物料名称到快加时间测定控制器
                 if hasattr(self.coarse_time_controller, 'set_material_name'):
                     self.coarse_time_controller.set_material_name(material)
+                    print(f"[信息] 已设置物料名称到快加时间测定控制器: {material}")
                 
                 # 设置事件回调（保持原有逻辑）
                 def on_bucket_completed(bucket_id: int, success: bool, message: str):

@@ -666,6 +666,12 @@ class CoarseTimeTestController:
             
             success_msg = f"🎉 料斗{bucket_id}快加时间测定完成！最终快加速度: {final_speed}档（共{state.attempt_count}次尝试）"
             self._log(success_msg)
+        
+            # 🔥 修复：在启动飞料值测定前设置物料名称
+            current_material_name = self.get_current_material_name()
+            if hasattr(self.flight_material_controller, 'set_material_name'):
+                self.flight_material_controller.set_material_name(current_material_name)
+                self._log(f"📝 已将物料名称'{current_material_name}'传递给飞料值控制器")
             
             # 不再弹窗显示成功信息，而是启动飞料值测定
             self._log(f"🚀 料斗{bucket_id}开始飞料值测定流程...")
@@ -813,6 +819,12 @@ class CoarseTimeTestController:
                     state.last_flight_material_value = flight_material_value
                     
                 self._log(f"📊 料斗{bucket_id}参数: 原始目标重量={original_target_weight}g, 平均飞料值={flight_material_value:.1f}g")
+            
+                # 🔥 修复：在启动慢加时间测定前设置物料名称
+                if hasattr(self, 'fine_time_controller'):
+                    if hasattr(self.fine_time_controller, 'set_material_name'):
+                        self.fine_time_controller.set_material_name(self.material_name)
+                        self._log(f"📝 已将物料名称'{self.material_name}'传递给慢加时间控制器")
                 
                 # 飞料值测定成功，启动慢加时间测定（修复：传递平均飞料值）
                 fine_time_success = self.fine_time_controller.start_fine_time_test(

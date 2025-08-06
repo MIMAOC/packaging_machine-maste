@@ -727,10 +727,12 @@ class FineTimeTestController:
                 if not hasattr(self, 'adaptive_learning_controller'):
                     self.adaptive_learning_controller = create_adaptive_learning_controller(self.modbus_client)
                 
-                    # 🔥 新增：设置物料名称到自适应学习控制器
+                    # 🔥 修复：立即设置物料名称到自适应学习控制器
                     if hasattr(self.adaptive_learning_controller, 'set_material_name'):
                         self.adaptive_learning_controller.set_material_name(self.material_name)
                         self._log(f"📝 已将物料名称'{self.material_name}'传递给自适应学习控制器")
+                    else:
+                        self._log(f"⚠️ 自适应学习控制器不支持设置物料名称方法")
                     
                     # 设置事件回调（修改为合并弹窗回调）
                     def on_all_adaptive_completed(completed_states):

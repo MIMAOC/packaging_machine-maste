@@ -57,7 +57,6 @@ class BucketAdaptiveLearningState:
         self.error_value = 0.0             # 误差值
         self.error_message = ""            # 错误消息
         
-        # 🔥 修复：明确区分当前参数和最终参数
         # 当前测定使用的参数（从PLC读取的实际值）
         self.current_coarse_advance = 0.0  # 当前快加提前量（从PLC读取）
         self.current_fall_value = 0.4      # 当前落差值（从PLC读取）
@@ -1123,10 +1122,16 @@ class AdaptiveLearningController:
             material_name (str): 物料名称
         """
         try:
+            # 🔥 修复：立即设置到所有料斗状态中
             with self.lock:
                 for state in self.bucket_states.values():
                     state.material_name = material_name
-            self._log(f"📝 设置物料名称: {material_name}")
+            self._log(f"📝 设置物料名称到所有料斗状态: {material_name}")
+            
+            # 也保存到实例变量中
+            self.current_material_name = material_name
+            self._log(f"📝 已保存当前物料名称到实例变量: {material_name}")
+            
         except Exception as e:
             self._log(f"❌ 设置物料名称异常: {str(e)}")
     
