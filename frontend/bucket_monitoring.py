@@ -171,6 +171,7 @@ class BucketMonitoringService:
         # 新增：生产监测回调
         self.on_production_detail_recorded: Optional[Callable[[int, ProductionDetail], None]] = None
         self.on_production_stop_triggered: Optional[Callable[[int, str], None]] = None
+        self.on_single_unqualified_triggered: Optional[Callable[[int, float, float], None]] = None  # 新增：单次不合格回调
         
         self.material_check_enabled = False  # 物料检测开关
         self.weight_threshold = 0.3  # 重量变化阈值（克）
@@ -882,20 +883,28 @@ class BucketMonitoringService:
 
                     self._log(f"料斗{bucket_id}不合格，连续次数: {state.consecutive_unqualified}")
 
-                    # 检查是否需要发送停止命令
-                    if state.consecutive_unqualified >= 3:
-                        self._log(f"料斗{bucket_id}连续3次不合格，发送总停止命令")
-                        self._send_production_stop_commands()
+                    # 发送停止命令
+                    self._send_production_stop_commands()
 
-                        # 触发生产停止事件
+                    # 检查是否连续3次不合格
+                    if state.consecutive_unqualified >= 3:
+                        self._log(f"料斗{bucket_id}连续3次不合格，触发E002事件")
+                        
+                        # 触发连续不合格停止事件（E002）
                         if self.on_production_stop_triggered:
                             try:
                                 self.on_production_stop_triggered(bucket_id, f"连续{state.consecutive_unqualified}次不合格")
                             except Exception as e:
                                 self.logger.error(f"处理生产停止事件异常: {e}")
                     else:
-                        # 单次不合格也要发送停止命令
-                        self._send_production_stop_commands()
+                        self._log(f"料斗{bucket_id}单次不合格，触发取走不合格产品事件")
+                        
+                        # 触发单次不合格事件
+                        if self.on_single_unqualified_triggered:
+                            try:
+                                self.on_single_unqualified_triggered(bucket_id, real_weight, error_value)
+                            except Exception as e:
+                                self.logger.error(f"处理单次不合格事件异常: {e}")
 
         except Exception as e:
             error_msg = f"处理料斗{bucket_id}重量测量异常: {str(e)}"

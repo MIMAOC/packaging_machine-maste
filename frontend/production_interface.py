@@ -111,9 +111,10 @@ class ProductionInterface:
                 # 设置物料不足回调
                 self.monitoring_service.on_material_shortage_detected = self._on_material_shortage_detected
                 
-                # 新增：设置生产监测回调
+                # 设置生产监测回调
                 self.monitoring_service.on_production_detail_recorded = self._on_production_detail_recorded
                 self.monitoring_service.on_production_stop_triggered = self._on_production_stop_triggered
+                self.monitoring_service.on_single_unqualified_triggered = self._on_single_unqualified_triggered  # 新增
                 
                 print("[生产界面] 物料监测服务初始化成功")
             except ImportError as e:
@@ -1951,6 +1952,118 @@ class ProductionInterface:
             error_msg = f"显示取消生产确认弹窗异常: {str(e)}"
             print(f"[错误] {error_msg}")
             self.add_fault_record(error_msg)
+            
+    def _on_single_unqualified_triggered(self, bucket_id: int, real_weight: float, error_value: float):
+        """
+        处理单次不合格事件
+        
+        Args:
+            bucket_id (int): 料斗ID
+            real_weight (float): 实际重量
+            error_value (float): 误差值
+        """
+        try:
+            # 记录到故障日志
+            log_message = f"料斗{bucket_id}单次不合格: {real_weight:.1f}g, 误差{error_value:+.1f}g"
+            self.add_fault_record(log_message)
+            
+            # 在主线程显示取走不合格产品弹窗
+            self.root.after(0, lambda: self._show_remove_unqualified_product_dialog(bucket_id, real_weight, error_value))
+            
+        except Exception as e:
+            print(f"处理单次不合格事件异常: {e}")
+    
+    def _show_remove_unqualified_product_dialog(self, bucket_id: int, real_weight: float, error_value: float):
+        """
+        显示取走不合格产品弹窗
+        
+        Args:
+            bucket_id (int): 料斗ID
+            real_weight (float): 实际重量
+            error_value (float): 误差值
+        """
+        try:
+            # 创建取走不合格产品弹窗
+            remove_window = tk.Toplevel(self.root)
+            remove_window.title("")
+            remove_window.geometry("600x400")
+            remove_window.configure(bg='white')
+            remove_window.resizable(False, False)
+            remove_window.transient(self.root)
+            remove_window.grab_set()
+            
+            # 禁用窗口关闭按钮
+            remove_window.protocol("WM_DELETE_WINDOW", lambda: None)
+            
+            # 居中显示弹窗
+            self.center_dialog_relative_to_main(remove_window, 600, 400)
+            
+            # 提示信息
+            tk.Label(remove_window, text="请取走不合格产品", 
+                    font=tkFont.Font(family="微软雅黑", size=18, weight="bold"),
+                    bg='white', fg='#333333').place(x=200, y=120)
+            
+            # 详细信息（可选显示）
+            detail_text = f"料斗{bucket_id}: {real_weight:.1f}g (误差{error_value:+.1f}g)"
+            tk.Label(remove_window, text=detail_text, 
+                    font=tkFont.Font(family="微软雅黑", size=12),
+                    bg='white', fg='#666666').place(x=180, y=180)
+            
+            # 确认按钮
+            def on_confirm_removed():
+                """确认已取走按钮点击事件"""
+                remove_window.destroy()
+                # 发送恢复生产命令
+                self._send_resume_production_commands()
+            
+            confirm_btn = tk.Button(remove_window, text="确认", 
+                                  font=tkFont.Font(family="微软雅黑", size=16, weight="bold"),
+                                  bg='#28a745', fg='white',
+                                  relief='flat', bd=0,
+                                  padx=50, pady=15,
+                                  command=on_confirm_removed)
+            confirm_btn.place(x=250, y=280)
+            
+            print(f"[生产界面] 显示料斗{bucket_id}取走不合格产品弹窗")
+            
+        except Exception as e:
+            error_msg = f"显示取走不合格产品弹窗异常: {str(e)}"
+            print(f"[错误] {error_msg}")
+            self.add_fault_record(error_msg)
+    
+    def _send_resume_production_commands(self):
+        """发送恢复生产命令序列"""
+        def resume_commands_thread():
+            try:
+                # 1. 总停止=0
+                success1 = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStop'], False)
+                
+                # 2. 向包装机停止地址发送1
+                success2 = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], True)
+                
+                # 等待50ms
+                time.sleep(0.05)
+                
+                # 3. 向包装机停止地址发送0
+                success3 = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], False)
+                
+                # 4. 总启动=1
+                success4 = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStart'], True)
+                
+                if success1 and success2 and success3 and success4:
+                    self.root.after(0, lambda: self.add_fault_record("恢复生产命令发送成功，生产已继续"))
+                    print("[生产界面] 恢复生产命令发送成功")
+                else:
+                    self.root.after(0, lambda: self.add_fault_record("恢复生产命令发送失败"))
+                    print("[生产界面] 恢复生产命令发送失败")
+                    
+            except Exception as e:
+                error_msg = f"发送恢复生产命令异常: {str(e)}"
+                print(f"[错误] {error_msg}")
+                self.root.after(0, lambda: self.add_fault_record(error_msg))
+        
+        # 启动命令发送线程
+        threading.Thread(target=resume_commands_thread, daemon=True).start()
     
     def _execute_cancel_production(self):
         """
