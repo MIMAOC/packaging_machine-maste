@@ -776,16 +776,10 @@ class PackagingMachineGUI:
             try:
                 from plc_addresses import GLOBAL_CONTROL_ADDRESSES
                 
-                # 先向AI模式地址20发送=0命令
-                print("步骤1: 发送AI模式=0命令")
+                # 先向AI/传统模式地址30发送=0命令
+                print("发送传统模式=0命令")
                 if not self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['AIMode'], False):
                     messagebox.showerror("PLC通信失败", "发送AI模式关闭命令失败")
-                    return
-                
-                # 再向传统模式地址30发送=1命令
-                print("步骤2: 发送传统模式=1命令")
-                if not self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['TraditionalMode'], True):
-                    messagebox.showerror("PLC通信失败", "发送传统模式启用命令失败")
                     return
                 
                 print("✅ 传统模式PLC命令发送成功")
@@ -852,14 +846,8 @@ class PackagingMachineGUI:
                 try:
                     from plc_addresses import GLOBAL_CONTROL_ADDRESSES
 
-                    # 先向传统模式地址30发送=0命令
-                    print("步骤1: 发送传统模式=0命令")
-                    if not self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['TraditionalMode'], False):
-                        messagebox.showerror("PLC通信失败", "发送传统模式关闭命令失败")
-                        return
-
                     # 再向AI模式地址20发送=1命令
-                    print("步骤2: 发送AI模式=1命令")
+                    print("发送AI模式=1命令")
                     if not self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['AIMode'], True):
                         messagebox.showerror("PLC通信失败", "发送AI模式启用命令失败")
                         return
