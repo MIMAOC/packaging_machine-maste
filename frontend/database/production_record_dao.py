@@ -26,6 +26,28 @@ class ProductionRecord:
     completion_rate: float = 0.0
     create_time: Optional[datetime] = None
     update_time: Optional[datetime] = None
+    
+@dataclass
+class ProductionRecordDetail:
+    """生产记录详情数据类（包含明细统计）"""
+    id: Optional[int] = None
+    production_date: Optional[date] = None
+    production_id: str = ""
+    material_name: str = ""
+    target_weight: float = 0.0
+    package_quantity: int = 0
+    completed_packages: int = 0
+    completion_rate: float = 0.0
+    create_time: Optional[datetime] = None
+    update_time: Optional[datetime] = None
+    # 合格统计
+    qualified_count: int = 0
+    qualified_min_weight: Optional[float] = None
+    qualified_max_weight: Optional[float] = None
+    # 不合格统计
+    unqualified_count: int = 0
+    unqualified_min_weight: Optional[float] = None
+    unqualified_max_weight: Optional[float] = None
 
 class ProductionRecordDAO:
     """生产记录数据访问对象"""
@@ -225,3 +247,44 @@ class ProductionRecordDAO:
         except Exception as e:
             print(f"[错误] 获取最近生产记录失败: {str(e)}")
             return []
+    
+    @staticmethod
+    def get_production_record_detail_by_id(production_id: str) -> Optional[ProductionRecordDetail]:
+        """
+        根据生产编号获取生产记录详情（包含明细统计）
+        
+        Args:
+            production_id (str): 生产编号
+            
+        Returns:
+            Optional[ProductionRecordDetail]: 生产记录详情对象，如果不存在则返回None
+        """
+        try:
+            sql = "SELECT * FROM production_record_detail_view WHERE production_id = %s"
+            results = db_manager.execute_query(sql, (production_id,))
+            
+            if results:
+                result = results[0]
+                return ProductionRecordDetail(
+                    production_date=result['production_date'],
+                    production_id=result['production_id'],
+                    material_name=result['material_name'],
+                    target_weight=float(result['target_weight']),
+                    package_quantity=result['package_quantity'],
+                    completed_packages=result['completed_packages'],
+                    completion_rate=float(result['completion_rate']),
+                    create_time=result['create_time'],
+                    update_time=result['update_time'],
+                    qualified_count=result['qualified_count'] or 0,
+                    qualified_min_weight=float(result['qualified_min_weight']) if result['qualified_min_weight'] else None,
+                    qualified_max_weight=float(result['qualified_max_weight']) if result['qualified_max_weight'] else None,
+                    unqualified_count=result['unqualified_count'] or 0,
+                    unqualified_min_weight=float(result['unqualified_min_weight']) if result['unqualified_min_weight'] else None,
+                    unqualified_max_weight=float(result['unqualified_max_weight']) if result['unqualified_max_weight'] else None
+                )
+            
+            return None
+            
+        except Exception as e:
+            print(f"[错误] 获取生产记录详情失败: {str(e)}")
+            return None

@@ -28,7 +28,7 @@ from tkinter import ttk, messagebox
 import tkinter.font as tkFont
 import threading
 import time
-from typing import List
+from typing import Dict, List
 
 # 导入后端API客户端模块
 try:

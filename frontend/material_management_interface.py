@@ -493,34 +493,11 @@ class MaterialManagementInterface:
             if material.is_enabled == 0:
                 messagebox.showwarning("操作受限", "禁用状态的物料无法进行再学习")
                 return
-            
-            # 确认操作
-            result = messagebox.askyesno("确认再学习", 
-                                       f"确定要对物料'{material.material_name}'进行再学习吗？\n\n"
-                                       f"再学习将：\n"
-                                       f"• 重置AI学习状态\n"
-                                       f"• 重新开始学习过程\n"
-                                       f"• 可能需要较长时间\n\n"
-                                       f"此操作无法撤销，是否确认？")
-            if not result:
-                return
-            
-            # 更新AI状态为"未学习"
-            if DATABASE_AVAILABLE:
-                success, message = MaterialDAO.update_material_ai_status(material.id, "未学习")
-                if success:
-                    print(f"[成功] 物料'{material.material_name}'AI状态已重置为'未学习'")
-                    # 重新加载数据并刷新显示
-                    self.load_materials()
-                    messagebox.showinfo("再学习启动", 
-                                      f"物料'{material.material_name}'的再学习已启动！\n\n"
-                                      f"AI状态已重置为'未学习'，可以在AI模式中重新选择此物料进行学习。")
-                else:
-                    print(f"[失败] {message}")
-                    messagebox.showerror("再学习失败", f"启动再学习失败：\n{message}")
-            else:
-                messagebox.showwarning("数据库不可用", "数据库功能不可用，无法进行再学习")
-        
+
+            print(f"[信息] 开始再学习物料: {material.material_name}")
+            # 直接显示参数输入对话框（再学习模式）
+            self.show_new_material_params_dialog(material.material_name, is_relearning=True, material_id=material.id)
+
         except Exception as e:
             error_msg = f"再学习操作异常: {str(e)}"
             print(f"[错误] {error_msg}")
@@ -708,7 +685,7 @@ class MaterialManagementInterface:
             print(f"[错误] {error_msg}")
             messagebox.showerror("系统错误", error_msg)
     
-    def show_new_material_params_dialog(self, material_name: str):
+    def show_new_material_params_dialog(self, material_name: str, is_relearning: bool = False, material_id: int = None):
         """
         显示新物料参数输入对话框（第二个弹窗）
         
@@ -718,7 +695,8 @@ class MaterialManagementInterface:
         try:
             # 创建物料参数输入弹窗
             params_dialog = tk.Toplevel(self.root)
-            params_dialog.title("新物料名称")
+            dialog_title = "再学习物料" if is_relearning else "新物料名称"
+            params_dialog.title(dialog_title)
             params_dialog.geometry("700x600")
             params_dialog.configure(bg='white')
             params_dialog.resizable(False, False)
@@ -729,7 +707,8 @@ class MaterialManagementInterface:
             self.center_dialog_relative_to_main(params_dialog, 700, 600)
             
             # 标题
-            tk.Label(params_dialog, text="新物料名称", 
+            title_text = "再学习物料" if is_relearning else "新物料名称"
+            tk.Label(params_dialog, text=title_text, 
                     font=tkFont.Font(family="微软雅黑", size=16, weight="bold"),
                     bg='white', fg='#333333').pack(pady=30)
             
@@ -793,14 +772,18 @@ class MaterialManagementInterface:
             button_frame.pack(pady=40)
             
             def on_cancel_click():
-                """取消按钮点击事件 - 返回第一个弹窗"""
-                print("[信息] 用户取消参数输入，返回物料名称输入")
-                params_dialog.destroy()
-                # 返回第一个弹窗
-                self.show_new_material_name_dialog()
+                """取消按钮点击事件"""
+                if is_relearning:
+                    print("[信息] 用户取消再学习")
+                    params_dialog.destroy()
+                else:
+                    print("[信息] 用户取消参数输入，返回物料名称输入")
+                    params_dialog.destroy()
+                    # 返回第一个弹窗
+                    self.show_new_material_name_dialog()
             
             def on_start_click():
-                """保存并开始AI训练按钮点击事件"""
+                """开始按钮点击事件"""
                 # 验证输入参数
                 weight_str = weight_var.get().strip()
                 quantity_str = quantity_var.get().strip()
@@ -831,53 +814,83 @@ class MaterialManagementInterface:
                     messagebox.showerror("参数错误", "请输入有效的包装数量")
                     return
                 
-                print(f"[信息] 创建新物料: {material_name}, 重量: {target_weight}g, 数量: {package_quantity}")
-                
-                # 在数据库中创建新物料
-                if DATABASE_AVAILABLE:
-                    try:
-                        success, message, material_id = MaterialDAO.create_material(
-                            material_name=material_name,
-                            ai_status="未学习",
-                            is_enabled=1
-                        )
-                        
-                        if success:
-                            print(f"[成功] {message}, 物料ID: {material_id}")
-                            
-                            # 刷新物料列表
-                            self.load_materials()
-                            
-                            params_dialog.destroy()
-                            
-                            # 显示创建成功消息
-                            messagebox.showinfo("物料创建成功", 
-                                              f"物料'{material_name}'已成功创建！\n\n"
-                                              f"每包重量：{target_weight}g\n"
-                                              f"包装数量：{package_quantity}包\n\n"
-                                              f"现在将开始AI学习流程...")
-                            
-                            # 启动AI训练流程
-                            self.start_ai_training_for_new_material(target_weight, package_quantity, material_name)
-                            
-                        else:
-                            print(f"[失败] {message}")
-                            messagebox.showerror("创建物料失败", f"创建物料失败：\n{message}")
-                        
-                    except Exception as e:
-                        error_msg = f"创建物料时发生异常：{str(e)}"
-                        print(f"[错误] {error_msg}")
-                        messagebox.showerror("创建异常", error_msg)
-                else:
-                    # 数据库不可用时的处理
-                    messagebox.showwarning("数据库不可用", 
-                                         "数据库功能不可用，无法保存新物料！\n"
-                                         "新物料将仅在本次会话中有效。")
+                if is_relearning:
+                    print(f"[信息] 再学习物料: {material_name}, 重量: {target_weight}g, 数量: {package_quantity}")
+                    
+                    # 更新物料AI状态为"未学习"
+                    if DATABASE_AVAILABLE and material_id:
+                        try:
+                            success, message = MaterialDAO.update_material_ai_status(material_id, "未学习")
+                            if success:
+                                print(f"[成功] 物料AI状态已重置: {message}")
+                                # 刷新物料列表
+                                self.load_materials()
+                            else:
+                                print(f"[失败] 重置AI状态失败: {message}")
+                        except Exception as e:
+                            print(f"[错误] 重置AI状态异常: {e}")
                     
                     params_dialog.destroy()
                     
-                    # 直接调用AI生产逻辑
+                    # 显示再学习开始消息
+                    messagebox.showinfo("再学习开始", 
+                                      f"物料'{material_name}'再学习已开始！\n\n"
+                                      f"每包重量：{target_weight}g\n"
+                                      f"包装数量：{package_quantity}包\n\n"
+                                      f"现在将开始AI再学习流程...")
+                    
+                    # 启动AI训练流程（与新建物料一致）
                     self.start_ai_training_for_new_material(target_weight, package_quantity, material_name)
+                    
+                else:
+                    # 新建物料逻辑（原有代码保持不变）
+                    print(f"[信息] 创建新物料: {material_name}, 重量: {target_weight}g, 数量: {package_quantity}")
+                    
+                    # 在数据库中创建新物料
+                    if DATABASE_AVAILABLE:
+                        try:
+                            success, message, material_id = MaterialDAO.create_material(
+                                material_name=material_name,
+                                ai_status="未学习",
+                                is_enabled=1
+                            )
+                            
+                            if success:
+                                print(f"[成功] {message}, 物料ID: {material_id}")
+                                
+                                # 刷新物料列表
+                                self.load_materials()
+                                
+                                params_dialog.destroy()
+                                
+                                # 显示创建成功消息
+                                messagebox.showinfo("物料创建成功", 
+                                                  f"物料'{material_name}'已成功创建！\n\n"
+                                                  f"每包重量：{target_weight}g\n"
+                                                  f"包装数量：{package_quantity}包\n\n"
+                                                  f"现在将开始AI学习流程...")
+                                
+                                # 启动AI训练流程
+                                self.start_ai_training_for_new_material(target_weight, package_quantity, material_name)
+                                
+                            else:
+                                print(f"[失败] {message}")
+                                messagebox.showerror("创建物料失败", f"创建物料失败：\n{message}")
+                            
+                        except Exception as e:
+                            error_msg = f"创建物料时发生异常：{str(e)}"
+                            print(f"[错误] {error_msg}")
+                            messagebox.showerror("创建异常", error_msg)
+                    else:
+                        # 数据库不可用时的处理
+                        messagebox.showwarning("数据库不可用", 
+                                             "数据库功能不可用，无法保存新物料！\n"
+                                             "新物料将仅在本次会话中有效。")
+                        
+                        params_dialog.destroy()
+                        
+                        # 直接调用AI生产逻辑
+                        self.start_ai_training_for_new_material(target_weight, package_quantity, material_name)
             
             # 取消按钮
             cancel_btn = tk.Button(button_frame, text="取消", 
@@ -888,8 +901,9 @@ class MaterialManagementInterface:
                                   command=on_cancel_click)
             cancel_btn.pack(side=tk.LEFT, padx=(0, 30))
             
-            # 保存并开始AI训练按钮
-            start_btn = tk.Button(button_frame, text="保存并开始AI训练", 
+            # 开始按钮（文字根据模式变化）
+            start_text = "开始再学习" if is_relearning else "保存并开始AI训练"
+            start_btn = tk.Button(button_frame, text=start_text, 
                                  font=tkFont.Font(family="微软雅黑", size=12, weight="bold"),
                                  bg='#007bff', fg='white',
                                  relief='flat', bd=0,
@@ -900,10 +914,11 @@ class MaterialManagementInterface:
             # 绑定回车键到开始按钮
             params_dialog.bind('<Return>', lambda e: on_start_click())
             
-            print(f"[信息] 显示新物料参数输入对话框，物料名称: {material_name}")
+            action_text = "再学习" if is_relearning else "新建"
+            print(f"[信息] 显示{action_text}物料参数输入对话框，物料名称: {material_name}")
             
         except Exception as e:
-            error_msg = f"显示新物料参数对话框异常: {str(e)}"
+            error_msg = f"显示物料参数对话框异常: {str(e)}"
             print(f"[错误] {error_msg}")
             messagebox.showerror("系统错误", error_msg)
     

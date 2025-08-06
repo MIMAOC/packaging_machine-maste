@@ -315,7 +315,19 @@ class SystemSettingsInterface:
     def on_production_records_click(self):
         """生产记录按钮点击事件"""
         print("点击了生产记录")
-        messagebox.showinfo("开发中", "生产记录功能正在开发中...")
+        try:
+            # 隐藏系统设置界面
+            self.root.withdraw()
+            
+            # 导入并创建生产记录界面
+            from production_records_interface import ProductionRecordsInterface
+            records_interface = ProductionRecordsInterface(parent=self.root, 
+                                                         system_settings_window=self)
+            print("生产记录界面已打开，系统设置界面已隐藏")
+        except Exception as e:
+            # 如果出错，重新显示系统设置界面
+            self.root.deiconify()
+            messagebox.showerror("界面错误", f"打开生产记录界面失败：{str(e)}")
     
     def on_factory_settings_click(self):
         """出厂设置按钮点击事件"""

@@ -172,6 +172,36 @@ class DatabaseManager:
                             )
                         
                         print("默认物料数据已插入")
+                        
+                    # 创建生产记录详情视图（新增）
+                    create_production_detail_view = """
+                    CREATE OR REPLACE VIEW production_record_detail_view AS
+                    SELECT 
+                        pr.production_id,
+                        pr.material_name,
+                        pr.target_weight,
+                        pr.package_quantity,
+                        pr.completed_packages,
+                        pr.completion_rate,
+                        pr.production_date,
+                        pr.create_time,
+                        pr.update_time,
+                        -- 合格统计
+                        COUNT(CASE WHEN pd.is_qualified = 1 AND pd.is_valid = 1 THEN 1 END) as qualified_count,
+                        MIN(CASE WHEN pd.is_qualified = 1 AND pd.is_valid = 1 THEN pd.real_weight END) as qualified_min_weight,
+                        MAX(CASE WHEN pd.is_qualified = 1 AND pd.is_valid = 1 THEN pd.real_weight END) as qualified_max_weight,
+                        -- 不合格统计
+                        COUNT(CASE WHEN pd.is_qualified = 0 AND pd.is_valid = 1 THEN 1 END) as unqualified_count,
+                        MIN(CASE WHEN pd.is_qualified = 0 AND pd.is_valid = 1 THEN pd.real_weight END) as unqualified_min_weight,
+                        MAX(CASE WHEN pd.is_qualified = 0 AND pd.is_valid = 1 THEN pd.real_weight END) as unqualified_max_weight
+                    FROM production_records pr
+                    LEFT JOIN production_details pd ON pr.production_id = pd.production_id
+                    GROUP BY pr.production_id, pr.material_name, pr.target_weight, pr.package_quantity, 
+                             pr.completed_packages, pr.completion_rate, pr.production_date, pr.create_time, pr.update_time
+                    """
+                    cursor.execute(create_production_detail_view)
+
+                    print("数据库视图已创建")
                     
                 conn.commit()
                 print("数据库表结构已创建")
