@@ -6,6 +6,7 @@
 
 作者：AI助手
 创建日期：2025-08-06
+修复日期：2025-08-06（修复SQLite语法和datetime转换问题）
 """
 
 from datetime import datetime, date
@@ -53,6 +54,91 @@ class ProductionRecordDAO:
     """生产记录数据访问对象"""
     
     @staticmethod
+    def _parse_datetime(dt_str):
+        """
+        解析datetime字符串为datetime对象
+        
+        Args:
+            dt_str: 日期时间字符串或datetime对象
+            
+        Returns:
+            datetime对象或None
+        """
+        if dt_str is None:
+            return None
+        
+        if isinstance(dt_str, datetime):
+            return dt_str
+        
+        if isinstance(dt_str, str):
+            try:
+                # 尝试多种格式解析
+                formats = [
+                    "%Y-%m-%d %H:%M:%S",
+                    "%Y-%m-%d %H:%M:%S.%f",
+                    "%Y-%m-%d",
+                    "%Y/%m/%d %H:%M:%S",
+                    "%Y/%m/%d"
+                ]
+                
+                for fmt in formats:
+                    try:
+                        return datetime.strptime(dt_str, fmt)
+                    except ValueError:
+                        continue
+                
+                # 如果所有格式都失败，返回None
+                print(f"警告：无法解析日期时间字符串: {dt_str}")
+                return None
+                
+            except Exception as e:
+                print(f"解析日期时间异常: {e}")
+                return None
+        
+        return None
+    
+    @staticmethod
+    def _parse_date(date_str):
+        """
+        解析date字符串为date对象
+        
+        Args:
+            date_str: 日期字符串或date对象
+            
+        Returns:
+            date对象或None
+        """
+        if date_str is None:
+            return None
+        
+        if isinstance(date_str, date):
+            return date_str
+        
+        if isinstance(date_str, str):
+            try:
+                # 尝试多种格式解析
+                formats = [
+                    "%Y-%m-%d",
+                    "%Y/%m/%d"
+                ]
+                
+                for fmt in formats:
+                    try:
+                        return datetime.strptime(date_str, fmt).date()
+                    except ValueError:
+                        continue
+                
+                # 如果所有格式都失败，返回None
+                print(f"警告：无法解析日期字符串: {date_str}")
+                return None
+                
+            except Exception as e:
+                print(f"解析日期异常: {e}")
+                return None
+        
+        return None
+    
+    @staticmethod
     def create_production_record(production_id: str, material_name: str, 
                                target_weight: float, package_quantity: int,
                                completed_packages: int = 0) -> Tuple[bool, str, Optional[int]]:
@@ -80,7 +166,7 @@ class ProductionRecordDAO:
             INSERT INTO production_records (
                 production_date, production_id, material_name, target_weight, 
                 package_quantity, completed_packages, completion_rate
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
             """
             
             params = (
@@ -120,8 +206,8 @@ class ProductionRecordDAO:
             
             sql = """
             UPDATE production_records 
-            SET completed_packages = %s, completion_rate = %s, update_time = CURRENT_TIMESTAMP
-            WHERE production_id = %s
+            SET completed_packages = ?, completion_rate = ?, update_time = CURRENT_TIMESTAMP
+            WHERE production_id = ?
             """
             
             params = (completed_packages, completion_rate, production_id)
@@ -150,22 +236,22 @@ class ProductionRecordDAO:
             Optional[ProductionRecord]: 生产记录对象，如果不存在则返回None
         """
         try:
-            sql = "SELECT * FROM production_records WHERE production_id = %s"
+            sql = "SELECT * FROM production_records WHERE production_id = ?"
             results = db_manager.execute_query(sql, (production_id,))
             
             if results:
                 result = results[0]
                 return ProductionRecord(
                     id=result['id'],
-                    production_date=result['production_date'],
+                    production_date=ProductionRecordDAO._parse_date(result['production_date']),
                     production_id=result['production_id'],
                     material_name=result['material_name'],
                     target_weight=float(result['target_weight']),
                     package_quantity=result['package_quantity'],
                     completed_packages=result['completed_packages'],
                     completion_rate=float(result['completion_rate']),
-                    create_time=result['create_time'],
-                    update_time=result['update_time']
+                    create_time=ProductionRecordDAO._parse_datetime(result['create_time']),
+                    update_time=ProductionRecordDAO._parse_datetime(result['update_time'])
                 )
             
             return None
@@ -186,22 +272,22 @@ class ProductionRecordDAO:
             List[ProductionRecord]: 生产记录列表
         """
         try:
-            sql = "SELECT * FROM production_records WHERE production_date = %s ORDER BY create_time DESC"
+            sql = "SELECT * FROM production_records WHERE production_date = ? ORDER BY create_time DESC"
             results = db_manager.execute_query(sql, (production_date,))
             
             records = []
             for result in results:
                 record = ProductionRecord(
                     id=result['id'],
-                    production_date=result['production_date'],
+                    production_date=ProductionRecordDAO._parse_date(result['production_date']),
                     production_id=result['production_id'],
                     material_name=result['material_name'],
                     target_weight=float(result['target_weight']),
                     package_quantity=result['package_quantity'],
                     completed_packages=result['completed_packages'],
                     completion_rate=float(result['completion_rate']),
-                    create_time=result['create_time'],
-                    update_time=result['update_time']
+                    create_time=ProductionRecordDAO._parse_datetime(result['create_time']),
+                    update_time=ProductionRecordDAO._parse_datetime(result['update_time'])
                 )
                 records.append(record)
             
@@ -223,22 +309,22 @@ class ProductionRecordDAO:
             List[ProductionRecord]: 生产记录列表
         """
         try:
-            sql = "SELECT * FROM production_records ORDER BY create_time DESC LIMIT %s"
+            sql = "SELECT * FROM production_records ORDER BY create_time DESC LIMIT ?"
             results = db_manager.execute_query(sql, (limit,))
             
             records = []
             for result in results:
                 record = ProductionRecord(
                     id=result['id'],
-                    production_date=result['production_date'],
+                    production_date=ProductionRecordDAO._parse_date(result['production_date']),
                     production_id=result['production_id'],
                     material_name=result['material_name'],
                     target_weight=float(result['target_weight']),
                     package_quantity=result['package_quantity'],
                     completed_packages=result['completed_packages'],
                     completion_rate=float(result['completion_rate']),
-                    create_time=result['create_time'],
-                    update_time=result['update_time']
+                    create_time=ProductionRecordDAO._parse_datetime(result['create_time']),
+                    update_time=ProductionRecordDAO._parse_datetime(result['update_time'])
                 )
                 records.append(record)
             
@@ -260,21 +346,21 @@ class ProductionRecordDAO:
             Optional[ProductionRecordDetail]: 生产记录详情对象，如果不存在则返回None
         """
         try:
-            sql = "SELECT * FROM production_record_detail_view WHERE production_id = %s"
+            sql = "SELECT * FROM production_record_detail_view WHERE production_id = ?"
             results = db_manager.execute_query(sql, (production_id,))
             
             if results:
                 result = results[0]
                 return ProductionRecordDetail(
-                    production_date=result['production_date'],
+                    production_date=ProductionRecordDAO._parse_date(result['production_date']),
                     production_id=result['production_id'],
                     material_name=result['material_name'],
                     target_weight=float(result['target_weight']),
                     package_quantity=result['package_quantity'],
                     completed_packages=result['completed_packages'],
                     completion_rate=float(result['completion_rate']),
-                    create_time=result['create_time'],
-                    update_time=result['update_time'],
+                    create_time=ProductionRecordDAO._parse_datetime(result['create_time']),
+                    update_time=ProductionRecordDAO._parse_datetime(result['update_time']),
                     qualified_count=result['qualified_count'] or 0,
                     qualified_min_weight=float(result['qualified_min_weight']) if result['qualified_min_weight'] else None,
                     qualified_max_weight=float(result['qualified_max_weight']) if result['qualified_max_weight'] else None,

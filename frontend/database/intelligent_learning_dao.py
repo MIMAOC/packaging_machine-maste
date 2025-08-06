@@ -6,6 +6,7 @@
 
 作者：AI助手
 创建日期：2025-08-06
+修复日期：2025-08-06（修复SQLite语法和datetime转换问题）
 """
 
 from typing import List, Dict, Any, Optional, Tuple
@@ -29,6 +30,50 @@ class IntelligentLearning:
 
 class IntelligentLearningDAO:
     """智能学习数据访问对象"""
+    
+    @staticmethod
+    def _parse_datetime(dt_str):
+        """
+        解析datetime字符串为datetime对象
+        
+        Args:
+            dt_str: 日期时间字符串或datetime对象
+            
+        Returns:
+            datetime对象或None
+        """
+        if dt_str is None:
+            return None
+        
+        if isinstance(dt_str, datetime):
+            return dt_str
+        
+        if isinstance(dt_str, str):
+            try:
+                # 尝试多种格式解析
+                formats = [
+                    "%Y-%m-%d %H:%M:%S",
+                    "%Y-%m-%d %H:%M:%S.%f",
+                    "%Y-%m-%d",
+                    "%Y/%m/%d %H:%M:%S",
+                    "%Y/%m/%d"
+                ]
+                
+                for fmt in formats:
+                    try:
+                        return datetime.strptime(dt_str, fmt)
+                    except ValueError:
+                        continue
+                
+                # 如果所有格式都失败，返回None
+                print(f"警告：无法解析日期时间字符串: {dt_str}")
+                return None
+                
+            except Exception as e:
+                print(f"解析日期时间异常: {e}")
+                return None
+        
+        return None
     
     @staticmethod
     def save_learning_result(material_name: str, target_weight: float, bucket_id: int,
@@ -56,8 +101,8 @@ class IntelligentLearningDAO:
                 # 存在则更新（覆盖）
                 update_sql = """
                 UPDATE intelligent_learning 
-                SET coarse_speed = %s, fine_speed = %s, coarse_advance = %s, fall_value = %s, update_time = NOW()
-                WHERE material_name = %s AND target_weight = %s AND bucket_id = %s
+                SET coarse_speed = ?, fine_speed = ?, coarse_advance = ?, fall_value = ?, update_time = CURRENT_TIMESTAMP
+                WHERE material_name = ? AND target_weight = ? AND bucket_id = ?
                 """
                 params = (coarse_speed, fine_speed, coarse_advance, fall_value, material_name, target_weight, bucket_id)
 
@@ -73,7 +118,7 @@ class IntelligentLearningDAO:
                 insert_sql = """
                 INSERT INTO intelligent_learning (material_name, target_weight, bucket_id, coarse_speed, fine_speed, coarse_advance, 
                 fall_value, create_time, update_time)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """
                 params = (material_name, target_weight, bucket_id, coarse_speed, fine_speed, coarse_advance, fall_value)
 
@@ -106,7 +151,7 @@ class IntelligentLearningDAO:
         try:
             sql = """
             SELECT * FROM intelligent_learning 
-            WHERE material_name = %s AND target_weight = %s AND bucket_id = %s
+            WHERE material_name = ? AND target_weight = ? AND bucket_id = ?
             """
             results = db_manager.execute_query(sql, (material_name, target_weight, bucket_id))
             
@@ -121,8 +166,8 @@ class IntelligentLearningDAO:
                     fine_speed=row['fine_speed'],
                     coarse_advance=float(row['coarse_advance']),
                     fall_value=float(row['fall_value']),
-                    create_time=row['create_time'],
-                    update_time=row['update_time']
+                    create_time=IntelligentLearningDAO._parse_datetime(row['create_time']),
+                    update_time=IntelligentLearningDAO._parse_datetime(row['update_time'])
                 )
             
             return None
@@ -146,7 +191,7 @@ class IntelligentLearningDAO:
         try:
             sql = """
             SELECT * FROM intelligent_learning 
-            WHERE material_name = %s AND target_weight = %s
+            WHERE material_name = ? AND target_weight = ?
             ORDER BY bucket_id
             """
             results = db_manager.execute_query(sql, (material_name, target_weight))
@@ -162,8 +207,8 @@ class IntelligentLearningDAO:
                     fine_speed=row['fine_speed'],
                     coarse_advance=float(row['coarse_advance']),
                     fall_value=float(row['fall_value']),
-                    create_time=row['create_time'],
-                    update_time=row['update_time']
+                    create_time=IntelligentLearningDAO._parse_datetime(row['create_time']),
+                    update_time=IntelligentLearningDAO._parse_datetime(row['update_time'])
                 )
                 learning_results.append(learning_result)
             
@@ -188,7 +233,7 @@ class IntelligentLearningDAO:
         try:
             sql = """
             SELECT COUNT(*) as count FROM intelligent_learning 
-            WHERE material_name = %s AND target_weight = %s
+            WHERE material_name = ? AND target_weight = ?
             """
             results = db_manager.execute_query(sql, (material_name, target_weight))
             
@@ -214,7 +259,7 @@ class IntelligentLearningDAO:
             Tuple[bool, str]: (成功状态, 消息)
         """
         try:
-            sql = "DELETE FROM intelligent_learning WHERE material_name = %s AND target_weight = %s"
+            sql = "DELETE FROM intelligent_learning WHERE material_name = ? AND target_weight = ?"
             affected_rows = db_manager.execute_update(sql, (material_name, target_weight))
             
             if affected_rows > 0:

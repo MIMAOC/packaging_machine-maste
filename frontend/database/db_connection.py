@@ -2,14 +2,16 @@
 # -*- coding: utf-8 -*-
 """
 数据库连接管理
-包装机系统数据库连接池和操作管理
+包装机系统SQLite数据库连接和操作管理
 
 作者：AI助手
 创建日期：2025-08-04
+更新日期：2025-08-06（改为SQLite）
 """
 
-import pymysql
+import sqlite3
 import threading
+import os
 from contextlib import contextmanager
 from typing import Optional, Dict, Any, List, Tuple
 from database.db_config import get_database_config, DatabaseConfig
@@ -32,34 +34,31 @@ class DatabaseManager:
         """初始化数据库管理器"""
         if not hasattr(self, 'initialized'):
             self.config = get_database_config()
-            self.connection_pool = []
-            self.pool_lock = threading.Lock()
             self.initialized = True
             
-            # 创建数据库（如果不存在）
-            self._create_database_if_not_exists()
+            # 确保数据目录存在
+            self._ensure_data_directory()
+            
+            # 创建数据库文件和表结构（如果不存在）
+            self._create_database_and_tables()
     
-    def _create_database_if_not_exists(self):
-        """创建数据库（如果不存在）"""
+    def _ensure_data_directory(self):
+        """确保数据目录存在"""
         try:
-            # 连接到MySQL服务器（不指定数据库）
-            connection = pymysql.connect(
-                host=self.config.host,
-                port=self.config.port,
-                user=self.config.user,
-                password=self.config.password,
-                charset=self.config.charset
-            )
-            
-            with connection.cursor() as cursor:
-                # 创建数据库
-                cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{self.config.database}` CHARACTER SET {self.config.charset} COLLATE {self.config.charset}_general_ci")
-                print(f"数据库 '{self.config.database}' 已确保存在")
-            
-            connection.close()
-            
+            db_dir = os.path.dirname(self.config.db_path)
+            if db_dir and not os.path.exists(db_dir):
+                os.makedirs(db_dir)
+                print(f"数据目录 '{db_dir}' 已创建")
+        except Exception as e:
+            print(f"创建数据目录失败: {e}")
+            raise
+    
+    def _create_database_and_tables(self):
+        """创建数据库文件和表结构"""
+        try:
             # 创建表结构
             self._create_tables()
+            print(f"SQLite数据库 '{self.config.db_path}' 已初始化")
             
         except Exception as e:
             print(f"创建数据库失败: {e}")
@@ -69,140 +68,146 @@ class DatabaseManager:
         """创建表结构"""
         try:
             with self.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    # 创建物料表
-                    create_material_table = """
-                    CREATE TABLE IF NOT EXISTS `materials` (
-                        `id` int(11) NOT NULL AUTO_INCREMENT,
-                        `material_name` varchar(100) NOT NULL COMMENT '物料名称',
-                        `ai_status` enum('未学习','已学习','已生产') NOT NULL DEFAULT '未学习' COMMENT 'AI状态',
-                        `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-                        `is_enabled` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否启用(1启用，0禁用)',
-                        `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-                        PRIMARY KEY (`id`),
-                        UNIQUE KEY `uk_material_name` (`material_name`),
-                        KEY `idx_ai_status` (`ai_status`),
-                        KEY `idx_is_enabled` (`is_enabled`)
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='物料表';
-                    """
-                    cursor.execute(create_material_table)
+                cursor = conn.cursor()
+                
+                # 创建物料表
+                create_material_table = """
+                CREATE TABLE IF NOT EXISTS materials (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    material_name TEXT NOT NULL UNIQUE,
+                    ai_status TEXT NOT NULL DEFAULT '未学习' CHECK(ai_status IN ('未学习','已学习','已生产')),
+                    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    is_enabled INTEGER NOT NULL DEFAULT 1 CHECK(is_enabled IN (0,1)),
+                    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                """
+                cursor.execute(create_material_table)
+                
+                # 创建物料表索引
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_materials_ai_status ON materials(ai_status);")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_materials_is_enabled ON materials(is_enabled);")
+                
+                # 创建智能学习表
+                create_intelligent_learning_table = """
+                CREATE TABLE IF NOT EXISTS intelligent_learning (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    material_name TEXT NOT NULL,
+                    target_weight REAL NOT NULL,
+                    bucket_id INTEGER NOT NULL,
+                    coarse_speed INTEGER NOT NULL,
+                    fine_speed INTEGER NOT NULL,
+                    coarse_advance REAL NOT NULL,
+                    fall_value REAL NOT NULL,
+                    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(material_name, target_weight, bucket_id)
+                );
+                """
+                cursor.execute(create_intelligent_learning_table)
+                
+                # 创建智能学习表索引
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_intelligent_learning_material_name ON intelligent_learning(material_name);")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_intelligent_learning_target_weight ON intelligent_learning(target_weight);")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_intelligent_learning_bucket_id ON intelligent_learning(bucket_id);")
+                
+                # 创建生产明细表
+                create_production_details_table = """
+                CREATE TABLE IF NOT EXISTS production_details (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    production_id TEXT NOT NULL,
+                    bucket_id INTEGER NOT NULL,
+                    real_weight REAL NOT NULL,
+                    error_value REAL NOT NULL,
+                    is_qualified INTEGER NOT NULL DEFAULT 1 CHECK(is_qualified IN (0,1)),
+                    is_valid INTEGER NOT NULL DEFAULT 1 CHECK(is_valid IN (0,1)),
+                    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                """
+                cursor.execute(create_production_details_table)
+                
+                # 创建生产明细表索引
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_production_details_production_id ON production_details(production_id);")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_production_details_bucket_id ON production_details(bucket_id);")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_production_details_is_valid ON production_details(is_valid);")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_production_details_create_time ON production_details(create_time);")
+                
+                # 创建生产记录表
+                create_production_records_table = """
+                CREATE TABLE IF NOT EXISTS production_records (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    production_date DATE NOT NULL,
+                    production_id TEXT NOT NULL UNIQUE,
+                    material_name TEXT NOT NULL,
+                    target_weight REAL NOT NULL,
+                    package_quantity INTEGER NOT NULL,
+                    completed_packages INTEGER NOT NULL DEFAULT 0,
+                    completion_rate REAL NOT NULL DEFAULT 0.00,
+                    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                """
+                cursor.execute(create_production_records_table)
+                
+                # 创建生产记录表索引
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_production_records_production_date ON production_records(production_date);")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_production_records_material_name ON production_records(material_name);")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_production_records_create_time ON production_records(create_time);")
+                
+                # 创建更新时间触发器
+                self._create_update_triggers(cursor)
+                
+                # 插入默认数据（如果表为空）
+                cursor.execute("SELECT COUNT(*) FROM materials")
+                count = cursor.fetchone()[0]
+                
+                if count == 0:
+                    default_materials = [
+                        ("大米 - 密度1.2g/cm³", "未学习", 1),
+                        ("小麦 - 密度1.4g/cm³", "未学习", 1),
+                        ("玉米 - 密度1.3g/cm³", "未学习", 1),
+                        ("黄豆 - 密度1.1g/cm³", "未学习", 1),
+                        ("绿豆 - 密度1.2g/cm³", "未学习", 1),
+                        ("红豆 - 密度1.15g/cm³", "未学习", 1)
+                    ]
                     
-                    # 创建智能学习表
-                    create_intelligent_learning_table = """
-                    CREATE TABLE IF NOT EXISTS `intelligent_learning` (
-                        `id` int(11) NOT NULL AUTO_INCREMENT,
-                        `material_name` varchar(100) NOT NULL COMMENT '物料名称',
-                        `target_weight` decimal(10,1) NOT NULL COMMENT '目标重量(g)',
-                        `bucket_id` int(11) NOT NULL COMMENT '料斗编号',
-                        `coarse_speed` int(11) NOT NULL COMMENT '快加速度',
-                        `fine_speed` int(11) NOT NULL COMMENT '慢加速度',
-                        `coarse_advance` decimal(10,1) NOT NULL COMMENT '快加提前量(g)',
-                        `fall_value` decimal(10,1) NOT NULL COMMENT '落差值(g)',
-                        `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-                        `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-                        PRIMARY KEY (`id`),
-                        UNIQUE KEY `uk_material_weight_bucket` (`material_name`, `target_weight`, `bucket_id`),
-                        KEY `idx_material_name` (`material_name`),
-                        KEY `idx_target_weight` (`target_weight`),
-                        KEY `idx_bucket_id` (`bucket_id`)
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='智能学习表';
-                    """
-                    cursor.execute(create_intelligent_learning_table)
+                    for material_name, ai_status, is_enabled in default_materials:
+                        cursor.execute(
+                            "INSERT INTO materials (material_name, ai_status, is_enabled) VALUES (?, ?, ?)",
+                            (material_name, ai_status, is_enabled)
+                        )
                     
-                    # 新增：创建生产明细表
-                    create_production_details_table = """
-                    CREATE TABLE IF NOT EXISTS `production_details` (
-                        `id` int(11) NOT NULL AUTO_INCREMENT,
-                        `production_id` varchar(20) NOT NULL COMMENT '生产编号',
-                        `bucket_id` int(11) NOT NULL COMMENT '料斗编号',
-                        `real_weight` decimal(10,1) NOT NULL COMMENT '实时重量(g)',
-                        `error_value` decimal(10,1) NOT NULL COMMENT '误差值(g)',
-                        `is_qualified` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否合格(1合格，0不合格)',
-                        `is_valid` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否有效(1有效，0无效)',
-                        `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-                        PRIMARY KEY (`id`),
-                        KEY `idx_production_id` (`production_id`),
-                        KEY `idx_bucket_id` (`bucket_id`),
-                        KEY `idx_is_valid` (`is_valid`),
-                        KEY `idx_create_time` (`create_time`)
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='生产明细表';
-                    """
-                    cursor.execute(create_production_details_table)
-                    
-                    # 新增：创建生产记录表
-                    create_production_records_table = """
-                    CREATE TABLE IF NOT EXISTS `production_records` (
-                        `id` int(11) NOT NULL AUTO_INCREMENT,
-                        `production_date` date NOT NULL COMMENT '生产日期',
-                        `production_id` varchar(20) NOT NULL COMMENT '生产编号',
-                        `material_name` varchar(100) NOT NULL COMMENT '物料名称',
-                        `target_weight` decimal(10,1) NOT NULL COMMENT '目标重量(g)',
-                        `package_quantity` int(11) NOT NULL COMMENT '包装数量',
-                        `completed_packages` int(11) NOT NULL DEFAULT 0 COMMENT '完成包数',
-                        `completion_rate` decimal(5,2) NOT NULL DEFAULT 0.00 COMMENT '完成率(%)',
-                        `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-                        `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-                        PRIMARY KEY (`id`),
-                        UNIQUE KEY `uk_production_id` (`production_id`),
-                        KEY `idx_production_date` (`production_date`),
-                        KEY `idx_material_name` (`material_name`),
-                        KEY `idx_create_time` (`create_time`)
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='生产记录表';
-                    """
-                    cursor.execute(create_production_records_table)
-                    
-                    # 插入默认数据（如果表为空）
-                    cursor.execute("SELECT COUNT(*) FROM materials")
-                    count = cursor.fetchone()[0]
-                    
-                    if count == 0:
-                        default_materials = [
-                            ("大米 - 密度1.2g/cm³", "未学习", 1),
-                            ("小麦 - 密度1.4g/cm³", "未学习", 1),
-                            ("玉米 - 密度1.3g/cm³", "未学习", 1),
-                            ("黄豆 - 密度1.1g/cm³", "未学习", 1),
-                            ("绿豆 - 密度1.2g/cm³", "未学习", 1),
-                            ("红豆 - 密度1.15g/cm³", "未学习", 1)
-                        ]
-                        
-                        for material_name, ai_status, is_enabled in default_materials:
-                            cursor.execute(
-                                "INSERT INTO materials (material_name, ai_status, is_enabled) VALUES (%s, %s, %s)",
-                                (material_name, ai_status, is_enabled)
-                            )
-                        
-                        print("默认物料数据已插入")
-                        
-                    # 创建生产记录详情视图（新增）
-                    create_production_detail_view = """
-                    CREATE OR REPLACE VIEW production_record_detail_view AS
-                    SELECT 
-                        pr.production_id,
-                        pr.material_name,
-                        pr.target_weight,
-                        pr.package_quantity,
-                        pr.completed_packages,
-                        pr.completion_rate,
-                        pr.production_date,
-                        pr.create_time,
-                        pr.update_time,
-                        -- 合格统计
-                        COUNT(CASE WHEN pd.is_qualified = 1 AND pd.is_valid = 1 THEN 1 END) as qualified_count,
-                        MIN(CASE WHEN pd.is_qualified = 1 AND pd.is_valid = 1 THEN pd.real_weight END) as qualified_min_weight,
-                        MAX(CASE WHEN pd.is_qualified = 1 AND pd.is_valid = 1 THEN pd.real_weight END) as qualified_max_weight,
-                        -- 不合格统计
-                        COUNT(CASE WHEN pd.is_qualified = 0 AND pd.is_valid = 1 THEN 1 END) as unqualified_count,
-                        MIN(CASE WHEN pd.is_qualified = 0 AND pd.is_valid = 1 THEN pd.real_weight END) as unqualified_min_weight,
-                        MAX(CASE WHEN pd.is_qualified = 0 AND pd.is_valid = 1 THEN pd.real_weight END) as unqualified_max_weight
-                    FROM production_records pr
-                    LEFT JOIN production_details pd ON pr.production_id = pd.production_id
-                    GROUP BY pr.production_id, pr.material_name, pr.target_weight, pr.package_quantity, 
-                             pr.completed_packages, pr.completion_rate, pr.production_date, pr.create_time, pr.update_time
-                    """
-                    cursor.execute(create_production_detail_view)
+                    print("默认物料数据已插入")
+                
+                # 创建生产记录详情视图
+                create_production_detail_view = """
+                CREATE VIEW IF NOT EXISTS production_record_detail_view AS
+                SELECT 
+                    pr.production_id,
+                    pr.material_name,
+                    pr.target_weight,
+                    pr.package_quantity,
+                    pr.completed_packages,
+                    pr.completion_rate,
+                    pr.production_date,
+                    pr.create_time,
+                    pr.update_time,
+                    -- 合格统计
+                    COUNT(CASE WHEN pd.is_qualified = 1 AND pd.is_valid = 1 THEN 1 END) as qualified_count,
+                    MIN(CASE WHEN pd.is_qualified = 1 AND pd.is_valid = 1 THEN pd.real_weight END) as qualified_min_weight,
+                    MAX(CASE WHEN pd.is_qualified = 1 AND pd.is_valid = 1 THEN pd.real_weight END) as qualified_max_weight,
+                    -- 不合格统计
+                    COUNT(CASE WHEN pd.is_qualified = 0 AND pd.is_valid = 1 THEN 1 END) as unqualified_count,
+                    MIN(CASE WHEN pd.is_qualified = 0 AND pd.is_valid = 1 THEN pd.real_weight END) as unqualified_min_weight,
+                    MAX(CASE WHEN pd.is_qualified = 0 AND pd.is_valid = 1 THEN pd.real_weight END) as unqualified_max_weight
+                FROM production_records pr
+                LEFT JOIN production_details pd ON pr.production_id = pd.production_id
+                GROUP BY pr.production_id, pr.material_name, pr.target_weight, pr.package_quantity, 
+                         pr.completed_packages, pr.completion_rate, pr.production_date, pr.create_time, pr.update_time
+                """
+                cursor.execute(create_production_detail_view)
 
-                    print("数据库视图已创建")
-                    
+                print("数据库视图已创建")
+                
                 conn.commit()
                 print("数据库表结构已创建")
                 
@@ -210,20 +215,54 @@ class DatabaseManager:
             print(f"创建表结构失败: {e}")
             raise
     
+    def _create_update_triggers(self, cursor):
+        """创建更新时间触发器"""
+        try:
+            # 物料表更新触发器
+            cursor.execute("""
+                CREATE TRIGGER IF NOT EXISTS update_materials_timestamp 
+                AFTER UPDATE ON materials
+                BEGIN
+                    UPDATE materials SET update_time = CURRENT_TIMESTAMP WHERE id = NEW.id;
+                END;
+            """)
+            
+            # 智能学习表更新触发器
+            cursor.execute("""
+                CREATE TRIGGER IF NOT EXISTS update_intelligent_learning_timestamp 
+                AFTER UPDATE ON intelligent_learning
+                BEGIN
+                    UPDATE intelligent_learning SET update_time = CURRENT_TIMESTAMP WHERE id = NEW.id;
+                END;
+            """)
+            
+            # 生产记录表更新触发器
+            cursor.execute("""
+                CREATE TRIGGER IF NOT EXISTS update_production_records_timestamp 
+                AFTER UPDATE ON production_records
+                BEGIN
+                    UPDATE production_records SET update_time = CURRENT_TIMESTAMP WHERE id = NEW.id;
+                END;
+            """)
+            
+        except Exception as e:
+            print(f"创建触发器失败: {e}")
+            raise
+    
     @contextmanager
     def get_connection(self):
         """获取数据库连接（上下文管理器）"""
         connection = None
         try:
-            connection = pymysql.connect(
-                host=self.config.host,
-                port=self.config.port,
-                user=self.config.user,
-                password=self.config.password,
-                database=self.config.database,
-                charset=self.config.charset,
-                autocommit=self.config.autocommit
+            connection = sqlite3.connect(
+                self.config.db_path,
+                timeout=self.config.timeout,
+                check_same_thread=self.config.check_same_thread
             )
+            # 启用外键约束
+            connection.execute("PRAGMA foreign_keys = ON")
+            # 设置行工厂以返回字典
+            connection.row_factory = sqlite3.Row
             yield connection
         except Exception as e:
             if connection:
@@ -245,9 +284,10 @@ class DatabaseManager:
             List[Dict[str, Any]]: 查询结果列表
         """
         with self.get_connection() as conn:
-            with conn.cursor(pymysql.cursors.DictCursor) as cursor:
-                cursor.execute(sql, params)
-                return cursor.fetchall()
+            cursor = conn.cursor()
+            cursor.execute(sql, params or ())
+            # 将sqlite3.Row对象转换为字典
+            return [dict(row) for row in cursor.fetchall()]
     
     def execute_update(self, sql: str, params: Optional[Tuple] = None) -> int:
         """
@@ -261,10 +301,10 @@ class DatabaseManager:
             int: 受影响的行数
         """
         with self.get_connection() as conn:
-            with conn.cursor() as cursor:
-                affected_rows = cursor.execute(sql, params)
-                conn.commit()
-                return affected_rows
+            cursor = conn.cursor()
+            cursor.execute(sql, params or ())
+            conn.commit()
+            return cursor.rowcount
     
     def execute_insert(self, sql: str, params: Optional[Tuple] = None) -> int:
         """
@@ -278,10 +318,10 @@ class DatabaseManager:
             int: 新插入记录的ID
         """
         with self.get_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(sql, params)
-                conn.commit()
-                return cursor.lastrowid
+            cursor = conn.cursor()
+            cursor.execute(sql, params or ())
+            conn.commit()
+            return cursor.lastrowid
     
     def test_connection(self) -> Tuple[bool, str]:
         """
@@ -292,15 +332,15 @@ class DatabaseManager:
         """
         try:
             with self.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute("SELECT 1")
-                    result = cursor.fetchone()
-                    if result and result[0] == 1:
-                        return True, "数据库连接正常"
-                    else:
-                        return False, "数据库连接测试失败"
+                cursor = conn.cursor()
+                cursor.execute("SELECT 1")
+                result = cursor.fetchone()
+                if result and result[0] == 1:
+                    return True, "SQLite数据库连接正常"
+                else:
+                    return False, "SQLite数据库连接测试失败"
         except Exception as e:
-            return False, f"数据库连接失败: {str(e)}"
+            return False, f"SQLite数据库连接失败: {str(e)}"
 
 # 全局数据库管理器实例
 db_manager = DatabaseManager()

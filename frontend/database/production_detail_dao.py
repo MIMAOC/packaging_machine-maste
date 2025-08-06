@@ -6,6 +6,7 @@
 
 作者：AI助手
 创建日期：2025-08-06
+修复日期：2025-08-06（修复SQLite语法和datetime转换问题）
 """
 
 from datetime import datetime
@@ -19,7 +20,7 @@ class ProductionDetail:
     id: Optional[int] = None
     production_id: str = ""
     bucket_id: int = 0
-    actual_weight: float = 0.0
+    real_weight: float = 0.0
     error_value: float = 0.0
     is_qualified: bool = False
     is_valid: bool = False
@@ -29,37 +30,88 @@ class ProductionDetailDAO:
     """生产明细数据访问对象"""
     
     @staticmethod
+    def _parse_datetime(dt_str):
+        """
+        解析datetime字符串为datetime对象
+        
+        Args:
+            dt_str: 日期时间字符串或datetime对象
+            
+        Returns:
+            datetime对象或None
+        """
+        if dt_str is None:
+            return None
+        
+        if isinstance(dt_str, datetime):
+            return dt_str
+        
+        if isinstance(dt_str, str):
+            try:
+                # 尝试多种格式解析
+                formats = [
+                    "%Y-%m-%d %H:%M:%S",
+                    "%Y-%m-%d %H:%M:%S.%f",
+                    "%Y-%m-%d",
+                    "%Y/%m/%d %H:%M:%S",
+                    "%Y/%m/%d"
+                ]
+                
+                for fmt in formats:
+                    try:
+                        return datetime.strptime(dt_str, fmt)
+                    except ValueError:
+                        continue
+                
+                # 如果所有格式都失败，返回None
+                print(f"警告：无法解析日期时间字符串: {dt_str}")
+                return None
+                
+            except Exception as e:
+                print(f"解析日期时间异常: {e}")
+                return None
+        
+        return None
+    
+    @staticmethod
     def create_table():
         """创建生产明细表"""
         try:
             create_sql = """
-            CREATE TABLE IF NOT EXISTS `production_details` (
-                `id` int(11) NOT NULL AUTO_INCREMENT,
-                `production_id` varchar(20) NOT NULL COMMENT '生产编号',
-                `bucket_id` int(11) NOT NULL COMMENT '料斗编号',
-                `actual_weight` decimal(10,1) NOT NULL COMMENT '实时重量(g)',
-                `error_value` decimal(10,1) NOT NOT COMMENT '误差值(g)',
-                `is_qualified` tinyint(1) NOT NULL DEFAULT 0 COMMENT '是否合格(1合格，0不合格)',
-                `is_valid` tinyint(1) NOT NULL DEFAULT 0 COMMENT '是否有效(1有效，0无效)',
-                `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-                PRIMARY KEY (`id`),
-                KEY `idx_production_id` (`production_id`),
-                KEY `idx_bucket_id` (`bucket_id`),
-                KEY `idx_is_valid` (`is_valid`),
-                KEY `idx_create_time` (`create_time`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='生产明细表';
+            CREATE TABLE IF NOT EXISTS production_details (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                production_id TEXT NOT NULL,
+                bucket_id INTEGER NOT NULL,
+                real_weight REAL NOT NULL,
+                error_value REAL NOT NULL,
+                is_qualified INTEGER NOT NULL DEFAULT 0 CHECK(is_qualified IN (0,1)),
+                is_valid INTEGER NOT NULL DEFAULT 0 CHECK(is_valid IN (0,1)),
+                create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
             """
-            
+
             affected_rows = db_manager.execute_update(create_sql)
+
+            # 创建索引
+            index_sqls = [
+                "CREATE INDEX IF NOT EXISTS idx_production_details_production_id ON production_details(production_id);",
+                "CREATE INDEX IF NOT EXISTS idx_production_details_bucket_id ON production_details(bucket_id);",
+                "CREATE INDEX IF NOT EXISTS idx_production_details_is_valid ON production_details(is_valid);",
+                "CREATE INDEX IF NOT EXISTS idx_production_details_create_time ON production_details(create_time);"
+            ]
+
+            for index_sql in index_sqls:
+                db_manager.execute_update(index_sql)
+
             print("生产明细表已创建")
             return True
-            
+
         except Exception as e:
             print(f"创建生产明细表失败: {e}")
             return False
     
     @staticmethod
-    def insert_detail(production_id: str, bucket_id: int, actual_weight: float, 
+    def insert_detail(production_id: str, bucket_id: int, real_weight: float, 
                      error_value: float, is_qualified: bool, is_valid: bool) -> Tuple[bool, str, int]:
         """
         插入生产明细记录
@@ -67,7 +119,7 @@ class ProductionDetailDAO:
         Args:
             production_id: 生产编号
             bucket_id: 料斗编号
-            actual_weight: 实时重量
+            real_weight: 实时重量
             error_value: 误差值
             is_qualified: 是否合格
             is_valid: 是否有效
@@ -78,11 +130,11 @@ class ProductionDetailDAO:
         try:
             insert_sql = """
             INSERT INTO production_details 
-            (production_id, bucket_id, actual_weight, error_value, is_qualified, is_valid)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            (production_id, bucket_id, real_weight, error_value, is_qualified, is_valid)
+            VALUES (?, ?, ?, ?, ?, ?)
             """
             
-            params = (production_id, bucket_id, actual_weight, error_value, 
+            params = (production_id, bucket_id, real_weight, error_value, 
                      1 if is_qualified else 0, 1 if is_valid else 0)
             
             record_id = db_manager.execute_insert(insert_sql, params)
@@ -108,9 +160,9 @@ class ProductionDetailDAO:
         """
         try:
             query_sql = """
-            SELECT SUM(actual_weight) as total_weight, COUNT(*) as total_count
+            SELECT SUM(real_weight) as total_weight, COUNT(*) as total_count
             FROM production_details 
-            WHERE production_id = %s AND is_valid = 1
+            WHERE production_id = ? AND is_valid = 1
             """
             
             result = db_manager.execute_query(query_sql, (production_id,))
@@ -143,7 +195,7 @@ class ProductionDetailDAO:
             query_sql = """
             SELECT is_qualified, is_valid
             FROM production_details 
-            WHERE production_id = %s AND bucket_id = %s 
+            WHERE production_id = ? AND bucket_id = ? 
             ORDER BY create_time DESC
             LIMIT 10
             """
@@ -180,10 +232,10 @@ class ProductionDetailDAO:
                 COUNT(*) as total_records,
                 SUM(CASE WHEN is_valid = 1 THEN 1 ELSE 0 END) as valid_count,
                 SUM(CASE WHEN is_qualified = 1 THEN 1 ELSE 0 END) as qualified_count,
-                SUM(CASE WHEN is_valid = 1 THEN actual_weight ELSE 0 END) as valid_weight_sum,
-                AVG(CASE WHEN is_valid = 1 THEN actual_weight ELSE NULL END) as avg_weight
+                SUM(CASE WHEN is_valid = 1 THEN real_weight ELSE 0 END) as valid_weight_sum,
+                AVG(CASE WHEN is_valid = 1 THEN real_weight ELSE NULL END) as avg_weight
             FROM production_details 
-            WHERE production_id = %s
+            WHERE production_id = ?
             """
             
             result = db_manager.execute_query(query_sql, (production_id,))

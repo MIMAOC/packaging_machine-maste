@@ -245,9 +245,9 @@ class AIModeInterface:
                     # 从数据库获取物料名称列表
                     material_names = MaterialDAO.get_material_names(enabled_only=True)
                     material_list.extend(material_names)
-                    print(f"[信息] 从数据库加载了{len(material_names)}个物料")
+                    print(f"[信息] 从SQLite数据库加载了{len(material_names)}个物料")
                 else:
-                    print(f"[警告] 数据库连接失败: {message}")
+                    print(f"[警告] SQLite数据库连接失败: {message}")
             except Exception as e:
                 print(f"[错误] 获取物料列表异常: {e}")
         else:

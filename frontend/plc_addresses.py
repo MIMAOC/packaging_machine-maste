@@ -343,6 +343,15 @@ def get_all_bucket_coarse_add_addresses() -> list:
     """
     return [BUCKET_MONITORING_ADDRESSES[i]['CoarseAdd'] for i in range(1, 7)]
 
+def get_all_bucket_discharge_addresses() -> list:
+    """
+    获取所有料斗的放料线圈地址列表（新增）
+    
+    Returns:
+        list: 包含所有料斗放料线圈地址的列表
+    """
+    return [BUCKET_CONTROL_ADDRESSES[i]['DischargeAddress'] for i in range(1, 7)]
+
 def get_coarse_time_monitoring_address(address_type: str) -> int:
     """
     获取快加时间监测相关的连续地址（新增）

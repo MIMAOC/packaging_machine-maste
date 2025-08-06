@@ -492,7 +492,13 @@ class BucketMonitoringService:
                 state.last_start_active = start_active
                 state.start_active_initialized = True
                 return
-            
+        
+            # 检查是否已监测足够时间（至少15秒）
+            if state.start_time:
+                monitoring_duration = (datetime.now() - state.start_time).total_seconds()
+                if monitoring_duration < 15.0:
+                    return  # 监测时间不足15秒，跳过物料不足检测
+
             # 检查条件：启动=1 且 到量=0
             if start_active and not target_reached:
                 # 获取15秒前的重量

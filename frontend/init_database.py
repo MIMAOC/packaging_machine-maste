@@ -94,8 +94,8 @@ def main():
     except ImportError as e:
         print(f"❌ 导入数据库模块失败: {e}")
         print("\n🔧 请检查:")
-        print("1. 是否已安装PyMySQL: pip install PyMySQL")
-        print("2. database目录和相关文件是否存在")
+        print("1. database目录和相关文件是否存在")
+        print("2. SQLite3是Python内置模块，无需额外安装")
         
     except Exception as e:
         print(f"❌ 初始化异常: {e}")

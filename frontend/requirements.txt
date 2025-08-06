@@ -1,5 +1,4 @@
 pymodbus==3.9.2
 requests==2.32.4
 tenacity
-PyMySQL
 Pillow

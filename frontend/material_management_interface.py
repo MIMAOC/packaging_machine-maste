@@ -16,6 +16,7 @@
 创建日期：2025-08-05
 """
 
+from datetime import datetime
 import tkinter as tk
 from tkinter import ttk, messagebox
 import tkinter.font as tkFont
@@ -371,8 +372,8 @@ class MaterialManagementInterface:
                                       font=self.content_font, bg='white', fg='#333333')
             ai_status_label.place(relx=0.3, rely=0.5, relwidth=0.15, anchor='w')
             
-            # 创建时间
-            create_time_text = material.create_time.strftime("%Y-%m-%d") if material.create_time else "未知"
+            # 创建时间 - 增加安全处理
+            create_time_text = self._format_datetime_safe(material.create_time)
             create_time_label = tk.Label(content_frame, text=create_time_text, 
                                         font=self.content_font, bg='white', fg='#333333')
             create_time_label.place(relx=0.45, rely=0.5, relwidth=0.2, anchor='w')
@@ -410,6 +411,61 @@ class MaterialManagementInterface:
             
         except Exception as e:
             print(f"[错误] 创建物料行异常: {e}")
+            
+    def _format_datetime_safe(self, dt_value):
+        """
+        安全格式化datetime值
+        
+        Args:
+            dt_value: datetime对象、字符串或None
+            
+        Returns:
+            str: 格式化后的日期字符串
+        """
+        try:
+            if dt_value is None:
+                return "未知"
+            
+            # 如果是datetime对象，直接格式化
+            if isinstance(dt_value, datetime):
+                return dt_value.strftime("%Y-%m-%d")
+            
+            # 如果是字符串，尝试解析后格式化
+            if isinstance(dt_value, str):
+                # 尝试解析字符串为datetime
+                try:
+                    # 常见的SQLite datetime格式
+                    formats = [
+                        "%Y-%m-%d %H:%M:%S",
+                        "%Y-%m-%d %H:%M:%S.%f",
+                        "%Y-%m-%d",
+                        "%Y/%m/%d %H:%M:%S",
+                        "%Y/%m/%d"
+                    ]
+                    
+                    for fmt in formats:
+                        try:
+                            parsed_dt = datetime.strptime(dt_value, fmt)
+                            return parsed_dt.strftime("%Y-%m-%d")
+                        except ValueError:
+                            continue
+                    
+                    # 如果无法解析，直接返回前10个字符（通常是日期部分）
+                    if len(dt_value) >= 10:
+                        return dt_value[:10]
+                    else:
+                        return dt_value
+                        
+                except Exception as e:
+                    print(f"解析时间字符串异常: {e}, 值: {dt_value}")
+                    return str(dt_value)[:10] if len(str(dt_value)) >= 10 else str(dt_value)
+            
+            # 其他类型，转换为字符串
+            return str(dt_value)
+            
+        except Exception as e:
+            print(f"格式化时间异常: {e}, 值: {dt_value}, 类型: {type(dt_value)}")
+            return "格式错误"
     
     def center_window(self):
         """将窗口居中显示"""

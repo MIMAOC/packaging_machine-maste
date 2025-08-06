@@ -6,6 +6,7 @@
 
 作者：AI助手
 创建日期：2025-08-04
+修复日期：2025-08-06（修复SQLite语法和datetime转换问题）
 """
 
 from typing import List, Dict, Any, Optional, Tuple
@@ -27,6 +28,50 @@ class MaterialDAO:
     """物料数据访问对象"""
     
     @staticmethod
+    def _parse_datetime(dt_str):
+        """
+        解析datetime字符串为datetime对象
+        
+        Args:
+            dt_str: 日期时间字符串或datetime对象
+            
+        Returns:
+            datetime对象或None
+        """
+        if dt_str is None:
+            return None
+        
+        if isinstance(dt_str, datetime):
+            return dt_str
+        
+        if isinstance(dt_str, str):
+            try:
+                # 尝试多种格式解析
+                formats = [
+                    "%Y-%m-%d %H:%M:%S",
+                    "%Y-%m-%d %H:%M:%S.%f",
+                    "%Y-%m-%d",
+                    "%Y/%m/%d %H:%M:%S",
+                    "%Y/%m/%d"
+                ]
+                
+                for fmt in formats:
+                    try:
+                        return datetime.strptime(dt_str, fmt)
+                    except ValueError:
+                        continue
+                
+                # 如果所有格式都失败，返回None
+                print(f"警告：无法解析日期时间字符串: {dt_str}")
+                return None
+                
+            except Exception as e:
+                print(f"解析日期时间异常: {e}")
+                return None
+        
+        return None
+    
+    @staticmethod
     def get_all_materials(enabled_only: bool = True) -> List[Material]:
         """
         获取所有物料列表
@@ -42,7 +87,7 @@ class MaterialDAO:
             params = None
             
             if enabled_only:
-                sql += " WHERE is_enabled = %s"
+                sql += " WHERE is_enabled = ?"
                 params = (1,)
             
             sql += " ORDER BY create_time DESC"
@@ -55,9 +100,9 @@ class MaterialDAO:
                     id=row['id'],
                     material_name=row['material_name'],
                     ai_status=row['ai_status'],
-                    create_time=row['create_time'],
+                    create_time=MaterialDAO._parse_datetime(row['create_time']),
                     is_enabled=row['is_enabled'],
-                    update_time=row['update_time']
+                    update_time=MaterialDAO._parse_datetime(row['update_time'])
                 )
                 materials.append(material)
             
@@ -97,7 +142,7 @@ class MaterialDAO:
             Optional[Material]: 物料对象，如果不存在则返回None
         """
         try:
-            sql = "SELECT * FROM materials WHERE id = %s"
+            sql = "SELECT * FROM materials WHERE id = ?"
             results = db_manager.execute_query(sql, (material_id,))
             
             if results:
@@ -106,9 +151,9 @@ class MaterialDAO:
                     id=row['id'],
                     material_name=row['material_name'],
                     ai_status=row['ai_status'],
-                    create_time=row['create_time'],
+                    create_time=MaterialDAO._parse_datetime(row['create_time']),
                     is_enabled=row['is_enabled'],
-                    update_time=row['update_time']
+                    update_time=MaterialDAO._parse_datetime(row['update_time'])
                 )
             
             return None
@@ -129,7 +174,7 @@ class MaterialDAO:
             Optional[Material]: 物料对象，如果不存在则返回None
         """
         try:
-            sql = "SELECT * FROM materials WHERE material_name = %s"
+            sql = "SELECT * FROM materials WHERE material_name = ?"
             results = db_manager.execute_query(sql, (material_name,))
             
             if results:
@@ -138,9 +183,9 @@ class MaterialDAO:
                     id=row['id'],
                     material_name=row['material_name'],
                     ai_status=row['ai_status'],
-                    create_time=row['create_time'],
+                    create_time=MaterialDAO._parse_datetime(row['create_time']),
                     is_enabled=row['is_enabled'],
-                    update_time=row['update_time']
+                    update_time=MaterialDAO._parse_datetime(row['update_time'])
                 )
             
             return None
@@ -169,7 +214,7 @@ class MaterialDAO:
                 return False, f"物料名称'{material_name}'已存在", None
             
             # 插入新物料
-            sql = "INSERT INTO materials (material_name, ai_status, is_enabled) VALUES (%s, %s, %s)"
+            sql = "INSERT INTO materials (material_name, ai_status, is_enabled) VALUES (?, ?, ?)"
             material_id = db_manager.execute_insert(sql, (material_name, ai_status, is_enabled))
             
             return True, f"物料'{material_name}'创建成功", material_id
@@ -197,7 +242,7 @@ class MaterialDAO:
             if ai_status not in valid_statuses:
                 return False, f"无效的AI状态值: {ai_status}"
             
-            sql = "UPDATE materials SET ai_status = %s WHERE id = %s"
+            sql = "UPDATE materials SET ai_status = ? WHERE id = ?"
             affected_rows = db_manager.execute_update(sql, (ai_status, material_id))
             
             if affected_rows > 0:
@@ -228,7 +273,7 @@ class MaterialDAO:
             if ai_status not in valid_statuses:
                 return False, f"无效的AI状态值: {ai_status}"
             
-            sql = "UPDATE materials SET ai_status = %s WHERE material_name = %s"
+            sql = "UPDATE materials SET ai_status = ? WHERE material_name = ?"
             affected_rows = db_manager.execute_update(sql, (ai_status, material_name))
             
             if affected_rows > 0:
@@ -253,7 +298,7 @@ class MaterialDAO:
             Tuple[bool, str]: (成功状态, 消息)
         """
         try:
-            sql = "UPDATE materials SET is_enabled = 1 WHERE id = %s"
+            sql = "UPDATE materials SET is_enabled = 1 WHERE id = ?"
             affected_rows = db_manager.execute_update(sql, (material_id,))
             
             if affected_rows > 0:
@@ -278,7 +323,7 @@ class MaterialDAO:
             Tuple[bool, str]: (成功状态, 消息)
         """
         try:
-            sql = "UPDATE materials SET is_enabled = 0 WHERE id = %s"
+            sql = "UPDATE materials SET is_enabled = 0 WHERE id = ?"
             affected_rows = db_manager.execute_update(sql, (material_id,))
             
             if affected_rows > 0:
@@ -303,7 +348,7 @@ class MaterialDAO:
             Tuple[bool, str]: (成功状态, 消息)
         """
         try:
-            sql = "DELETE FROM materials WHERE id = %s"
+            sql = "DELETE FROM materials WHERE id = ?"
             affected_rows = db_manager.execute_update(sql, (material_id,))
             
             if affected_rows > 0:
@@ -329,11 +374,11 @@ class MaterialDAO:
             List[Material]: 物料列表
         """
         try:
-            sql = "SELECT * FROM materials WHERE ai_status = %s"
+            sql = "SELECT * FROM materials WHERE ai_status = ?"
             params = [ai_status]
             
             if enabled_only:
-                sql += " AND is_enabled = %s"
+                sql += " AND is_enabled = ?"
                 params.append(1)
             
             sql += " ORDER BY create_time DESC"
@@ -346,9 +391,9 @@ class MaterialDAO:
                     id=row['id'],
                     material_name=row['material_name'],
                     ai_status=row['ai_status'],
-                    create_time=row['create_time'],
+                    create_time=MaterialDAO._parse_datetime(row['create_time']),
                     is_enabled=row['is_enabled'],
-                    update_time=row['update_time']
+                    update_time=MaterialDAO._parse_datetime(row['update_time'])
                 )
                 materials.append(material)
             
