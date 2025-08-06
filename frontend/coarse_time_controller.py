@@ -136,6 +136,9 @@ class CoarseTimeTestController:
         self.fine_time_controller.on_bucket_completed = self._on_fine_time_completed
         self.fine_time_controller.on_progress_update = self._on_fine_time_progress_update
         self.fine_time_controller.on_log_message = self._on_fine_time_log
+        
+        self.material_name = "未知物料"  # 默认值
+        self.current_material_name = "未知物料"  # 兼容性
     
     def _initialize_bucket_states(self):
         """初始化料斗状态"""
@@ -145,23 +148,32 @@ class CoarseTimeTestController:
     
     def set_material_name(self, material_name: str):
         """
-        设置物料名称（传递给自适应学习控制器）
+        设置物料名称
         
         Args:
             material_name (str): 物料名称
         """
         try:
-            # 如果有自适应学习控制器，设置物料名称
+            self.material_name = material_name
+            self.current_material_name = material_name
+            
+            # 传递给飞料值控制器
+            if hasattr(self.flight_material_controller, 'set_material_name'):
+                self.flight_material_controller.set_material_name(material_name)
+                self._log(f"📝 已将物料名称'{material_name}'传递给飞料值控制器")
+            
+            # 传递给慢加时间控制器
+            if hasattr(self.fine_time_controller, 'set_material_name'):
+                self.fine_time_controller.set_material_name(material_name)
+                self._log(f"📝 已将物料名称'{material_name}'传递给慢加时间控制器")
+            
+            # 如果自适应学习控制器已创建，也传递给它
             if hasattr(self, 'adaptive_learning_controller') and self.adaptive_learning_controller:
                 if hasattr(self.adaptive_learning_controller, 'set_material_name'):
                     self.adaptive_learning_controller.set_material_name(material_name)
-                    self._log(f"📝 已设置物料名称到自适应学习控制器: {material_name}")
-                else:
-                    self._log(f"⚠️ 自适应学习控制器不支持设置物料名称")
+                    self._log(f"📝 已将物料名称'{material_name}'传递给自适应学习控制器")
             
-            # 保存到实例变量中，以便后续创建自适应学习控制器时使用
-            self.current_material_name = material_name
-            self._log(f"📝 已保存当前物料名称: {material_name}")
+            self._log(f"📝 快加时间控制器设置物料名称: {material_name}")
             
         except Exception as e:
             error_msg = f"设置物料名称异常: {str(e)}"
@@ -175,7 +187,7 @@ class CoarseTimeTestController:
         Returns:
             str: 当前物料名称
         """
-        return getattr(self, 'current_material_name', '未知物料')
+        return getattr(self, 'material_name', '未知物料')
     
     def start_coarse_time_test_after_parameter_writing(self, target_weight: float, coarse_speed: int) -> Tuple[bool, str]:
         """
@@ -707,13 +719,18 @@ class CoarseTimeTestController:
             
             failure_msg = f"❌ 料斗{bucket_id}{self._get_stage_name(failed_stage)}失败: {error_message}（共{state.attempt_count}次尝试）"
             self._log(failure_msg)
+        
+            # 修复：使用root.after确保在主线程中执行UI操作
+            def trigger_failure_callback():
+                if self.on_bucket_failed:
+                    try:
+                        self.on_bucket_failed(bucket_id, error_message, failed_stage)
+                    except Exception as e:
+                        self.logger.error(f"失败事件回调异常: {e}")
             
-            # 触发失败回调（新增），让界面处理失败弹窗
-            if self.on_bucket_failed:
-                try:
-                    self.on_bucket_failed(bucket_id, error_message, failed_stage)
-                except Exception as e:
-                    self.logger.error(f"失败事件回调异常: {e}")
+            # 延迟100ms执行，避免同时触发多个弹窗
+            if hasattr(self, 'root_reference') and self.root_reference:
+                self.root_reference.after(100, trigger_failure_callback)
             
         except Exception as e:
             error_msg = f"处理料斗{bucket_id}失败状态异常: {str(e)}"
@@ -809,7 +826,7 @@ class CoarseTimeTestController:
             if success:
                 self._log(f"🎉 料斗{bucket_id}飞料值测定完成，开始慢加时间测定")
                 
-                # 从消息中提取平均飞料值（修复：改进提取逻辑）
+                # 从消息中提取平均飞料值
                 flight_material_value = self._extract_flight_material_value_from_message(message)
                 
                 # 保存飞料值到状态中，用于重新学习
@@ -819,16 +836,16 @@ class CoarseTimeTestController:
                     state.last_flight_material_value = flight_material_value
                     
                 self._log(f"📊 料斗{bucket_id}参数: 原始目标重量={original_target_weight}g, 平均飞料值={flight_material_value:.1f}g")
-            
-                # 🔥 修复：在启动慢加时间测定前设置物料名称
-                if hasattr(self, 'fine_time_controller'):
-                    if hasattr(self.fine_time_controller, 'set_material_name'):
-                        self.fine_time_controller.set_material_name(self.material_name)
-                        self._log(f"📝 已将物料名称'{self.material_name}'传递给慢加时间控制器")
                 
-                # 飞料值测定成功，启动慢加时间测定（修复：传递平均飞料值）
+                # 🔥 修复：在启动慢加时间测定前设置物料名称
+                current_material_name = self.get_current_material_name()
+                if hasattr(self.fine_time_controller, 'set_material_name'):
+                    self.fine_time_controller.set_material_name(current_material_name)
+                    self._log(f"📝 已将物料名称'{current_material_name}'传递给慢加时间控制器")
+                
+                # 飞料值测定成功，启动慢加时间测定
                 fine_time_success = self.fine_time_controller.start_fine_time_test(
-                    bucket_id, original_target_weight, flight_material_value)  # 传递平均飞料值
+                    bucket_id, original_target_weight, flight_material_value)
                 
                 if fine_time_success:
                     self._log(f"✅ 料斗{bucket_id}慢加时间测定已启动（包含平均飞料值 {flight_material_value:.1f}g）")
@@ -840,7 +857,7 @@ class CoarseTimeTestController:
                 self._log(f"❌ 料斗{bucket_id}飞料值测定失败: {message}")
                 # 飞料值测定失败，触发失败回调
                 self._handle_bucket_failure(bucket_id, message, "flight_material")
-                
+                    
         except Exception as e:
             error_msg = f"处理料斗{bucket_id}飞料值完成事件异常: {str(e)}"
             self.logger.error(error_msg)

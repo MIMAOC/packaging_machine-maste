@@ -2210,11 +2210,21 @@ class AIModeInterface:
                 
                 # 创建快加时间测定控制器
                 self.coarse_time_controller = create_coarse_time_test_controller(self.modbus_client)
+        
+                # 添加root引用，用于跨线程UI操作
+                self.coarse_time_controller.root_reference = self.root
             
                 # 🔥 修复：立即设置物料名称到快加时间测定控制器
                 if hasattr(self.coarse_time_controller, 'set_material_name'):
                     self.coarse_time_controller.set_material_name(material)
                     print(f"[信息] 已设置物料名称到快加时间测定控制器: {material}")
+    
+                # 同时设置子控制器的root引用
+                if hasattr(self.coarse_time_controller, 'flight_material_controller'):
+                    self.coarse_time_controller.flight_material_controller.root_reference = self.root
+                
+                if hasattr(self.coarse_time_controller, 'fine_time_controller'):
+                    self.coarse_time_controller.fine_time_controller.root_reference = self.root
                 
                 # 设置事件回调（保持原有逻辑）
                 def on_bucket_completed(bucket_id: int, success: bool, message: str):
@@ -2504,10 +2514,25 @@ class AIModeInterface:
             relearning_window.configure(bg='white')
             relearning_window.resizable(False, False)
             relearning_window.transient(self.root)
-            relearning_window.grab_set()
+        
+            # 修复：检查多斗学习状态弹窗是否存在且已grab_set
+            if (self.learning_status_window and 
+                self.learning_status_window.winfo_exists()):
+                # 不要grab_set，避免与多斗学习状态弹窗冲突
+                pass  
+            else:
+                relearning_window.grab_set()
             
             # 居中显示弹窗
             self.center_dialog_relative_to_main(relearning_window, 600, 400)
+        
+            # 设置关闭回调，清理活动弹窗跟踪
+            def on_dialog_close():
+                if hasattr(self, 'active_failure_dialogs'):
+                    self.active_failure_dialogs.discard(bucket_id)
+                relearning_window.destroy()
+            
+            relearning_window.protocol("WM_DELETE_WINDOW", on_dialog_close)
             
             # 获取阶段中文名称
             stage_names = {
@@ -2558,6 +2583,7 @@ class AIModeInterface:
             def on_restart_from_beginning():
                 """从头开始学习按钮点击事件"""
                 print(f"[信息] 料斗{bucket_id}选择从头开始学习")
+                on_dialog_close()  # 先清理弹窗跟踪
                 relearning_window.destroy()
                 
                 # 在后台线程中执行重新学习
@@ -2586,6 +2612,7 @@ class AIModeInterface:
             def on_restart_from_current_stage():
                 """从当前阶段开始学习按钮点击事件"""
                 print(f"[信息] 料斗{bucket_id}选择从当前阶段({failed_stage})开始学习")
+                on_dialog_close()  # 先清理弹窗跟踪
                 relearning_window.destroy()
                 
                 # 在后台线程中执行重新学习
@@ -2616,6 +2643,7 @@ class AIModeInterface:
             def on_cancel():
                 """取消按钮点击事件"""
                 print(f"[信息] 用户取消料斗{bucket_id}重新学习")
+                on_dialog_close()  # 先清理弹窗跟踪
                 relearning_window.destroy()
             
             # 从头开始学习按钮
@@ -2648,6 +2676,10 @@ class AIModeInterface:
             print(f"[信息] 显示料斗{bucket_id}重新学习选择弹窗")
             
         except Exception as e:
+            # 清理活动弹窗跟踪
+            if hasattr(self, 'active_failure_dialogs'):
+                self.active_failure_dialogs.discard(bucket_id)
+                
             error_msg = f"显示重新学习选择弹窗异常: {str(e)}"
             print(f"[错误] {error_msg}")
             messagebox.showerror("系统错误", error_msg)

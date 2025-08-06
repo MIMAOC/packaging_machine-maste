@@ -193,6 +193,9 @@ class AdaptiveLearningController:
         self.modbus_client = modbus_client
         self.bucket_states: Dict[int, BucketAdaptiveLearningState] = {}
         self.lock = threading.RLock()
+    
+        # 新增：用于跨线程UI操作的root引用
+        self.root_reference = None
         
         # 创建服务实例
         self.monitoring_service = create_bucket_monitoring_service(modbus_client)
@@ -247,10 +250,15 @@ class AdaptiveLearningController:
 
                 # 停止该料斗的自适应学习测定
                 self._handle_material_shortage_for_bucket(bucket_id)
+            
+                # 延迟触发失败回调，避免多个料斗同时触发
+                def trigger_shortage_failure():
+                    error_message = "料斗物料低于最低水平线或闭合不正常"
+                    self._handle_bucket_failure(bucket_id, error_message, stage)
                 
-                # 直接触发失败回调，使用指定的错误信息
-                error_message = "料斗物料低于最低水平线或闭合不正常"
-                self._handle_bucket_failure(bucket_id, error_message, stage)
+                # 延迟200ms * bucket_id，避免多个料斗同时触发
+                import threading
+                threading.Timer(0.2 * bucket_id, trigger_shortage_failure).start()
 
         except Exception as e:
             error_msg = f"处理料斗{bucket_id}物料不足事件异常: {str(e)}"
@@ -1154,13 +1162,18 @@ class AdaptiveLearningController:
             total_attempts = (state.current_round-1) * state.max_attempts_per_round + state.current_attempt
             failure_msg = f"❌ 料斗{bucket_id}自适应学习阶段测定失败: {error_message}（共{state.current_round}轮{total_attempts}次尝试）"
             self._log(failure_msg)
+        
+            # 修复：使用root.after确保在主线程中执行UI操作
+            def trigger_failure_callback():
+                if self.on_bucket_failed:
+                    try:
+                        self.on_bucket_failed(bucket_id, error_message, failed_stage)
+                    except Exception as e:
+                        self.logger.error(f"失败事件回调异常: {e}")
             
-            # 触发失败回调（新增），让界面处理失败弹窗
-            if self.on_bucket_failed:
-                try:
-                    self.on_bucket_failed(bucket_id, error_message, failed_stage)
-                except Exception as e:
-                    self.logger.error(f"失败事件回调异常: {e}")
+            # 延迟100ms执行，避免同时触发多个弹窗
+            if self.root_reference:
+                self.root_reference.after(100, trigger_failure_callback)
             
             # 检查是否所有料斗都完成了
             self._check_all_buckets_completed()

@@ -36,7 +36,10 @@ class BucketFineTimeState:
         self.error_message = ""            # 错误消息
         self.average_flight_material = 0.0  # 存储平均飞料值（来自飞料值测定阶段）
         self.fine_flow_rate = None         # 慢加流速（g/s）
-        self.material_name = "未知物料"    # 物料名称存储
+        self.material_name = "未知物料"
+    
+        # 新增：用于跨线程UI操作的root引用
+        self.root_reference = None
     
     def reset_for_new_test(self, average_flight_material: float = 0.0):
         """重置状态开始新的测定"""
@@ -165,9 +168,14 @@ class FineTimeTestController:
                 # 停止该料斗的慢加时间测定
                 self._handle_material_shortage_for_bucket(bucket_id)
 
-                # 直接触发失败回调，使用指定的错误信息
-                error_message = "料斗物料低于最低水平线或闭合不正常"
-                self._handle_bucket_failure(bucket_id, error_message, stage)
+                # 延迟触发失败回调，避免多个料斗同时触发
+                def trigger_shortage_failure():
+                    error_message = "料斗物料低于最低水平线或闭合不正常"
+                    self._handle_bucket_failure(bucket_id, error_message, stage)
+                
+                # 延迟200ms * bucket_id，避免多个料斗同时触发
+                import threading
+                threading.Timer(0.2 * bucket_id, trigger_shortage_failure).start()
             
         except Exception as e:
             error_msg = f"处理料斗{bucket_id}物料不足事件异常: {str(e)}"
@@ -806,13 +814,18 @@ class FineTimeTestController:
             
             failure_msg = f"❌ 料斗{bucket_id}慢加时间测定失败: {error_message}（共{state.current_attempt}次尝试）"
             self._log(failure_msg)
+        
+            # 修复：使用root.after确保在主线程中执行UI操作
+            def trigger_failure_callback():
+                if self.on_bucket_failed:
+                    try:
+                        self.on_bucket_failed(bucket_id, error_message, failed_stage)
+                    except Exception as e:
+                        self.logger.error(f"失败事件回调异常: {e}")
             
-            # 触发失败回调（新增），让界面处理失败弹窗
-            if self.on_bucket_failed:
-                try:
-                    self.on_bucket_failed(bucket_id, error_message, failed_stage)
-                except Exception as e:
-                    self.logger.error(f"失败事件回调异常: {e}")
+            # 延迟100ms执行，避免同时触发多个弹窗
+            if self.root_reference:
+                self.root_reference.after(100, trigger_failure_callback)
             
         except Exception as e:
             error_msg = f"处理料斗{bucket_id}失败状态异常: {str(e)}"

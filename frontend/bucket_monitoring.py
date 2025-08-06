@@ -115,16 +115,12 @@ class BucketMonitoringState:
             return None
         
         current_time = time.time()
-        target_time = current_time - 15.0  # 15秒前
+        target_time = current_time - 15.0
         
         # 找到最接近15秒前的重量记录
         for timestamp, weight in self.weight_history:
             if timestamp <= target_time:
                 return weight
-        
-        # 如果没有15秒前的数据，返回最早的记录
-        if self.weight_history:
-            return self.weight_history[0][1]
         
         return None
 
@@ -492,6 +488,15 @@ class BucketMonitoringService:
                 state.last_start_active = start_active
                 state.start_active_initialized = True
                 return
+        
+            # 检查是否已监测足够时间（至少15秒）
+            if state.start_time:
+                monitoring_duration = (datetime.now() - state.start_time).total_seconds()
+                if monitoring_duration < 15.0:
+                    return  # 监测时间不足15秒，跳过物料不足检测
+                
+            if len(state.weight_history) < 150:  # 15秒 * 10次/秒 = 150个数据点
+                return
             
             # 检查条件：启动=1 且 到量=0
             if start_active and not target_reached:
@@ -499,6 +504,10 @@ class BucketMonitoringService:
                 weight_15s_ago = state.get_weight_15s_ago()
                 
                 if weight_15s_ago is not None:
+                    oldest_time = state.weight_history[0][0] if state.weight_history else time.time()
+                    if time.time() - oldest_time < 15.0:
+                        return  # 数据历史不足15秒，不进行检测
+                
                     weight_change = current_weight - weight_15s_ago
                     
                     # 判断是否物料不足（重量变化 < 0.3g）
@@ -514,13 +523,18 @@ class BucketMonitoringService:
                         
                         # 发送停止命令
                         self._handle_material_shortage_stop(bucket_id, is_production)
+                    
+                        # 延迟触发物料不足事件，避免同时处理多个料斗
+                        def trigger_shortage_event():
+                            if self.on_material_shortage_detected:
+                                try:
+                                    self.on_material_shortage_detected(bucket_id, state.monitoring_type, is_production)
+                                except Exception as e:
+                                    self.logger.error(f"处理料斗{bucket_id}物料不足事件异常: {e}")
                         
-                        # 触发物料不足事件
-                        if self.on_material_shortage_detected:
-                            try:
-                                self.on_material_shortage_detected(bucket_id, state.monitoring_type, is_production)
-                            except Exception as e:
-                                self.logger.error(f"处理料斗{bucket_id}物料不足事件异常: {e}")
+                        # 延迟200ms触发，避免多个料斗同时触发
+                        import threading
+                        threading.Timer(0.2 * bucket_id, trigger_shortage_event).start()
             
             # 更新启动状态
             state.last_start_active = start_active
