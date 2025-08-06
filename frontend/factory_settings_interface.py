@@ -14,10 +14,42 @@
 创建日期：2025-08-05
 """
 
+import threading
 import tkinter as tk
 from tkinter import ttk, messagebox
 import tkinter.font as tkFont
 
+class ErrorThresholdConfig:
+    """误差阈值配置类"""
+    _instance = None
+    _lock = threading.Lock()
+    
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+        return cls._instance
+    
+    def __init__(self):
+        if not hasattr(self, 'initialized'):
+            self.lower_error = -0.2  # 默认下限误差
+            self.upper_error = 0.6   # 默认上限误差
+            self.initialized = True
+    
+    def update_thresholds(self, lower_error: float, upper_error: float):
+        """更新误差阈值"""
+        with self._lock:
+            self.lower_error = lower_error
+            self.upper_error = upper_error
+    
+    def get_thresholds(self) -> tuple:
+        """获取误差阈值"""
+        with self._lock:
+            return self.lower_error, self.upper_error
+        
+# 全局配置实例
+error_config = ErrorThresholdConfig()
 
 class FactorySettingsInterface:
     """
@@ -49,6 +81,9 @@ class FactorySettingsInterface:
         self.min_lower_error = -0.2
         self.min_upper_error = 0.6
         self.min_error_diff = 0.8
+    
+        # 从配置文件加载设置（新增）
+        self._load_from_config_file()
         
         # 当前误差设置（确保精度）
         self.current_lower_error = round(self.default_lower_error, 1)
@@ -56,6 +91,37 @@ class FactorySettingsInterface:
         
         # 显示密码验证窗口
         self.show_password_verification()
+        
+    def _load_from_config_file(self):
+        """从配置文件加载设置"""
+        try:
+            import json
+            import os
+            
+            config_file = os.path.join("config", "error_thresholds.json")
+            
+            if os.path.exists(config_file):
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    config_data = json.load(f)
+                
+                self.current_lower_error = config_data.get("lower_error", self.default_lower_error)
+                self.current_upper_error = config_data.get("upper_error", self.default_upper_error)
+                
+                # 更新全局配置
+                global error_config
+                error_config.update_thresholds(self.current_lower_error, self.current_upper_error)
+                
+                print(f"[配置文件] 已加载误差设置：下限={self.current_lower_error}g, 上限={self.current_upper_error}g")
+            else:
+                # 使用默认值
+                self.current_lower_error = self.default_lower_error
+                self.current_upper_error = self.default_upper_error
+                print(f"[配置文件] 使用默认误差设置")
+                
+        except Exception as e:
+            print(f"[警告] 加载配置文件失败: {e}，使用默认设置")
+            self.current_lower_error = self.default_lower_error
+            self.current_upper_error = self.default_upper_error
     
     def show_password_verification(self):
         """显示密码验证窗口（第一个窗口）"""
@@ -475,27 +541,68 @@ class FactorySettingsInterface:
         """保存设置"""
         # 验证参数（使用四舍五入避免浮点精度问题）
         error_diff = round(self.current_upper_error - self.current_lower_error, 1)
-        
+
         # 使用 < 比较，但考虑浮点精度，添加小的容差
         if error_diff < (self.min_error_diff - 0.05):  # 0.75 < 0.8 才报错
             messagebox.showerror("参数错误", 
                                f"误差范围不足！\n\n"
                                f"请调整参数使误差范围至少为 {self.min_error_diff}g")
             return
-        
+
         # 参数验证通过，保存设置
         result = messagebox.askyesno("保存设置", 
                                    f"确认保存当前设置吗？\n\n"
                                    f"下限误差：{self.current_lower_error:+.1f}g\n"
                                    f"上限误差：{self.current_upper_error:+.1f}g\n")
-        
+
         if result:
-            # 这里可以添加实际的保存逻辑
-            # 比如写入配置文件或数据库
-            messagebox.showinfo("保存成功", 
-                              f"出厂设置已保存！\n\n"
-                              f"下限误差：{self.current_lower_error:+.1f}g\n"
-                              f"上限误差：{self.current_upper_error:+.1f}g\n")
+            try:
+                # 更新全局误差配置（新增）
+                global error_config
+                error_config.update_thresholds(self.current_lower_error, self.current_upper_error)
+
+                # 这里可以添加实际的保存逻辑（比如写入配置文件）
+                self._save_to_config_file()
+
+                messagebox.showinfo("保存成功", 
+                                  f"出厂设置已保存！\n\n"
+                                  f"下限误差：{self.current_lower_error:+.1f}g\n"
+                                  f"上限误差：{self.current_upper_error:+.1f}g\n\n"
+                                  f"新的误差设置将在下次生产时生效")
+
+                print(f"[出厂设置] 误差阈值已更新：下限={self.current_lower_error}g, 上限={self.current_upper_error}g")
+
+            except Exception as e:
+                error_msg = f"保存设置异常: {str(e)}"
+                print(f"[错误] {error_msg}")
+                messagebox.showerror("保存失败", f"保存设置时发生错误：\n{error_msg}")
+                
+    def _save_to_config_file(self):
+        """保存设置到配置文件（可选实现）"""
+        try:
+            # 这里可以实现保存到配置文件的逻辑
+            # 比如保存到 config/error_thresholds.json
+            import json
+            import os
+
+            config_dir = "config"
+            if not os.path.exists(config_dir):
+                os.makedirs(config_dir)
+
+            config_file = os.path.join(config_dir, "error_thresholds.json")
+            config_data = {
+                "lower_error": self.current_lower_error,
+                "upper_error": self.current_upper_error,
+                "saved_time": time.time()
+            }
+
+            with open(config_file, 'w', encoding='utf-8') as f:
+                json.dump(config_data, f, indent=2)
+
+            print(f"[配置文件] 误差设置已保存到 {config_file}")
+
+        except Exception as e:
+            print(f"[警告] 保存配置文件失败: {e}")
     
     def create_footer_section(self, parent):
         """创建底部信息区域"""

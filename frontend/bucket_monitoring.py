@@ -841,48 +841,52 @@ class BucketMonitoringService:
             # 读取实时重量
             weight_address = BUCKET_MONITORING_ADDRESSES[bucket_id]['Weight']
             raw_weight_data = self.modbus_client.read_holding_registers(weight_address, 1)
-            
+
             if raw_weight_data is None or len(raw_weight_data) == 0:
                 self._log(f"料斗{bucket_id}重量读取失败")
                 return
-            
+
             # 处理重量数据
             raw_value = raw_weight_data[0]
             if raw_value > 32767:
                 signed_value = raw_value - 65536
             else:
                 signed_value = raw_value
-            
+
             real_weight = signed_value / 10.0
             error_value = real_weight - self.target_weight
-            
-            # 判断是否合格（-0.2g <= 误差值 <= +0.6g）
-            is_qualified = -0.2 <= error_value <= 0.6
-            
-            self._log(f"料斗{bucket_id}重量测量 - 实重: {real_weight:.1f}g, 误差: {error_value:.1f}g, 合格: {is_qualified}")
-            
+
+            # 获取动态误差阈值（修改这部分）
+            lower_error, upper_error = self._get_error_thresholds()
+
+            # 判断是否合格（使用动态阈值）
+            is_qualified = lower_error <= error_value <= upper_error
+
+            self._log(f"料斗{bucket_id}重量测量 - 实重: {real_weight:.1f}g, 误差: {error_value:.1f}g, "
+                     f"阈值: [{lower_error:+.1f}g, {upper_error:+.1f}g], 合格: {is_qualified}")
+
             # 处理合格/不合格逻辑
             if is_qualified:
                 # 合格：记录有效数据，清零不合格次数
                 self._record_production_detail(bucket_id, real_weight, error_value, True, True)
                 with self.lock:
                     self.production_states[bucket_id].consecutive_unqualified = 0
-                
+
             else:
                 # 不合格：记录无效数据，累计不合格次数
                 self._record_production_detail(bucket_id, real_weight, error_value, False, False)
-                
+
                 with self.lock:
                     state = self.production_states[bucket_id]
                     state.consecutive_unqualified += 1
-                    
+
                     self._log(f"料斗{bucket_id}不合格，连续次数: {state.consecutive_unqualified}")
-                    
+
                     # 检查是否需要发送停止命令
                     if state.consecutive_unqualified >= 3:
                         self._log(f"料斗{bucket_id}连续3次不合格，发送总停止命令")
                         self._send_production_stop_commands()
-                        
+
                         # 触发生产停止事件
                         if self.on_production_stop_triggered:
                             try:
@@ -892,11 +896,31 @@ class BucketMonitoringService:
                     else:
                         # 单次不合格也要发送停止命令
                         self._send_production_stop_commands()
-            
+
         except Exception as e:
             error_msg = f"处理料斗{bucket_id}重量测量异常: {str(e)}"
             self.logger.error(error_msg)
             self._log(error_msg)
+            
+    def _get_error_thresholds(self) -> tuple:
+        """
+        获取误差阈值
+        
+        Returns:
+            tuple: (下限误差, 上限误差)
+        """
+        try:
+            # 尝试从出厂设置获取动态阈值
+            try:
+                from factory_settings_interface import error_config
+                lower_error, upper_error = error_config.get_thresholds()
+                return lower_error, upper_error
+            except ImportError:
+                # 如果无法导入，使用默认值
+                return -0.2, 0.6
+        except Exception as e:
+            self.logger.error(f"获取误差阈值异常: {e}")
+            return -0.2, 0.6  # 使用默认值
             
     def _record_production_detail(self, bucket_id: int, real_weight: float, 
                                  error_value: float, is_qualified: bool, is_valid: bool):
