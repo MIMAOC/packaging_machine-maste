@@ -145,6 +145,16 @@ BUCKET_DISABLE_ADDRESSES = {
     6: 49414
 }
 
+# 6个料斗的禁用线圈地址
+BUCKET_PRODUCTION_DISABLE_ADDRESSES = {
+    1: 1,
+    2: 2,
+    3: 3,
+    4: 4,
+    5: 5,
+    6: 6
+}
+
 # 总控制线圈地址
 GLOBAL_CONTROL_ADDRESSES = {
     'GlobalStart': 300,      # 总启动
@@ -193,6 +203,24 @@ def get_bucket_parameter_address(bucket_id: int, parameter_name: str) -> int:
         raise ValueError(f"无效的参数名称: {parameter_name}")
     
     return BUCKET_PARAMETER_ADDRESSES[bucket_id][parameter_name]
+
+def get_bucket_disable_address(bucket_id: int) -> int:
+    """
+    获取指定料斗的生产禁用线圈地址
+    
+    Args:
+        bucket_id (int): 料斗ID (1-6)
+        
+    Returns:
+        int: 禁用线圈地址
+        
+    Raises:
+        ValueError: 如果料斗ID无效
+    """
+    if bucket_id not in BUCKET_PRODUCTION_DISABLE_ADDRESSES:
+        raise ValueError(f"无效的料斗ID: {bucket_id}，有效范围: 1-6")
+    
+    return BUCKET_PRODUCTION_DISABLE_ADDRESSES[bucket_id]
 
 def get_bucket_weight_address(bucket_id: int) -> int:
     """

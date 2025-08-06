@@ -56,6 +56,13 @@ try:
 except ImportError as e:
     print(f"警告：无法导入生产记录DAO模块: {e}")
     PRODUCTION_RECORD_DAO_AVAILABLE = False
+    
+try:
+    from plc_addresses import get_bucket_disable_address
+    BUCKET_DISABLE_AVAILABLE = True
+except ImportError as e:
+    print(f"警告：无法导入料斗禁用地址: {e}")
+    BUCKET_DISABLE_AVAILABLE = False
 
 class ProductionInterface:
     """
@@ -815,13 +822,278 @@ class ProductionInterface:
         try:
             # 记录到故障日志
             self.add_fault_record(f"生产已停止 - 料斗{bucket_id}: {reason}")
-            
-            # 自动暂停生产状态
-            self.root.after(0, self._handle_production_auto_pause)
-            
+
+            # 检查是否是连续3次不合格
+            if "连续3次不合格" in reason:
+                # 显示E002弹窗
+                self.root.after(0, lambda: self.show_e002_dialog(bucket_id))
+            else:
+                # 其他情况自动暂停生产状态
+                self.root.after(0, self._handle_production_auto_pause)
+
         except Exception as e:
             print(f"处理生产停止触发事件异常: {e}")
             
+    def show_e002_dialog(self, bucket_id: int):
+        """
+        显示E002算法失效弹窗（图1）
+
+        Args:
+            bucket_id: 故障料斗ID
+        """
+        try:
+            # 创建E002弹窗
+            e002_window = tk.Toplevel(self.root)
+            e002_window.title("")
+            e002_window.geometry("700x500")
+            e002_window.configure(bg='#ffb444')  # 橙色背景
+            e002_window.resizable(False, False)
+            e002_window.transient(self.root)
+            e002_window.grab_set()
+
+            # 禁用窗口关闭按钮
+            e002_window.protocol("WM_DELETE_WINDOW", lambda: None)
+
+            # 居中显示弹窗
+            self.center_dialog_relative_to_main(e002_window, 700, 500)
+
+            # 故障代码
+            tk.Label(e002_window, text="故障代码：E002", 
+                    font=tkFont.Font(family="微软雅黑", size=14),
+                    bg='#ffb444', fg='white').place(x=50, y=50)
+
+            # 故障类型
+            tk.Label(e002_window, text="故障类型：算法失效", 
+                    font=tkFont.Font(family="微软雅黑", size=14),
+                    bg='#ffb444', fg='white').place(x=50, y=90)
+
+            # 故障描述
+            tk.Label(e002_window, text=f"故障描述：连续三次超出允许范围，认定为算法失效", 
+                    font=tkFont.Font(family="微软雅黑", size=14),
+                    bg='#ffb444', fg='white').place(x=50, y=130)
+
+            # 处理方法
+            processing_text = "处理方法：请选择弃用故障料斗，或全部重新自适应学习"
+            tk.Label(e002_window, text=processing_text, 
+                    font=tkFont.Font(family="微软雅黑", size=14),
+                    bg='#ffb444', fg='white', justify='left').place(x=50, y=170)
+
+            # 按钮区域
+            button_frame = tk.Frame(e002_window, bg='#ffb444')
+            button_frame.place(x=150, y=350)
+
+            # 弃用料斗按钮
+            disable_btn = tk.Button(button_frame, text="✕ 弃用料斗", 
+                                  font=tkFont.Font(family="微软雅黑", size=14),
+                                  bg='white', fg='#333333',
+                                  relief='flat', bd=0,
+                                  padx=30, pady=10,
+                                  command=lambda: self._handle_disable_bucket_choice(e002_window, bucket_id))
+            disable_btn.pack(side=tk.LEFT, padx=20)
+
+            # 重新学习按钮
+            relearn_btn = tk.Button(button_frame, text="▶ 重新学习", 
+                                  font=tkFont.Font(family="微软雅黑", size=14),
+                                  bg='#2196f3', fg='white',
+                                  relief='flat', bd=0,
+                                  padx=30, pady=10,
+                                  command=lambda: self._handle_relearn_choice(e002_window, bucket_id))
+            relearn_btn.pack(side=tk.LEFT, padx=20)
+
+            print(f"[生产界面] 显示料斗{bucket_id} E002算法失效弹窗")
+
+        except Exception as e:
+            error_msg = f"显示E002弹窗异常: {str(e)}"
+            print(f"[错误] {error_msg}")
+            self.add_fault_record(error_msg)
+
+    def _handle_disable_bucket_choice(self, e002_window, bucket_id: int):
+        """
+        处理弃用料斗选择
+
+        Args:
+            e002_window: E002弹窗对象
+            bucket_id: 料斗ID
+        """
+        try:
+            # 关闭E002弹窗
+            e002_window.destroy()
+
+            # 显示确认弃用弹窗
+            self.show_disable_confirm_dialog(bucket_id)
+
+        except Exception as e:
+            print(f"[错误] 处理弃用料斗选择异常: {e}")
+
+    def _handle_relearn_choice(self, e002_window, bucket_id: int):
+        """
+        处理重新学习选择
+
+        Args:
+            e002_window: E002弹窗对象
+            bucket_id: 料斗ID
+        """
+        try:
+            # 关闭E002弹窗
+            e002_window.destroy()
+
+            # 显示确认重新学习弹窗
+            result = messagebox.askyesno("确认重新学习", 
+                                       f"确定要重新学习料斗{bucket_id}参数吗？\n\n"
+                                       f"将跳转到AI模式界面重新开始AI生产流程。")
+
+            if result:
+                # 停止当前生产
+                self.monitoring_threads_running = False
+                self.is_production_running = False
+
+                # 停止生产监测
+                if self.monitoring_service:
+                    self.monitoring_service.stop_production_monitoring()
+
+                # 停止PLC
+                if self.modbus_client and self.modbus_client.is_connected:
+                    self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStart'], False)
+
+                self.add_fault_record(f"料斗{bucket_id}选择重新学习，跳转到AI模式")
+
+                # 跳转到AI模式界面
+                self.on_closing()  # 这会返回到AI模式界面
+
+        except Exception as e:
+            print(f"[错误] 处理重新学习选择异常: {e}")
+
+    def show_disable_confirm_dialog(self, bucket_id: int):
+        """
+        显示确认弃用料斗弹窗（图2）
+
+        Args:
+            bucket_id: 料斗ID
+        """
+        try:
+            # 创建确认弃用弹窗
+            disable_confirm_window = tk.Toplevel(self.root)
+            disable_confirm_window.title("")
+            disable_confirm_window.geometry("700x500")
+            disable_confirm_window.configure(bg='#ffb444')  # 橙色背景
+            disable_confirm_window.resizable(False, False)
+            disable_confirm_window.transient(self.root)
+            disable_confirm_window.grab_set()
+
+            # X按钮点击时返回E002弹窗
+            def on_window_close():
+                disable_confirm_window.destroy()
+                # 返回E002弹窗
+                self.show_e002_dialog(bucket_id)
+
+            disable_confirm_window.protocol("WM_DELETE_WINDOW", on_window_close)
+
+            # 居中显示弹窗
+            self.center_dialog_relative_to_main(disable_confirm_window, 700, 500)
+
+            # 确认信息
+            tk.Label(disable_confirm_window, text="请确认弃用故障料斗", 
+                    font=tkFont.Font(family="微软雅黑", size=18, weight="bold"),
+                    bg='#ffb444', fg='white').place(x=250, y=150)
+
+            tk.Label(disable_confirm_window, text="其他料斗继续生产运行", 
+                    font=tkFont.Font(family="微软雅黑", size=18, weight="bold"),
+                    bg='#ffb444', fg='white').place(x=230, y=200)
+
+            # 按钮区域
+            button_frame = tk.Frame(disable_confirm_window, bg='#ffb444')
+            button_frame.place(x=200, y=320)
+
+            # 取消按钮
+            def on_cancel():
+                disable_confirm_window.destroy()
+                # 返回E002弹窗
+                self.show_e002_dialog(bucket_id)
+
+            cancel_btn = tk.Button(button_frame, text="取消", 
+                                 font=tkFont.Font(family="微软雅黑", size=14),
+                                 bg='white', fg='#333333',
+                                 relief='flat', bd=0,
+                                 padx=40, pady=10,
+                                 command=on_cancel)
+            cancel_btn.pack(side=tk.LEFT, padx=30)
+
+            # 确认弃用按钮
+            def on_confirm_disable():
+                disable_confirm_window.destroy()
+                self._execute_disable_bucket(bucket_id)
+
+            confirm_btn = tk.Button(button_frame, text="确认弃用", 
+                                  font=tkFont.Font(family="微软雅黑", size=14),
+                                  bg='#ff4444', fg='white',
+                                  relief='flat', bd=0,
+                                  padx=40, pady=10,
+                                  command=on_confirm_disable)
+            confirm_btn.pack(side=tk.LEFT, padx=30)
+
+            print(f"[生产界面] 显示料斗{bucket_id}确认弃用弹窗")
+
+        except Exception as e:
+            error_msg = f"显示确认弃用弹窗异常: {str(e)}"
+            print(f"[错误] {error_msg}")
+            self.add_fault_record(error_msg)
+
+    def _execute_disable_bucket(self, bucket_id: int):
+        """
+        执行弃用料斗操作
+
+        Args:
+            bucket_id: 料斗ID
+        """
+        try:
+            if not BUCKET_DISABLE_AVAILABLE:
+                self.add_fault_record("料斗禁用功能不可用")
+                return
+
+            # 在后台线程执行PLC操作
+            def disable_thread():
+                try:
+                    # 向对应料斗禁用地址发送1
+                    disable_address = get_bucket_disable_address(bucket_id)
+                    success = self.modbus_client.write_coil(disable_address, True)
+
+                    if success:
+                        self.root.after(0, lambda: self.add_fault_record(f"料斗{bucket_id}已禁用"))
+                        print(f"[生产界面] 料斗{bucket_id}禁用命令发送成功")
+                    else:
+                        self.root.after(0, lambda: self.add_fault_record(f"料斗{bucket_id}禁用命令发送失败"))
+                        print(f"[生产界面] 料斗{bucket_id}禁用命令发送失败")
+
+                    # 继续生产（总停止=0，总启动=1）
+                    # 互斥保护：先发送总停止=0
+                    success1 = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStop'], False)
+
+                    # 等待50ms
+                    time.sleep(0.05)
+
+                    # 发送总启动=1
+                    success2 = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStart'], True)
+
+                    if success1 and success2:
+                        self.root.after(0, lambda: self.add_fault_record(f"料斗{bucket_id}已弃用，其他料斗继续生产"))
+                        print(f"[生产界面] 料斗{bucket_id}弃用后继续生产成功")
+                    else:
+                        self.root.after(0, lambda: self.add_fault_record("继续生产命令发送失败"))
+                        print("[生产界面] 继续生产命令发送失败")
+
+                except Exception as e:
+                    error_msg = f"弃用料斗{bucket_id}操作异常: {str(e)}"
+                    print(f"[错误] {error_msg}")
+                    self.root.after(0, lambda: self.add_fault_record(error_msg))
+
+            # 启动禁用操作线程
+            threading.Thread(target=disable_thread, daemon=True).start()
+
+        except Exception as e:
+            error_msg = f"执行弃用料斗{bucket_id}操作异常: {str(e)}"
+            print(f"[错误] {error_msg}")
+            self.add_fault_record(error_msg)
+
     def _handle_production_auto_pause(self):
         """处理生产自动暂停（在主线程中调用）"""
         try:
