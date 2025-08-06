@@ -2232,17 +2232,80 @@ class AIModeInterface:
                     if self.learning_state_manager:
                         if bucket_id == 0 and isinstance(message, dict):
                             # 这是所有料斗自适应学习完成的合并结果，处理每个料斗的状态
+                            print(f"[调试] 处理合并结果，message类型: {type(message)}, 内容: {message}")
+                            
                             for bid, state_obj in message.items():
-                                final_success = state_obj.is_success if hasattr(state_obj, 'is_success') else success
-                                final_message = f"自适应学习{'成功' if final_success else '失败'}" 
-                                self.learning_state_manager.complete_bucket_stage(
-                                    bid, LearningStage.ADAPTIVE_LEARNING, final_success, final_message
-                                )
-                                
-                                # 如果是自适应学习成功，设置物料名称到自适应学习控制器
-                                if final_success and hasattr(self.coarse_time_controller, 'adaptive_learning_controller'):
-                                    if hasattr(self.coarse_time_controller.adaptive_learning_controller, 'set_material_name'):
-                                        self.coarse_time_controller.adaptive_learning_controller.set_material_name(material)
+                                try:
+                                    # 确保bid是整数类型
+                                    bucket_id_int = int(bid) if isinstance(bid, str) else bid
+                                    
+                                    # 调试信息
+                                    print(f"[调试] 处理料斗{bucket_id_int}, state_obj类型: {type(state_obj)}")
+                                    print(f"[调试] state_obj属性: {dir(state_obj) if hasattr(state_obj, '__dict__') else 'no __dict__'}")
+                                    
+                                    # 检查状态对象的成功标志
+                                    if hasattr(state_obj, 'is_success'):
+                                        final_success = state_obj.is_success
+                                        print(f"[调试] 料斗{bucket_id_int} is_success: {final_success}")
+                                    elif hasattr(state_obj, 'is_completed') and hasattr(state_obj, 'error_message'):
+                                        # 备用判断逻辑
+                                        final_success = state_obj.is_completed and not state_obj.error_message
+                                        print(f"[调试] 料斗{bucket_id_int} 备用判断: is_completed={state_obj.is_completed}, error_message='{state_obj.error_message}'")
+                                    else:
+                                        final_success = success  # 使用默认值
+                                        print(f"[调试] 料斗{bucket_id_int} 使用默认成功状态: {final_success}")
+                                    
+                                    final_message = f"自适应学习{'成功' if final_success else '失败'}"
+                                    
+                                    print(f"[调试] 更新料斗{bucket_id_int}状态: {final_success}, {final_message}")
+                                    
+                                    # 先确保料斗进入自适应学习阶段，再完成它
+                                    print(f"[调试] 确保料斗{bucket_id_int}进入自适应学习阶段")
+                                    self.learning_state_manager.start_bucket_stage(bucket_id_int, LearningStage.ADAPTIVE_LEARNING)
+
+                                    # 然后完成自适应学习阶段
+                                    print(f"[调试] 完成料斗{bucket_id_int}自适应学习阶段")
+                                    self.learning_state_manager.complete_bucket_stage(
+                                        bucket_id_int, LearningStage.ADAPTIVE_LEARNING, final_success, final_message
+                                    )
+
+                                    # 强制更新状态（解决complete_bucket_stage可能的问题）
+                                    print(f"[调试] 强制更新料斗{bucket_id_int}状态为完成")
+                                    bucket_state = self.learning_state_manager.get_bucket_state(bucket_id_int)
+                                    if bucket_state:
+                                        if final_success:
+                                            bucket_state.status = LearningStatus.COMPLETED
+                                            bucket_state.current_stage = LearningStage.ADAPTIVE_LEARNING
+                                            bucket_state.is_successful = True
+                                            bucket_state.completion_message = final_message
+                                            print(f"[调试] 料斗{bucket_id_int}强制设置为成功完成")
+                                        else:
+                                            bucket_state.status = LearningStatus.FAILED
+                                            bucket_state.current_stage = LearningStage.ADAPTIVE_LEARNING
+                                            bucket_state.is_successful = False
+                                            bucket_state.failure_message = final_message
+                                            print(f"[调试] 料斗{bucket_id_int}强制设置为失败")
+                                        
+                                        # 触发状态变化事件
+                                        if hasattr(self.learning_state_manager, 'on_state_changed') and self.learning_state_manager.on_state_changed:
+                                            self.learning_state_manager.on_state_changed(bucket_id_int, bucket_state)
+                                            print(f"[调试] 触发料斗{bucket_id_int}状态变化事件")
+
+                                    print(f"[调试] 料斗{bucket_id_int}状态更新完成")
+                                    
+                                except Exception as e:
+                                    print(f"[错误] 处理料斗{bid}状态更新异常: {str(e)}")
+                                    import traceback
+                                    traceback.print_exc()
+                            
+                            print("[调试] 所有料斗状态更新完成")
+                            
+                            # 强制触发界面刷新
+                            self.root.after(0, self._force_refresh_learning_status)
+                            
+                            # 延迟检查确认按钮状态
+                            self.root.after(500, self._check_confirm_button_state)
+                            
                             return
                         else:
                             # 单个料斗完成事件，根据消息内容判断阶段
@@ -2395,8 +2458,6 @@ class AIModeInterface:
                     learned_result = learned_params[bucket_id]
                     coarse_speed = learned_result.coarse_speed
                     fine_speed = learned_result.fine_speed
-                    coarse_advance = learned_result.coarse_advance
-                    fall_value = learned_result.fall_value
                     self._log(f"📊 料斗{bucket_id}使用智能学习参数：快加速度={coarse_speed}档，慢加速度={fine_speed}档")
                 else:
                     # 使用默认值（与API分析相同）
@@ -2426,14 +2487,12 @@ class AIModeInterface:
                     bucket_success = False
                 
                 # 快加提前量
-                coarse_advance_plc = int(coarse_advance * 10)
-                if not self.modbus_client.write_holding_register(addresses['CoarseAdvance'], coarse_advance_plc):
+                if not self.modbus_client.write_holding_register(addresses['CoarseAdvance'], 0):
                     self._log(f"❌ 料斗{bucket_id}快加提前量写入失败")
                     bucket_success = False
                 
                 # 落差值
-                fall_value_plc = int(fall_value * 10)
-                if not self.modbus_client.write_holding_register(addresses['FallValue'], fall_value_plc):
+                if not self.modbus_client.write_holding_register(addresses['FallValue'], 0):
                     self._log(f"❌ 料斗{bucket_id}落差值写入失败")
                     bucket_success = False
                 
@@ -2710,6 +2769,42 @@ class AIModeInterface:
             except Exception as e:
                 print(f"[错误] 更新料斗{bucket_id}状态显示异常: {e}")
                 
+    def _force_refresh_learning_status(self):
+        """
+        强制刷新学习状态显示
+        """
+        try:
+            if not self.learning_status_window or not self.learning_state_manager:
+                return
+                
+            print("[调试] 强制刷新学习状态显示")
+            
+            # 获取所有状态并更新显示
+            all_states = self.learning_state_manager.get_all_states()
+            
+            for bucket_id in range(1, 7):
+                if bucket_id in self.bucket_status_labels and bucket_id in all_states:
+                    state = all_states[bucket_id]
+                    status_label = self.bucket_status_labels[bucket_id]
+                    
+                    status_text = state.get_display_text()
+                    status_color = state.get_display_color()
+                    
+                    print(f"[调试] 更新料斗{bucket_id}显示: {status_text} (颜色: {status_color})")
+                    
+                    # 更新标签显示
+                    status_label.config(text=status_text, fg=status_color)
+            
+            # 更新统计信息
+            self._update_learning_statistics()
+            
+            print("[调试] 强制刷新完成")
+            
+        except Exception as e:
+            print(f"[错误] 强制刷新学习状态异常: {e}")
+            import traceback
+            traceback.print_exc()
+                
     def _check_confirm_button_state(self):
         """
         检查并更新确认按钮的启用状态
@@ -2728,14 +2823,20 @@ class AIModeInterface:
 
             # 统计各状态数量
             all_states = self.learning_state_manager.get_all_states()
-            for state in all_states.values():
+            print(f"[调试] 检查按钮状态 - 所有状态: {[(bid, state.status.value, state.current_stage.value) for bid, state in all_states.items()]}")
+            
+            for bid, state in all_states.items():
                 if state.status.value == "learning":
                     learning_count += 1
                 elif state.status.value == "not_started":
                     not_started_count += 1
 
+            print(f"[调试] 状态统计 - 成功:{success_count}, 失败:{failed_count}, 学习中:{learning_count}, 未开始:{not_started_count}")
+
             # 检查是否所有6个料斗都已完成学习
             all_buckets_finished = (success_count + failed_count) >= 6 and learning_count == 0 and not_started_count == 0
+
+            print(f"[调试] 所有料斗完成状态: {all_buckets_finished}")
 
             if all_buckets_finished:
                 # 启用确认按钮
@@ -2745,6 +2846,7 @@ class AIModeInterface:
                     fg='white',
                     text="确认 全部完成"
                 )
+                print("[调试] 确认按钮已启用")
             else:
                 # 禁用确认按钮
                 self.confirm_btn.config(
@@ -2753,9 +2855,12 @@ class AIModeInterface:
                     fg='#666666',
                     text="确认"
                 )
+                print("[调试] 确认按钮保持禁用")
 
         except Exception as e:
             print(f"[错误] 检查确认按钮状态异常: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _on_all_learning_completed(self, all_states):
         """

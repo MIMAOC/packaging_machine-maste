@@ -7,10 +7,11 @@
 作者：AI助手
 创建日期：2025-08-06
 修复日期：2025-08-06（修复SQLite语法和datetime转换问题）
+更新日期：2025-08-07（添加generate_production_id方法，修复insert_detail方法参数）
 """
 
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 from dataclasses import dataclass
 from database.db_connection import db_manager
 
@@ -28,6 +29,72 @@ class ProductionDetail:
 
 class ProductionDetailDAO:
     """生产明细数据访问对象"""
+    
+    @staticmethod
+    def generate_production_id() -> str:
+        """
+        生成唯一的生产编号
+        格式：P + 年月日时分 + 3位随机数
+        例如：P2508071435001
+        
+        Returns:
+            str: 生产编号
+        """
+        try:
+            import random
+            
+            # 当前时间：年月日时分
+            time_part = datetime.now().strftime('%y%m%d%H%M')
+            
+            # 3位随机数
+            random_part = f"{random.randint(0, 999):03d}"
+            
+            production_id = f"P{time_part}{random_part}"
+            
+            # 检查生产编号是否已存在，如果存在则重新生成
+            max_attempts = 10
+            attempt = 0
+            while attempt < max_attempts:
+                if not ProductionDetailDAO._production_id_exists(production_id):
+                    return production_id
+                
+                # 重新生成随机部分
+                random_part = f"{random.randint(0, 999):03d}"
+                production_id = f"P{time_part}{random_part}"
+                attempt += 1
+            
+            # 如果10次尝试后仍有重复，添加更多随机数
+            extra_random = f"{random.randint(0, 99):02d}"
+            return f"P{time_part}{random_part}{extra_random}"
+            
+        except Exception as e:
+            print(f"生成生产编号异常: {e}")
+            # 备用方案：简单的时间戳
+            return f"P{datetime.now().strftime('%y%m%d%H%M%S')}"
+    
+    @staticmethod
+    def _production_id_exists(production_id: str) -> bool:
+        """
+        检查生产编号是否已存在
+        
+        Args:
+            production_id: 生产编号
+            
+        Returns:
+            bool: 是否存在
+        """
+        try:
+            query_sql = "SELECT COUNT(*) as count FROM production_details WHERE production_id = ?"
+            result = db_manager.execute_query(query_sql, (production_id,))
+            
+            if result and len(result) > 0:
+                return result[0].get('count', 0) > 0
+            
+            return False
+            
+        except Exception as e:
+            print(f"检查生产编号存在性异常: {e}")
+            return False
     
     @staticmethod
     def _parse_datetime(dt_str):
@@ -111,23 +178,47 @@ class ProductionDetailDAO:
             return False
     
     @staticmethod
-    def insert_detail(production_id: str, bucket_id: int, real_weight: float, 
-                     error_value: float, is_qualified: bool, is_valid: bool) -> Tuple[bool, str, int]:
+    def insert_detail(detail_or_production_id: Union[ProductionDetail, str], 
+                     bucket_id: Optional[int] = None, real_weight: Optional[float] = None, 
+                     error_value: Optional[float] = None, is_qualified: Optional[bool] = None, 
+                     is_valid: Optional[bool] = None) -> Tuple[bool, str, int]:
         """
         插入生产明细记录
+        支持两种调用方式：
+        1. insert_detail(production_detail_object)  # 传入ProductionDetail对象
+        2. insert_detail(production_id, bucket_id, real_weight, error_value, is_qualified, is_valid)  # 传入单独参数
         
         Args:
-            production_id: 生产编号
-            bucket_id: 料斗编号
-            real_weight: 实时重量
-            error_value: 误差值
-            is_qualified: 是否合格
-            is_valid: 是否有效
+            detail_or_production_id: ProductionDetail对象或生产编号
+            bucket_id: 料斗编号（当第一个参数是字符串时使用）
+            real_weight: 实时重量（当第一个参数是字符串时使用）
+            error_value: 误差值（当第一个参数是字符串时使用）
+            is_qualified: 是否合格（当第一个参数是字符串时使用）
+            is_valid: 是否有效（当第一个参数是字符串时使用）
             
         Returns:
             Tuple[bool, str, int]: (成功状态, 消息, 记录ID)
         """
         try:
+            # 判断第一个参数的类型
+            if isinstance(detail_or_production_id, ProductionDetail):
+                # 方式1：传入ProductionDetail对象
+                detail = detail_or_production_id
+                production_id = detail.production_id
+                bucket_id = detail.bucket_id
+                real_weight = detail.real_weight
+                error_value = detail.error_value
+                is_qualified = detail.is_qualified
+                is_valid = detail.is_valid
+            elif isinstance(detail_or_production_id, str):
+                # 方式2：传入单独参数
+                production_id = detail_or_production_id
+                # 检查其他参数是否都提供了
+                if any(param is None for param in [bucket_id, real_weight, error_value, is_qualified, is_valid]):
+                    return False, "传入单独参数时，所有参数都必须提供", 0
+            else:
+                return False, "第一个参数必须是ProductionDetail对象或字符串", 0
+            
             insert_sql = """
             INSERT INTO production_details 
             (production_id, bucket_id, real_weight, error_value, is_qualified, is_valid)
@@ -148,15 +239,15 @@ class ProductionDetailDAO:
             return False, f"插入生产明细记录异常: {str(e)}", 0
     
     @staticmethod
-    def get_valid_weight_sum_and_count(production_id: str) -> Tuple[float, int]:
+    def get_valid_weight_sum_by_production(production_id: str) -> Tuple[float, int]:
         """
-        获取指定生产编号的有效重量总和和数量
+        获取指定生产编号的有效重量总和和有效记录数
         
         Args:
             production_id: 生产编号
             
         Returns:
-            Tuple[float, int]: (有效重量总和, 有效数量)
+            Tuple[float, int]: (有效重量总和, 有效记录数)
         """
         try:
             query_sql = """
@@ -177,6 +268,19 @@ class ProductionDetailDAO:
         except Exception as e:
             print(f"获取有效重量统计异常: {e}")
             return 0.0, 0
+    
+    @staticmethod
+    def get_valid_weight_sum_and_count(production_id: str) -> Tuple[float, int]:
+        """
+        获取指定生产编号的有效重量总和和数量（兼容性方法）
+        
+        Args:
+            production_id: 生产编号
+            
+        Returns:
+            Tuple[float, int]: (有效重量总和, 有效数量)
+        """
+        return ProductionDetailDAO.get_valid_weight_sum_by_production(production_id)
     
     @staticmethod
     def get_bucket_consecutive_unqualified_count(production_id: str, bucket_id: int) -> int:

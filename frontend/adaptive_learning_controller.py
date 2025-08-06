@@ -1249,22 +1249,31 @@ class AdaptiveLearningController:
                 # 所有活跃料斗都完成了，触发合并完成事件
                 self._log("🎉 所有料斗的自适应学习阶段都已完成！")
                 
+                # 调试：输出所有料斗状态
+                completed_states = {}
+                for bucket_id, state in self.bucket_states.items():
+                    if state.is_completed:
+                        completed_states[bucket_id] = state
+                        self._log(f"[调试] 料斗{bucket_id}状态: is_success={state.is_success}, is_completed={state.is_completed}, error_message='{state.error_message}'")
+                
+                self._log(f"[调试] 完成的料斗数量: {len(completed_states)}")
+                
                 # 触发所有料斗完成事件
                 if self.on_all_buckets_completed:
                     try:
-                        # 只传递已完成的料斗状态
-                        completed_states = {
-                            bucket_id: state for bucket_id, state in self.bucket_states.items() 
-                            if state.is_completed
-                        }
+                        self._log(f"[调试] 触发合并完成事件，传递{len(completed_states)}个料斗状态")
                         self.on_all_buckets_completed(completed_states)
                     except Exception as e:
                         self.logger.error(f"所有料斗完成事件回调异常: {e}")
+                        import traceback
+                        traceback.print_exc()
                 
         except Exception as e:
             error_msg = f"检查所有料斗完成状态异常: {str(e)}"
             self.logger.error(error_msg)
             self._log(f"❌ {error_msg}")
+            import traceback
+            traceback.print_exc()
             
     def handle_material_shortage_continue(self, bucket_id: int) -> Tuple[bool, str]:
         """

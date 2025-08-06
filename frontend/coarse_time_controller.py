@@ -970,18 +970,32 @@ class CoarseTimeTestController:
         try:
             self._log("🎉 所有料斗自适应学习阶段完成！")
             
+            # 调试：检查传入的状态字典
+            self._log(f"[调试] 收到的状态字典类型: {type(all_states)}")
+            self._log(f"[调试] 状态字典内容: {list(all_states.keys()) if all_states else 'Empty'}")
+            
+            for bucket_id, state in all_states.items():
+                self._log(f"[调试] 料斗{bucket_id}: 类型={type(state)}, is_success={getattr(state, 'is_success', 'N/A')}, is_completed={getattr(state, 'is_completed', 'N/A')}")
+            
             # 触发合并的完成事件，传递所有状态
             if self.on_bucket_completed:
                 try:
+                    self._log(f"[调试] 触发合并完成事件，bucket_id=0, success=True, 状态数量={len(all_states)}")
                     # 使用特殊的bucket_id=0来标识这是合并结果
                     self.on_bucket_completed(0, True, all_states)
                 except Exception as e:
                     self.logger.error(f"自适应学习完成事件回调异常: {e}")
+                    import traceback
+                    traceback.print_exc()
+            else:
+                self._log("[警告] on_bucket_completed 回调函数未设置")
             
         except Exception as e:
             error_msg = f"处理所有料斗自适应学习完成事件异常: {str(e)}"
             self.logger.error(error_msg)
             self._log(f"❌ {error_msg}")
+            import traceback
+            traceback.print_exc()
     
     def _on_adaptive_learning_bucket_failed(self, bucket_id: int, error_message: str, failed_stage: str):
         """
