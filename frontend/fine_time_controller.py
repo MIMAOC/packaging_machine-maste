@@ -742,16 +742,28 @@ class FineTimeTestController:
                     else:
                         self._log(f"⚠️ 自适应学习控制器不支持设置物料名称方法")
                     
-                    # 设置事件回调（修改为合并弹窗回调）
-                    def on_all_adaptive_completed(completed_states):
-                        # 所有料斗的自适应学习完成后触发慢加时间控制器的完成事件
-                        # 传递bucket_id=0和completed_states字典来表示合并结果
+                    # 🔥 修改：设置单个料斗完成事件回调，移除合并完成事件
+                    def on_adaptive_bucket_completed(bucket_id: int, success: bool, message: str):
+                        """处理单个料斗自适应学习完成"""
+                        self._log(f"🎉 料斗{bucket_id}自适应学习{'成功' if success else '失败'}: {message}")
+                        
+                        # 直接转发单个料斗完成事件
                         if self.on_bucket_completed:
                             try:
-                                # 直接传递completed_states字典作为message参数
-                                self.on_bucket_completed(0, True, completed_states)  # bucket_id=0 表示合并结果
+                                self.on_bucket_completed(bucket_id, success, message)
                             except Exception as e:
-                                self.logger.error(f"合并完成事件回调异常: {e}")
+                                self.logger.error(f"自适应学习完成事件转发异常: {e}")
+                    
+                    def on_adaptive_bucket_failed(bucket_id: int, error_message: str, failed_stage: str):
+                        """处理单个料斗自适应学习失败"""
+                        self._log(f"❌ 料斗{bucket_id}自适应学习失败: {error_message}")
+                        
+                        # 转发失败事件
+                        if self.on_bucket_failed:
+                            try:
+                                self.on_bucket_failed(bucket_id, error_message, failed_stage)
+                            except Exception as e:
+                                self.logger.error(f"自适应学习失败事件转发异常: {e}")
                     
                     def on_adaptive_progress(bucket_id: int, current: int, max_progress: int, message: str):
                         # 转发自适应学习进度更新
@@ -760,7 +772,9 @@ class FineTimeTestController:
                     def on_adaptive_log(message: str):
                         self._log(f"[自适应学习] {message}")
                     
-                    self.adaptive_learning_controller.on_all_buckets_completed = on_all_adaptive_completed
+                    # 🔥 修改：设置单个料斗事件回调，移除合并完成事件
+                    self.adaptive_learning_controller.on_bucket_completed = on_adaptive_bucket_completed
+                    self.adaptive_learning_controller.on_bucket_failed = on_adaptive_bucket_failed
                     self.adaptive_learning_controller.on_progress_update = on_adaptive_progress
                     self.adaptive_learning_controller.on_log_message = on_adaptive_log
                 

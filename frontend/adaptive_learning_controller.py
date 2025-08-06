@@ -8,10 +8,11 @@
 1. 修复连续成功次数的重置逻辑
 2. 修复轮次管理逻辑
 3. 确保不符合条件时正确重置成功计数
+4. 修改为单个料斗完成事件（不再合并）
 
 作者：AI助手
 创建日期：2025-07-24
-更新日期：2025-07-30（修复连续成功次数重置逻辑）
+更新日期：2025-08-07（修改为单个料斗完成事件）
 """
 
 import threading
@@ -200,10 +201,9 @@ class AdaptiveLearningController:
         # 创建服务实例
         self.monitoring_service = create_bucket_monitoring_service(modbus_client)
         
-        # 事件回调
-        self.on_bucket_completed: Optional[Callable[[int, bool, str], None]] = None  # 单个料斗完成（保留但不使用）
-        self.on_bucket_failed: Optional[Callable[[int, str, str], None]] = None      # (bucket_id, error_message, failed_stage) - 新增失败回调
-        self.on_all_buckets_completed: Optional[Callable[[Dict[int, BucketAdaptiveLearningState]], None]] = None  # 新增：所有料斗完成
+        # 🔥 修改：移除合并完成事件，改用单个料斗完成事件
+        self.on_bucket_completed: Optional[Callable[[int, bool, str], None]] = None  # 单个料斗完成
+        self.on_bucket_failed: Optional[Callable[[int, str, str], None]] = None      # (bucket_id, error_message, failed_stage) - 失败回调
         self.on_progress_update: Optional[Callable[[int, int, int, str], None]] = None  # (bucket_id, current_attempt, max_attempts, message)
         self.on_log_message: Optional[Callable[[str], None]] = None
         
@@ -283,9 +283,6 @@ class AdaptiveLearningController:
                     state.fail_with_error("物料不足", "自适应学习阶段")
             
             self._log(f"✅ 料斗{bucket_id}自适应学习测定已因物料不足而停止")
-            
-            # 检查是否所有料斗都完成了
-            self._check_all_buckets_completed()
             
         except Exception as e:
             error_msg = f"处理料斗{bucket_id}物料不足停止逻辑异常: {str(e)}"
@@ -1032,7 +1029,7 @@ class AdaptiveLearningController:
     
     def _handle_bucket_success(self, bucket_id: int):
         """
-        处理料斗测定成功（不立即弹窗，收集结果）
+        处理料斗测定成功（🔥 修改：立即触发单个完成事件）
         
         Args:
             bucket_id (int): 料斗ID
@@ -1057,8 +1054,13 @@ class AdaptiveLearningController:
             success_msg = f"🎉 料斗{bucket_id}自适应学习阶段测定成功！连续成功{state.consecutive_success_count}次"
             self._log(success_msg)
             
-            # 检查是否所有料斗都完成了
-            self._check_all_buckets_completed()
+            # 🔥 修改：立即触发单个料斗完成事件，不再等待所有料斗
+            if self.on_bucket_completed:
+                try:
+                    self.on_bucket_completed(bucket_id, True, success_msg)
+                    self._log(f"✅ 料斗{bucket_id}完成事件已触发")
+                except Exception as e:
+                    self.logger.error(f"料斗{bucket_id}完成事件回调异常: {e}")
             
         except Exception as e:
             error_msg = f"处理料斗{bucket_id}成功状态异常: {str(e)}"
@@ -1175,9 +1177,6 @@ class AdaptiveLearningController:
             if self.root_reference:
                 self.root_reference.after(100, trigger_failure_callback)
             
-            # 检查是否所有料斗都完成了
-            self._check_all_buckets_completed()
-            
         except Exception as e:
             error_msg = f"处理料斗{bucket_id}失败状态异常: {str(e)}"
             self.logger.error(error_msg)
@@ -1235,46 +1234,6 @@ class AdaptiveLearningController:
             self.logger.error(f"读取料斗{bucket_id}慢加速度异常: {e}")
             return 44
     
-    def _check_all_buckets_completed(self):
-        """
-        检查是否所有料斗都完成了自适应学习，如果是则触发合并完成事件
-        """
-        try:
-            with self.lock:
-                # 如果还有活跃料斗，说明还有料斗在进行中
-                if self.active_buckets:
-                    self._log(f"还有料斗在进行自适应学习: {list(self.active_buckets)}")
-                    return
-                
-                # 所有活跃料斗都完成了，触发合并完成事件
-                self._log("🎉 所有料斗的自适应学习阶段都已完成！")
-                
-                # 调试：输出所有料斗状态
-                completed_states = {}
-                for bucket_id, state in self.bucket_states.items():
-                    if state.is_completed:
-                        completed_states[bucket_id] = state
-                        self._log(f"[调试] 料斗{bucket_id}状态: is_success={state.is_success}, is_completed={state.is_completed}, error_message='{state.error_message}'")
-                
-                self._log(f"[调试] 完成的料斗数量: {len(completed_states)}")
-                
-                # 触发所有料斗完成事件
-                if self.on_all_buckets_completed:
-                    try:
-                        self._log(f"[调试] 触发合并完成事件，传递{len(completed_states)}个料斗状态")
-                        self.on_all_buckets_completed(completed_states)
-                    except Exception as e:
-                        self.logger.error(f"所有料斗完成事件回调异常: {e}")
-                        import traceback
-                        traceback.print_exc()
-                
-        except Exception as e:
-            error_msg = f"检查所有料斗完成状态异常: {str(e)}"
-            self.logger.error(error_msg)
-            self._log(f"❌ {error_msg}")
-            import traceback
-            traceback.print_exc()
-            
     def handle_material_shortage_continue(self, bucket_id: int) -> Tuple[bool, str]:
         """
         处理物料不足继续操作

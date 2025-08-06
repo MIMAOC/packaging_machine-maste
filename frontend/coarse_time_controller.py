@@ -931,11 +931,43 @@ class CoarseTimeTestController:
                             self.adaptive_learning_controller.set_material_name(current_material_name)
                             self._log(f"📝 自适应学习控制器已创建并设置物料名称: {current_material_name}")
                         
-                        # 设置自适应学习控制器的事件回调
-                        self.adaptive_learning_controller.on_all_buckets_completed = self._on_adaptive_learning_all_completed
-                        self.adaptive_learning_controller.on_bucket_failed = self._on_adaptive_learning_bucket_failed
+                        # 🔥 修改：设置单个料斗完成事件回调，移除合并完成事件
+                        def on_adaptive_bucket_completed(bucket_id: int, success: bool, message: str):
+                            """处理单个料斗自适应学习完成"""
+                            self._log(f"🎉 料斗{bucket_id}自适应学习{'成功' if success else '失败'}: {message}")
+                            
+                            # 直接转发单个料斗完成事件
+                            if self.on_bucket_completed:
+                                try:
+                                    self.on_bucket_completed(bucket_id, success, message)
+                                except Exception as e:
+                                    self.logger.error(f"自适应学习完成事件转发异常: {e}")
                         
-                        self._log("✅ 自适应学习控制器已创建并配置")
+                        def on_adaptive_bucket_failed(bucket_id: int, error_message: str, failed_stage: str):
+                            """处理单个料斗自适应学习失败"""
+                            self._log(f"❌ 料斗{bucket_id}自适应学习失败: {error_message}")
+                            
+                            # 转发失败事件
+                            if self.on_bucket_failed:
+                                try:
+                                    self.on_bucket_failed(bucket_id, error_message, failed_stage)
+                                except Exception as e:
+                                    self.logger.error(f"自适应学习失败事件转发异常: {e}")
+                        
+                        def on_adaptive_progress(bucket_id: int, current: int, max_progress: int, message: str):
+                            # 转发自适应学习进度更新
+                            self._update_progress(bucket_id, current, max_progress, f"[自适应学习] {message}")
+                        
+                        def on_adaptive_log(message: str):
+                            self._log(f"[自适应学习] {message}")
+                        
+                        # 🔥 修改：设置单个料斗事件回调，移除合并完成事件
+                        self.adaptive_learning_controller.on_bucket_completed = on_adaptive_bucket_completed
+                        self.adaptive_learning_controller.on_bucket_failed = on_adaptive_bucket_failed
+                        self.adaptive_learning_controller.on_progress_update = on_adaptive_progress
+                        self.adaptive_learning_controller.on_log_message = on_adaptive_log
+                        
+                        self._log("✅ 自适应学习控制器已创建并配置（单个料斗事件模式）")
                         
                     except ImportError as e:
                         self._log(f"❌ 无法导入自适应学习控制器: {e}")

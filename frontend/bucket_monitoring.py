@@ -831,10 +831,14 @@ class BucketMonitoringService:
                             state.discharge_time = current_time
                             state.is_monitoring_discharge = False
                             self._log(f"料斗{bucket_id}检测到放料信号")
+                        
+                            # 立即读取重量并记录到数据库
+                            threading.Timer(0.1, self._handle_weight_measurement_on_discharge, 
+                                        args=(bucket_id,)).start()
                             
-                            # 延迟2s后重新开始监测
+                            # 延迟0.8s后重新开始监测
                             state.waiting_for_restart = True
-                            state.restart_time = current_time + 2.0
+                            state.restart_time = current_time + 0.8
                     
                     # 更新上次状态
                     state.last_target_reached = current_target
