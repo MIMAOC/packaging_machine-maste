@@ -37,6 +37,13 @@ try:
 except ImportError as e:
     print(f"警告：无法导入WebAPI客户端模块: {e}")
     WEBAPI_AVAILABLE = False
+    
+try:
+    from plc_addresses import get_bucket_disable_address
+    BUCKET_DISABLE_AVAILABLE = True
+except ImportError as e:
+    print(f"警告：无法导入料斗禁用地址: {e}")
+    BUCKET_DISABLE_AVAILABLE = False
 
 # 导入PLC操作模块
 try:
@@ -1887,8 +1894,21 @@ class AIModeInterface:
         try:
             print(f"开始执行AI生产序列: 重量={target_weight}g, 数量={package_quantity}, 物料={material}")
             
+            # 步骤0: 启用所有料斗（发送禁用地址=0命令）
+            self.root.after(0, lambda: self.show_progress_message("步骤0/5", "正在启用所有料斗..."))
+            
+            if BUCKET_DISABLE_AVAILABLE:
+                enable_success, enable_message = self._enable_all_buckets()
+                if not enable_success:
+                    error_msg = f"启用料斗失败：{enable_message}"
+                    self.root.after(0, lambda: messagebox.showerror("启用失败", error_msg))
+                    return
+                print("所有料斗已启用")
+            else:
+                print("警告：料斗禁用功能不可用，跳过启用步骤")
+            
             # 步骤1: 检查料斗重量并执行清料操作（如需要）
-            self.root.after(0, lambda: self.show_progress_message("步骤1/4", "正在检查料斗重量状态..."))
+            self.root.after(0, lambda: self.show_progress_message("步骤1/5", "正在检查料斗重量状态..."))
             
             check_success, has_weight, check_message = self.plc_operations.check_any_bucket_has_weight()
             
@@ -1926,6 +1946,49 @@ class AIModeInterface:
             error_msg = f"AI生产序列异常：{str(e)}"
             print(error_msg)
             self.root.after(0, lambda: messagebox.showerror("序列异常", error_msg))
+            
+    def _enable_all_buckets(self) -> tuple:
+        """
+        启用所有料斗（向禁用地址发送0命令）
+        
+        Returns:
+            tuple: (success: bool, message: str)
+        """
+        try:
+            if not self.modbus_client or not self.modbus_client.is_connected:
+                return False, "PLC未连接"
+            
+            success_count = 0
+            failed_buckets = []
+            
+            # 向每个料斗的禁用地址发送0命令
+            for bucket_id in range(1, 7):
+                try:
+                    disable_address = get_bucket_disable_address(bucket_id)
+                    success = self.modbus_client.write_coil(disable_address, False)  # False = 0 = 启用
+                    
+                    if success:
+                        success_count += 1
+                        print(f"[成功] 料斗{bucket_id}已启用")
+                    else:
+                        failed_buckets.append(bucket_id)
+                        print(f"[失败] 料斗{bucket_id}启用失败")
+                        
+                except Exception as e:
+                    failed_buckets.append(bucket_id)
+                    print(f"[错误] 料斗{bucket_id}启用异常: {e}")
+            
+            if success_count == 6:
+                return True, f"所有{success_count}个料斗已成功启用"
+            elif success_count > 0:
+                return False, f"只有{success_count}/6个料斗启用成功，失败料斗: {failed_buckets}"
+            else:
+                return False, f"所有料斗启用失败，失败料斗: {failed_buckets}"
+                
+        except Exception as e:
+            error_msg = f"启用料斗操作异常: {str(e)}"
+            print(f"[错误] {error_msg}")
+            return False, error_msg
     
     def show_material_cleaning_progress_dialog(self):
         """
