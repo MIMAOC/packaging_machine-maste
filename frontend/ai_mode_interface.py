@@ -227,6 +227,11 @@ class AIModeInterface:
         
         # 居中显示窗口（新增）
         self.center_window()
+        
+        # 【修复6】添加弹窗状态管理
+        self.active_dialogs = set()  # 记录当前活跃的弹窗
+        self.material_shortage_dialogs = {}  # 记录物料不足弹窗 {bucket_id: dialog_window}
+        self.dialog_lock = threading.Lock()  # 弹窗操作锁
     
     def get_material_list_from_database(self) -> List[str]:
         """
