@@ -153,7 +153,7 @@ class ProductionDetailDAO:
                 error_value REAL NOT NULL,
                 is_qualified INTEGER NOT NULL DEFAULT 0 CHECK(is_qualified IN (0,1)),
                 is_valid INTEGER NOT NULL DEFAULT 0 CHECK(is_valid IN (0,1)),
-                create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                create_time DATETIME NOT NULL DEFAULT (datetime('now', 'localtime'))
             );
             """
 

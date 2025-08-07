@@ -230,9 +230,9 @@ def calculate_adjustment_parameters(
         if 0 <= fine_time < 800:
             new_coarse_advance += 5.0
         elif 800 <= fine_time < 1600:
-            new_coarse_advance += 3.0
+            new_coarse_advance += 2.4
         elif 1600 <= fine_time < 2000:
-            new_coarse_advance += 2.0
+            new_coarse_advance += 1.5
         elif 2000 <= fine_time < 2700:
             new_coarse_advance += 1.0
         

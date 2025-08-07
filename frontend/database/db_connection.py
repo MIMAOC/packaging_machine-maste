@@ -76,9 +76,9 @@ class DatabaseManager:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     material_name TEXT NOT NULL UNIQUE,
                     ai_status TEXT NOT NULL DEFAULT '未学习' CHECK(ai_status IN ('未学习','已学习','已生产')),
-                    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    create_time DATETIME NOT NULL DEFAULT (datetime('now', 'localtime')),
                     is_enabled INTEGER NOT NULL DEFAULT 1 CHECK(is_enabled IN (0,1)),
-                    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    update_time DATETIME NOT NULL DEFAULT (datetime('now', 'localtime'))
                 );
                 """
                 cursor.execute(create_material_table)
@@ -98,8 +98,8 @@ class DatabaseManager:
                     fine_speed INTEGER NOT NULL,
                     coarse_advance REAL NOT NULL,
                     fall_value REAL NOT NULL,
-                    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    create_time DATETIME NOT NULL DEFAULT (datetime('now', 'localtime')),
+                    update_time DATETIME NOT NULL DEFAULT (datetime('now', 'localtime')),
                     UNIQUE(material_name, target_weight, bucket_id)
                 );
                 """
@@ -120,7 +120,7 @@ class DatabaseManager:
                     error_value REAL NOT NULL,
                     is_qualified INTEGER NOT NULL DEFAULT 1 CHECK(is_qualified IN (0,1)),
                     is_valid INTEGER NOT NULL DEFAULT 1 CHECK(is_valid IN (0,1)),
-                    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    create_time DATETIME NOT NULL DEFAULT (datetime('now', 'localtime'))
                 );
                 """
                 cursor.execute(create_production_details_table)
@@ -142,8 +142,8 @@ class DatabaseManager:
                     package_quantity INTEGER NOT NULL,
                     completed_packages INTEGER NOT NULL DEFAULT 0,
                     completion_rate REAL NOT NULL DEFAULT 0.00,
-                    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    create_time DATETIME NOT NULL DEFAULT (datetime('now', 'localtime')),
+                    update_time DATETIME NOT NULL DEFAULT (datetime('now', 'localtime'))
                 );
                 """
                 cursor.execute(create_production_records_table)
@@ -223,7 +223,7 @@ class DatabaseManager:
                 CREATE TRIGGER IF NOT EXISTS update_materials_timestamp 
                 AFTER UPDATE ON materials
                 BEGIN
-                    UPDATE materials SET update_time = CURRENT_TIMESTAMP WHERE id = NEW.id;
+                    UPDATE materials SET update_time = (datetime('now', 'localtime')) WHERE id = NEW.id;
                 END;
             """)
             
@@ -232,7 +232,7 @@ class DatabaseManager:
                 CREATE TRIGGER IF NOT EXISTS update_intelligent_learning_timestamp 
                 AFTER UPDATE ON intelligent_learning
                 BEGIN
-                    UPDATE intelligent_learning SET update_time = CURRENT_TIMESTAMP WHERE id = NEW.id;
+                    UPDATE intelligent_learning SET update_time = (datetime('now', 'localtime')) WHERE id = NEW.id;
                 END;
             """)
             
@@ -241,7 +241,7 @@ class DatabaseManager:
                 CREATE TRIGGER IF NOT EXISTS update_production_records_timestamp 
                 AFTER UPDATE ON production_records
                 BEGIN
-                    UPDATE production_records SET update_time = CURRENT_TIMESTAMP WHERE id = NEW.id;
+                    UPDATE production_records SET update_time = (datetime('now', 'localtime')) WHERE id = NEW.id;
                 END;
             """)
             
