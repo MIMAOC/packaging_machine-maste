@@ -101,7 +101,7 @@ class IntelligentLearningDAO:
                 # 存在则更新（覆盖）
                 update_sql = """
                 UPDATE intelligent_learning 
-                SET coarse_speed = ?, fine_speed = ?, coarse_advance = ?, fall_value = ?, update_time = (datetime('now', 'localtime'))
+                SET coarse_speed = ?, fine_speed = ?, coarse_advance = ?, fall_value = ?, update_time = datetime('now', 'localtime')
                 WHERE material_name = ? AND target_weight = ? AND bucket_id = ?
                 """
                 params = (coarse_speed, fine_speed, coarse_advance, fall_value, material_name, target_weight, bucket_id)
@@ -118,7 +118,7 @@ class IntelligentLearningDAO:
                 insert_sql = """
                 INSERT INTO intelligent_learning (material_name, target_weight, bucket_id, coarse_speed, fine_speed, coarse_advance, 
                 fall_value, create_time, update_time)
-                VALUES (?, ?, ?, ?, ?, ?, ?, (datetime('now', 'localtime')), (datetime('now', 'localtime')))
+                VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
                 """
                 params = (material_name, target_weight, bucket_id, coarse_speed, fine_speed, coarse_advance, fall_value)
 

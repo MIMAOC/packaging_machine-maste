@@ -223,7 +223,7 @@ class DatabaseManager:
                 CREATE TRIGGER IF NOT EXISTS update_materials_timestamp 
                 AFTER UPDATE ON materials
                 BEGIN
-                    UPDATE materials SET update_time = (datetime('now', 'localtime')) WHERE id = NEW.id;
+                    UPDATE materials SET update_time = datetime('now', 'localtime') WHERE id = NEW.id;
                 END;
             """)
             
@@ -232,7 +232,7 @@ class DatabaseManager:
                 CREATE TRIGGER IF NOT EXISTS update_intelligent_learning_timestamp 
                 AFTER UPDATE ON intelligent_learning
                 BEGIN
-                    UPDATE intelligent_learning SET update_time = (datetime('now', 'localtime')) WHERE id = NEW.id;
+                    UPDATE intelligent_learning SET update_time = datetime('now', 'localtime') WHERE id = NEW.id;
                 END;
             """)
             
@@ -241,7 +241,7 @@ class DatabaseManager:
                 CREATE TRIGGER IF NOT EXISTS update_production_records_timestamp 
                 AFTER UPDATE ON production_records
                 BEGIN
-                    UPDATE production_records SET update_time = (datetime('now', 'localtime')) WHERE id = NEW.id;
+                    UPDATE production_records SET update_time = datetime('now', 'localtime') WHERE id = NEW.id;
                 END;
             """)
             

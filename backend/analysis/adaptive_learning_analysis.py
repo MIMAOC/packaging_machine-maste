@@ -243,8 +243,8 @@ def calculate_adjustment_parameters(
         if fine_flow_rate is not None:
             cycle_diff = (request.actual_total_cycle_ms - standard_total_cycle_ms)/1000
             reduction = cycle_diff * fine_flow_rate + 1
-            new_coarse_advance = max(0, new_coarse_advance - reduction)
-            logger.info(f"总周期超出{cycle_diff}ms，快加提前量减少到{new_coarse_advance}g")
+            new_coarse_advance = round(max(0, new_coarse_advance - reduction), 1)  # 保留1位小数
+            logger.info(f"总周期超出{cycle_diff}ms，快加提前量减少到{new_coarse_advance:.1f}g")
     
     # 3. 处理误差值超出边界的情况
     if not error_check["compliant"]:        
@@ -256,7 +256,7 @@ def calculate_adjustment_parameters(
             logger.info(f"误差值{request.error_value}g < 0.0g，落差值减少到{new_fall_value}g")
     
     # 应用约束
-    new_coarse_advance = max(0.0, new_coarse_advance)
+    new_coarse_advance = round(max(0.0, new_coarse_advance), 1)  # 保留1位小数
     new_fall_value = max(0.0, min(1.0, new_fall_value))
     
     # 检查调整后的落差值是否仍在范围内
@@ -266,7 +266,7 @@ def calculate_adjustment_parameters(
     
     # 只返回实际需要调整的参数
     if new_coarse_advance != request.current_coarse_advance:
-        adjustment_params["coarse_advance"] = new_coarse_advance
+        adjustment_params["coarse_advance"] = round(new_coarse_advance, 1)  # 保留1位小数
     
     if new_fall_value != request.current_fall_value:
         adjustment_params["fall_value"] = new_fall_value
@@ -321,7 +321,7 @@ def generate_analysis_message(
         adjustments = []
         for param, value in adjustment_parameters.items():
             if param == "coarse_advance":
-                adjustments.append(f"快加提前量→{value}g")
+                adjustments.append(f"快加提前量→{value:.1f}g")
             elif param == "fall_value":
                 adjustments.append(f"落差值→{value}g")
         

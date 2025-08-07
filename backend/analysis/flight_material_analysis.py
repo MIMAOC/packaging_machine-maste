@@ -38,12 +38,12 @@ def analyze_flight_material_values(target_weight: float,
         # 计算3次快加飞料值 = 实时重量 - 目标重量
         flight_details = []
         for i, actual_weight in enumerate(recorded_weights):
-            flight_material = actual_weight - target_weight
+            flight_material = round(actual_weight - target_weight, 2)  # 保留2位小数
             flight_details.append(flight_material)
-            logger.debug(f"第{i+1}次飞料值: {actual_weight}g - {target_weight}g = {flight_material}g")
-        
+            logger.debug(f"第{i+1}次飞料值: {actual_weight:.1f}g - {target_weight:.1f}g = {flight_material:.2f}g")
+
         # 计算平均飞料值 = (飞料值1 + 飞料值2 + 飞料值3) / 3
-        average_flight_material = sum(flight_details) / len(flight_details)
+        average_flight_material = round(sum(flight_details) / len(flight_details), 2)  # 保留2位小数
         
         # 构建分析详情
         analysis_details = {
@@ -52,31 +52,31 @@ def analyze_flight_material_values(target_weight: float,
             "flight_material_calculations": [
                 {
                     "attempt": i + 1,
-                    "actual_weight": recorded_weights[i],
-                    "flight_material": flight_details[i],
-                    "calculation": f"{recorded_weights[i]}g - {target_weight}g = {flight_details[i]}g"
+                    "actual_weight": round(recorded_weights[i], 1),  # 保留1位小数
+                    "flight_material": round(flight_details[i], 2),  # 保留2位小数
+                    "calculation": f"{recorded_weights[i]:.1f}g - {target_weight:.1f}g = {flight_details[i]:.2f}g"
                 }
                 for i in range(3)
             ],
             "average_calculation": {
-                "formula": f"({flight_details[0]} + {flight_details[1]} + {flight_details[2]}) / 3",
-                "result": average_flight_material
+                "formula": f"({flight_details[0]:.2f} + {flight_details[1]:.2f} + {flight_details[2]:.2f}) / 3",
+                "result": round(average_flight_material, 2)  # 保留2位小数
             },
             "statistics": {
-                "min_flight_material": min(flight_details),
-                "max_flight_material": max(flight_details),
-                "variance": calculate_variance(flight_details),
-                "standard_deviation": calculate_standard_deviation(flight_details)
+                "min_flight_material": round(min(flight_details), 2),  # 保留2位小数
+                "max_flight_material": round(max(flight_details), 2),  # 保留2位小数
+                "variance": round(calculate_variance(flight_details), 2),  # 保留2位小数
+                "standard_deviation": round(calculate_standard_deviation(flight_details), 2)  # 保留2位小数
             }
         }
         
         message = (f"飞料值分析成功：\n"
-                  f"目标重量: {target_weight}g\n"
-                  f"3次实时重量: {recorded_weights[0]:.1f}g, {recorded_weights[1]:.1f}g, {recorded_weights[2]:.1f}g\n"
-                  f"3次飞料值: {flight_details[0]:.1f}g, {flight_details[1]:.1f}g, {flight_details[2]:.1f}g\n"
-                  f"平均飞料值: {average_flight_material:.1f}g")
-        
-        logger.info(f"飞料值分析完成，平均飞料值: {average_flight_material:.1f}g")
+                f"目标重量: {target_weight:.1f}g\n"
+                f"3次实时重量: {recorded_weights[0]:.1f}g, {recorded_weights[1]:.1f}g, {recorded_weights[2]:.1f}g\n"
+                f"3次飞料值: {flight_details[0]:.2f}g, {flight_details[1]:.2f}g, {flight_details[2]:.2f}g\n"
+                f"平均飞料值: {average_flight_material:.2f}g")
+
+        logger.info(f"飞料值分析完成，平均飞料值: {average_flight_material:.2f}g")
         return True, average_flight_material, flight_details, message, analysis_details
         
     except Exception as e:
@@ -112,10 +112,10 @@ def get_flight_material_statistics(flight_details: List[float]) -> Dict[str, Any
     
     return {
         "count": len(flight_details),
-        "min": min(flight_details),
-        "max": max(flight_details),
-        "average": sum(flight_details) / len(flight_details),
-        "variance": calculate_variance(flight_details),
-        "standard_deviation": calculate_standard_deviation(flight_details),
-        "range": max(flight_details) - min(flight_details)
+        "min": round(min(flight_details), 2),  # 保留2位小数
+        "max": round(max(flight_details), 2),  # 保留2位小数
+        "average": round(sum(flight_details) / len(flight_details), 2),  # 保留2位小数
+        "variance": round(calculate_variance(flight_details), 2),  # 保留2位小数
+        "standard_deviation": round(calculate_standard_deviation(flight_details), 2),  # 保留2位小数
+        "range": round(max(flight_details) - min(flight_details), 2)  # 保留2位小数
     }

@@ -206,7 +206,7 @@ class ProductionRecordDAO:
             
             sql = """
             UPDATE production_records 
-            SET completed_packages = ?, completion_rate = ?, update_time = (datetime('now', 'localtime'))
+            SET completed_packages = ?, completion_rate = ?, update_time = datetime('now', 'localtime')
             WHERE production_id = ?
             """
             
