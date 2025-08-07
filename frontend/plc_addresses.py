@@ -60,32 +60,38 @@ BUCKET_MONITORING_ADDRESSES = {
     1: {
         'Weight': 20,           # 实时重量寄存器地址
         'TargetReached': 191,   # 到量线圈地址
-        'CoarseAdd': 171        # 快加线圈地址
+        'CoarseAdd': 171,        # 快加线圈地址
+        'DischargeAddress':71   #放料线圈地址
     },
     2: {
         'Weight': 22,
         'TargetReached': 192,
-        'CoarseAdd': 172
+        'CoarseAdd': 172,
+        'DischargeAddress':72
     },
     3: {
         'Weight': 24,
         'TargetReached': 193,
-        'CoarseAdd': 173
+        'CoarseAdd': 173,
+        'DischargeAddress':73
     },
     4: {
         'Weight': 26,
         'TargetReached': 194,
-        'CoarseAdd': 174
+        'CoarseAdd': 174,
+        'DischargeAddress':74
     },
     5: {
         'Weight': 28,
         'TargetReached': 195,
-        'CoarseAdd': 175
+        'CoarseAdd': 175,
+        'DischargeAddress':75
     },
     6: {
         'Weight': 30,
         'TargetReached': 196,
-        'CoarseAdd': 176
+        'CoarseAdd': 176,
+        'DischargeAddress':76
     }
 }
 
@@ -136,23 +142,13 @@ BUCKET_CONTROL_ADDRESSES = {
 }
 
 # 6个料斗的禁用线圈地址
-BUCKET_DISABLE_ADDRESSES = {
+BUCKET_PRODUCTION_DISABLE_ADDRESSES = {
     1: 49409,
     2: 49410,
     3: 49411,
     4: 49412,
     5: 49413,
     6: 49414
-}
-
-# 6个料斗的禁用线圈地址
-BUCKET_PRODUCTION_DISABLE_ADDRESSES = {
-    1: 1,
-    2: 2,
-    3: 3,
-    4: 4,
-    5: 5,
-    6: 6
 }
 
 # 总控制线圈地址
@@ -350,7 +346,7 @@ def get_all_bucket_discharge_addresses() -> list:
     Returns:
         list: 包含所有料斗放料线圈地址的列表
     """
-    return [BUCKET_CONTROL_ADDRESSES[i]['DischargeAddress'] for i in range(1, 7)]
+    return [BUCKET_MONITORING_ADDRESSES[i]['DischargeAddress'] for i in range(1, 7)]
 
 def get_coarse_time_monitoring_address(address_type: str) -> int:
     """

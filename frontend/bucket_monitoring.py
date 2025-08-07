@@ -48,6 +48,11 @@ class BucketProductionState:
         self.waiting_for_restart = False    # 是否等待重新开始监测
         self.restart_time = None             # 重新开始时间
         
+        # 新增：暂存到量时的数据
+        self.temp_real_weight = 0.0         # 暂存的实时重量
+        self.temp_error_value = 0.0         # 暂存的误差值
+        self.temp_is_qualified = False      # 暂存的合格状态
+        
     def reset(self):
         """重置状态"""
         self.is_monitoring_target = False
@@ -58,6 +63,10 @@ class BucketProductionState:
         self.last_discharge_state = False
         self.waiting_for_restart = False
         self.restart_time = None
+        # 重置暂存数据
+        self.temp_real_weight = 0.0
+        self.temp_error_value = 0.0
+        self.temp_is_qualified = False
         # 注意：连续不合格次数不在这里重置
 
 class BucketMonitoringState:
@@ -369,7 +378,13 @@ class BucketMonitoringService:
                 for addr in weight_addresses:
                     weight_reg = self.modbus_client.read_holding_registers(addr, 1)
                     if weight_reg:
-                        weight_registers.append(weight_reg[0] / 10.0)  # 转换重量单位
+                        raw_value = weight_reg[0]
+                        # 如果大于32767，说明是负数（16位补码）
+                        if raw_value > 32767:
+                            signed_value = raw_value - 65536  # 转换为负数
+                        else:
+                            signed_value = raw_value
+                        weight_registers.append(signed_value / 10.0)  # 转换重量单位
                     else:
                         weight_registers.append(0.0)
                 weight_data = weight_registers
@@ -802,43 +817,46 @@ class BucketMonitoringService:
                     # 处理等待重新开始的状态
                     if state.waiting_for_restart:
                         if state.restart_time and current_time >= state.restart_time:
-                            # 2秒延迟结束，重新开始监测
+                            # 延迟结束，重新开始监测
                             state.waiting_for_restart = False
                             state.is_monitoring_target = True
                             state.is_monitoring_discharge = False
                             state.target_reached_time = None
                             state.discharge_time = None
+                            # 清空暂存数据
+                            state.temp_real_weight = 0.0
+                            state.temp_error_value = 0.0
+                            state.temp_is_qualified = False
                             self._log(f"料斗{bucket_id}重新开始监测")
                         continue
                     
-                    # 监测到量状态
+                    # 监测到量状态 - 在这里读取重量并判断合格性
                     if state.is_monitoring_target:
                         # 检测到量状态上升沿（从False变为True）
                         if current_target and not state.last_target_reached:
                             state.target_reached_time = current_time
-                            state.is_monitoring_target = False
-                            state.is_monitoring_discharge = True
-                            self._log(f"料斗{bucket_id}检测到到量信号")
+                            state.is_monitoring_target = False  # 停止对该斗到量的监测
+                            state.is_monitoring_discharge = True  # 开始监测放料
+                            self._log(f"料斗{bucket_id}检测到到量信号，开始读取重量判断合格性")
                             
-                            # 延迟500ms后读取重量并处理
-                            threading.Timer(0.5, self._handle_weight_measurement, 
-                                          args=(bucket_id,)).start()
+                            # 延迟500ms后读取重量并判断合格性（但不记录到数据库）
+                            threading.Timer(0.5, self._handle_weight_check_on_target_reached, 
+                                        args=(bucket_id,)).start()
                     
-                    # 监测放料状态
+                    # 监测放料状态 - 在这里标记有效并记录到数据库
                     if state.is_monitoring_discharge:
                         # 检测放料状态上升沿（从False变为True）
                         if current_discharge and not state.last_discharge_state:
                             state.discharge_time = current_time
-                            state.is_monitoring_discharge = False
-                            self._log(f"料斗{bucket_id}检测到放料信号")
-                        
-                            # 立即读取重量并记录到数据库
-                            threading.Timer(0.1, self._handle_weight_measurement_on_discharge, 
-                                        args=(bucket_id,)).start()
+                            state.is_monitoring_discharge = False  # 停止对该斗放料的监测
+                            self._log(f"料斗{bucket_id}检测到放料信号，标记有效并记录数据")
                             
-                            # 延迟0.8s后重新开始监测
+                            # 立即记录数据到数据库（标记为有效）
+                            self._handle_data_record_on_discharge(bucket_id)
+                            
+                            # 延迟2秒后重新开始监测
                             state.waiting_for_restart = True
-                            state.restart_time = current_time + 0.8
+                            state.restart_time = current_time + 2.0
                     
                     # 更新上次状态
                     state.last_target_reached = current_target
@@ -849,9 +867,9 @@ class BucketMonitoringService:
             self.logger.error(error_msg)
             self._log(error_msg)
             
-    def _handle_weight_measurement(self, bucket_id: int):
+    def _handle_weight_check_on_target_reached(self, bucket_id: int):
         """
-        处理重量测量和误差计算
+        在到量信号触发时读取重量并判断合格性（不记录数据库）
         
         Args:
             bucket_id: 料斗ID
@@ -874,15 +892,44 @@ class BucketMonitoringService:
 
             real_weight = signed_value / 10.0
             error_value = real_weight - self.target_weight
+        
+            # 四舍五入到1位小数，解决浮点数精度问题
+            error_value = round(error_value, 1)
 
-            # 获取动态误差阈值（修改这部分）
+            # 获取动态误差阈值
             lower_error, upper_error = self._get_error_thresholds()
 
             # 判断是否合格（使用动态阈值）
             is_qualified = lower_error <= error_value <= upper_error
 
-            self._log(f"料斗{bucket_id}重量测量 - 实重: {real_weight:.1f}g, 误差: {error_value:.1f}g, "
-                     f"阈值: [{lower_error:+.1f}g, {upper_error:+.1f}g], 合格: {is_qualified}")
+            self._log(f"料斗{bucket_id}到量重量检查 - 实重: {real_weight:.1f}g, 误差: {error_value:.1f}g, "
+                    f"阈值: [{lower_error:+.1f}g, {upper_error:+.1f}g], 合格: {is_qualified}")
+
+            # 将数据暂存到状态对象中，等待放料时记录
+            with self.lock:
+                state = self.production_states[bucket_id]
+                state.temp_real_weight = real_weight
+                state.temp_error_value = error_value
+                state.temp_is_qualified = is_qualified
+
+        except Exception as e:
+            error_msg = f"处理料斗{bucket_id}到量重量检查异常: {str(e)}"
+            self.logger.error(error_msg)
+            self._log(error_msg)
+            
+    def _handle_data_record_on_discharge(self, bucket_id: int):
+        """
+        在放料信号触发时标记有效并记录数据到数据库
+        
+        Args:
+            bucket_id: 料斗ID
+        """
+        try:
+            with self.lock:
+                state = self.production_states[bucket_id]
+                real_weight = state.temp_real_weight
+                error_value = state.temp_error_value
+                is_qualified = state.temp_is_qualified
 
             # 处理合格/不合格逻辑
             if is_qualified:
@@ -892,8 +939,8 @@ class BucketMonitoringService:
                     self.production_states[bucket_id].consecutive_unqualified = 0
 
             else:
-                # 不合格：记录无效数据，累计不合格次数
-                self._record_production_detail(bucket_id, real_weight, error_value, False, False)
+                # 不合格：记录有效数据（is_qualified=False，但is_valid=True），累计不合格次数
+                self._record_production_detail(bucket_id, real_weight, error_value, False, True)
 
                 with self.lock:
                     state = self.production_states[bucket_id]
@@ -901,8 +948,8 @@ class BucketMonitoringService:
 
                     self._log(f"料斗{bucket_id}不合格，连续次数: {state.consecutive_unqualified}")
 
-                    # 发送停止命令
-                    self._send_production_stop_commands()
+                    # 发送停止命令(注释恢复)
+                    # self._send_production_stop_commands()
 
                     # 检查是否连续3次不合格
                     if state.consecutive_unqualified >= 3:
@@ -925,7 +972,7 @@ class BucketMonitoringService:
                                 self.logger.error(f"处理单次不合格事件异常: {e}")
 
         except Exception as e:
-            error_msg = f"处理料斗{bucket_id}重量测量异常: {str(e)}"
+            error_msg = f"处理料斗{bucket_id}放料数据记录异常: {str(e)}"
             self.logger.error(error_msg)
             self._log(error_msg)
             

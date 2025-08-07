@@ -233,6 +233,9 @@ class AIModeInterface:
         self.material_shortage_dialogs = {}  # 记录物料不足弹窗 {bucket_id: dialog_window}
         self.dialog_lock = threading.Lock()  # 弹窗操作锁
     
+        # 新增：学习完成通知标志
+        self.all_learning_completed_notified = False  # 是否已通知所有学习完成
+    
     def get_material_list_from_database(self) -> List[str]:
         """
         从数据库获取物料列表
@@ -2785,7 +2788,10 @@ class AIModeInterface:
                     fg='white',
                     text="确认 全部完成"
                 )
-                print("[调试] 确认按钮已启用")
+                print("[调试] 确认按钮已启用")    
+                # 当确认按钮启用时，停止学习计时器
+                self._stop_learning_timer()
+                print("[调试] 学习计时器已停止（所有料斗学习完成）")
             else:
                 # 禁用确认按钮
                 self.confirm_btn.config(
@@ -2832,6 +2838,9 @@ class AIModeInterface:
                 self.learning_status_window.destroy()
                 self.learning_status_window = None
                 self.bucket_status_labels.clear()
+        
+            # 🔥 新增：重置学习完成通知标志
+            self.all_learning_completed_notified = False
             
             # 创建多斗学习状态弹窗
             self.learning_status_window = tk.Toplevel(self.root)
@@ -3257,7 +3266,10 @@ class AIModeInterface:
                         fg='white',
                         text="确认 全部完成"
                     )
-                    print("[信息] 所有料斗学习完成，确认按钮已启用")
+                    # 🔥 修改：只在第一次检测到完成时打印日志
+                    if not self.all_learning_completed_notified:
+                        print("[信息] 所有料斗学习完成，确认按钮已启用")
+                        self.all_learning_completed_notified = True
                 else:
                     # 还有料斗未完成，保持确认按钮禁用状态
                     self.confirm_btn.config(
@@ -3266,6 +3278,10 @@ class AIModeInterface:
                         fg='#666666',
                         text="确认"
                     )
+                    # 🔥 新增：如果状态从完成变为未完成（例如重新学习），重置通知标志
+                    if self.all_learning_completed_notified:
+                        self.all_learning_completed_notified = False
+                        print("[信息] 检测到学习状态变化，重置完成通知标志")
             
             # 继续定时更新（每秒更新一次）
             self.root.after(1000, self._update_learning_statistics)

@@ -826,8 +826,9 @@ class ProductionInterface:
 
             # 检查是否是连续3次不合格
             if "连续3次不合格" in reason:
-                # 显示E002弹窗
-                self.root.after(0, lambda: self.show_e002_dialog(bucket_id))
+                # 显示E002弹窗(注释恢复)
+                # self.root.after(0, lambda: self.show_e002_dialog(bucket_id))
+                print(f"[生产界面] 显示料斗{bucket_id}连续3次不合格")
             else:
                 # 其他情况自动暂停生产状态
                 self.root.after(0, self._handle_production_auto_pause)
@@ -1065,8 +1066,7 @@ class ProductionInterface:
                         self.root.after(0, lambda: self.add_fault_record(f"料斗{bucket_id}禁用命令发送失败"))
                         print(f"[生产界面] 料斗{bucket_id}禁用命令发送失败")
 
-                    # 继续生产（总停止=0，总启动=1）
-                    # 互斥保护：先发送总停止=0
+                    # 继续生产（总停止=0，总启动=1）先发送总停止=0
                     success1 = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStop'], False)
 
                     # 等待50ms
@@ -2013,8 +2013,8 @@ class ProductionInterface:
             def on_confirm_removed():
                 """确认已取走按钮点击事件"""
                 remove_window.destroy()
-                # 发送恢复生产命令
-                self._send_resume_production_commands()
+                # 发送恢复生产命令(注释恢复)
+                # self._send_resume_production_commands()
             
             confirm_btn = tk.Button(remove_window, text="确认", 
                                   font=tkFont.Font(family="微软雅黑", size=16, weight="bold"),

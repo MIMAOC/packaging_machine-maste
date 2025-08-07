@@ -382,7 +382,7 @@ class FlightMaterialTestController:
                 return
             
             # 步骤2: 延迟1000ms后读取实时重量
-            self._log(f"⏱️ 步骤4: 等待600ms后读取料斗{bucket_id}实时重量")
+            self._log(f"⏱️ 步骤4: 等待1000ms后读取料斗{bucket_id}实时重量")
             time.sleep(1)
             
             weight = self._read_bucket_weight(bucket_id)
