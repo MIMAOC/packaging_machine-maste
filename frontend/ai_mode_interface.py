@@ -1886,9 +1886,6 @@ class AIModeInterface:
         # 启动后台线程
         production_thread = threading.Thread(target=ai_production_thread, daemon=True)
         production_thread.start()
-        
-        # 显示开始信息
-        messagebox.showinfo("AI生产", "AI自学习自适应生产已启动！\n正在连接后端API服务进行参数分析...")
     
     def execute_ai_production_sequence(self, target_weight: float, package_quantity: int, material: str):
         """
@@ -2317,8 +2314,6 @@ class AIModeInterface:
                     self.root.after(0, lambda: messagebox.showerror("测定启动失败", error_msg))
                     # 不return，继续显示完成信息
                 
-                print(f"快加时间测定已启动：{test_message}")
-                
             except ImportError as e:
                 error_msg = f"无法导入快加时间测定模块：{str(e)}\n\n请确保相关模块文件存在"
                 print(f"警告：{error_msg}")
@@ -2327,42 +2322,7 @@ class AIModeInterface:
                 error_msg = f"快加时间测定启动异常：{str(e)}"
                 print(f"警告：{error_msg}")
                 # 不中断流程，继续显示完成信息
-            
-            # 成功完成所有步骤
-            if use_learned_params:
-                success_message = (
-                    f"🎉 AI生产流程启动完成！\n\n"
-                    f"📊 智能学习参数应用：\n"
-                    f"  • 物料：{material}\n"
-                    f"  • 目标重量：{target_weight}g\n"
-                    f"  • 使用已学习参数：{len(learned_params)}个料斗\n"
-                    f"  • 参数来源：智能学习数据库\n\n"
-                    f"📝 操作摘要：\n"
-                    f"  • 料斗检查：已清料\n"
-                    f"  • 参数来源：智能学习数据库\n"
-                    f"  • 参数写入：成功写入所有6个料斗\n"
-                    f"  • 快加时间测定：已启动（跳过学习阶段）\n\n"
-                    f"🔍 多斗学习状态弹窗已显示，可实时查看各料斗学习进度..."
-                )
-            else:
-                success_message = (
-                    f"🎉 AI生产流程启动完成！\n\n"
-                    f"📊 后端API分析结果：\n"
-                    f"  • API地址：{self.api_config.base_url if self.api_config else '未配置'}\n"
-                    f"  • 目标重量：{target_weight}g\n"
-                    f"  • 推荐快加速度：{coarse_speed} 档\n"
-                    f"  • 慢加速度：44 档\n"
-                    f"  • 快加提前量：0\n"
-                    f"  • 落差值：0\n\n"
-                    f"📝 操作摘要：\n"
-                    f"  • 料斗检查：已清料\n"
-                    f"  • 后端API分析：{analysis_message}\n"
-                    f"  • 参数写入：成功写入所有6个料斗\n"
-                    f"  • 快加时间测定：已启动\n\n"
-                    f"🔍 多斗学习状态弹窗已显示，可实时查看各料斗学习进度..."
-                )
-            
-            self.root.after(0, lambda: messagebox.showinfo("AI生产流程启动完成", success_message))
+                
             print("AI生产序列执行完成，后端API分析和自动化测定正在进行中")
             
         except Exception as e:

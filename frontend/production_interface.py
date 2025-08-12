@@ -2014,7 +2014,7 @@ class ProductionInterface:
                 """确认已取走按钮点击事件"""
                 remove_window.destroy()
                 # 发送恢复生产命令(注释恢复)
-                # self._send_resume_production_commands()
+                self._send_resume_production_commands()
             
             confirm_btn = tk.Button(remove_window, text="确认", 
                                   font=tkFont.Font(family="微软雅黑", size=16, weight="bold"),
@@ -2036,21 +2036,22 @@ class ProductionInterface:
         def resume_commands_thread():
             try:
                 # 1. 总停止=0
-                success1 = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStop'], False)
+                # success1 = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStop'], False)
                 
                 # 2. 向包装机停止地址发送1
-                success2 = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], True)
+                # success2 = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], True)
                 
-                # 等待50ms
-                time.sleep(0.05)
+                # 等待1s
+                # time.sleep(1)
                 
                 # 3. 向包装机停止地址发送0
                 success3 = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], False)
                 
                 # 4. 总启动=1
-                success4 = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStart'], True)
+                # success4 = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStart'], True)
                 
-                if success1 and success2 and success3 and success4:
+                # if success1 and success2 and success3 and success4:
+                if success3:
                     self.root.after(0, lambda: self.add_fault_record("恢复生产命令发送成功，生产已继续"))
                     print("[生产界面] 恢复生产命令发送成功")
                 else:

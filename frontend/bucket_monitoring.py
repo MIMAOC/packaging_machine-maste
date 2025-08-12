@@ -839,8 +839,8 @@ class BucketMonitoringService:
                             state.is_monitoring_discharge = True  # 开始监测放料
                             self._log(f"料斗{bucket_id}检测到到量信号，开始读取重量判断合格性")
                             
-                            # 延迟500ms后读取重量并判断合格性（但不记录到数据库）
-                            threading.Timer(0.5, self._handle_weight_check_on_target_reached, 
+                            # 延迟600ms后读取重量并判断合格性（但不记录到数据库）
+                            threading.Timer(0.6, self._handle_weight_check_on_target_reached, 
                                         args=(bucket_id,)).start()
                     
                     # 监测放料状态 - 在这里标记有效并记录到数据库
@@ -949,7 +949,7 @@ class BucketMonitoringService:
                     self._log(f"料斗{bucket_id}不合格，连续次数: {state.consecutive_unqualified}")
 
                     # 发送停止命令(注释恢复)
-                    # self._send_production_stop_commands()
+                    self._send_production_stop_commands()
 
                     # 检查是否连续3次不合格
                     if state.consecutive_unqualified >= 3:
@@ -1050,25 +1050,30 @@ class BucketMonitoringService:
             def stop_commands_thread():
                 try:
                     # 1. 发送总启动=0
-                    success1 = self.modbus_client.write_coil(
-                        GLOBAL_CONTROL_ADDRESSES['GlobalStart'], False)
+                    # success1 = self.modbus_client.write_coil(
+                    #     GLOBAL_CONTROL_ADDRESSES['GlobalStart'], False)
                     
                     # 2. 发送总停止=1
-                    success2 = self.modbus_client.write_coil(
-                        GLOBAL_CONTROL_ADDRESSES['GlobalStop'], True)
+                    # success2 = self.modbus_client.write_coil(
+                    #     GLOBAL_CONTROL_ADDRESSES['GlobalStop'], True)
                     
-                    # 3. 向包装机停止地址70发送0
+                    # 3. 向包装机停止地址70发送1
                     success3 = self.modbus_client.write_coil(
-                        GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], False)
-                    
-                    # 4. 向包装机停止地址70发送1
-                    success4 = self.modbus_client.write_coil(
                         GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], True)
+                
+                    # 等待1s
+                    # time.sleep(1)
                     
-                    if success1 and success2 and success3 and success4:
+                    # 4. 向包装机停止地址70发送0
+                    # success4 = self.modbus_client.write_coil(
+                    #     GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], False)
+                    
+                    # if success1 and success2 and success3 and success4:
+                    if success3:
                         self._log("生产停止命令发送成功")
                     else:
-                        self._log(f"生产停止命令发送结果: 总启动=0:{success1}, 总停止=1:{success2}, 包装机停止=0:{success3}, 包装机停止=1:{success4}")
+                        # self._log(f"生产停止命令发送结果: 总启动=0:{success1}, 总停止=1:{success2}, 包装机停止=1:{success3}, 包装机停止=0:{success4}")
+                        self._log(f"生产停止命令发送结果: 包装机停止=1:{success3}")
                 
                 except Exception as e:
                     error_msg = f"发送生产停止命令异常: {str(e)}"

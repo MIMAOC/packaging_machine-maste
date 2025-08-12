@@ -5,13 +5,14 @@
 负责加载logo图片并创建可点击的logo组件
 
 功能特点：
-1. 加载algorumla.png和tianteng.png图片
+1. 加载algormula.png和tianteng.png图片
 2. 创建可点击的logo组件
 3. 实现点击弹出联系信息功能
 4. 适配不同窗口尺寸
 
 作者：AI助手
 创建日期：2025-08-04
+修改日期：2025-08-08 - 修复打包后图片路径问题
 """
 
 import tkinter as tk
@@ -19,37 +20,49 @@ from tkinter import messagebox
 import tkinter.font as tkFont
 from PIL import Image, ImageTk
 import os
+import sys
+
+def get_resource_path(relative_path):
+    """获取资源文件的绝对路径（兼容打包后的exe）"""
+    try:
+        # PyInstaller创建临时文件夹，将路径存储在_MEIPASS中
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 class LogoHandler:
     """Logo处理器类"""
     
     def __init__(self):
-        self.algorumla_image = None
+        self.algormula_image = None  # 修正拼写
         self.tianteng_image = None
         self.load_images()
     
     def load_images(self):
         """加载logo图片"""
         try:
-            # 加载algorumla.png
-            if os.path.exists("algormula.png"):
-                algorumla_pil = Image.open("algormula.png")
+            # 加载algormula.png（修正拼写）
+            algormula_path = get_resource_path("algormula.png")
+            if os.path.exists(algormula_path):
+                algormula_pil = Image.open(algormula_path)
                 # 调整图片大小以适配界面
-                algorumla_pil = algorumla_pil.resize((80, 20), Image.Resampling.LANCZOS)
-                self.algorumla_image = ImageTk.PhotoImage(algorumla_pil)
+                algormula_pil = algormula_pil.resize((80, 20), Image.Resampling.LANCZOS)
+                self.algormula_image = ImageTk.PhotoImage(algormula_pil)
                 print("[Logo] algormula.png 加载成功")
             else:
-                print("[警告] algormula.png 文件不存在")
+                print(f"[警告] algormula.png 文件不存在，路径: {algormula_path}")
             
             # 加载tianteng.png  
-            if os.path.exists("tianteng.png"):
-                tianteng_pil = Image.open("tianteng.png")
+            tianteng_path = get_resource_path("tianteng.png")
+            if os.path.exists(tianteng_path):
+                tianteng_pil = Image.open(tianteng_path)
                 # 调整图片大小以适配界面
                 tianteng_pil = tianteng_pil.resize((80, 10), Image.Resampling.LANCZOS)
                 self.tianteng_image = ImageTk.PhotoImage(tianteng_pil)
                 print("[Logo] tianteng.png 加载成功")
             else:
-                print("[警告] tianteng.png 文件不存在")
+                print(f"[警告] tianteng.png 文件不存在，路径: {tianteng_path}")
                 
         except Exception as e:
             print(f"[错误] 加载logo图片异常: {e}")
@@ -142,31 +155,37 @@ class LogoHandler:
             bg_color: 背景颜色
             
         Returns:
-            tuple: (algorumla_component, tianteng_component)
+            tuple: (algormula_component, tianteng_component)
         """
         try:
             # 创建logo容器
             logo_frame = tk.Frame(parent_frame, bg=bg_color)
             logo_frame.pack()
             
-            algorumla_component = None
+            algormula_component = None
             tianteng_component = None
             
-            # 创建algorumla logo组件
-            if self.algorumla_image:
-                algorumla_component = tk.Label(logo_frame, image=self.algorumla_image, 
+            # 创建algormula logo组件
+            if self.algormula_image:
+                algormula_component = tk.Label(logo_frame, image=self.algormula_image, 
                                              bg=bg_color, cursor='hand2')
-                algorumla_component.pack(side=tk.LEFT, padx=(0, 20))
+                algormula_component.pack(side=tk.LEFT, padx=(0, 20))
                 
                 # 绑定点击事件
-                def on_algorumla_click(event):
+                def on_algormula_click(event):
                     # 找到顶级窗口
                     parent_window = parent_frame.winfo_toplevel()
                     self.show_contact_dialog(parent_window)
                 
-                algorumla_component.bind("<Button-1>", on_algorumla_click)
+                algormula_component.bind("<Button-1>", on_algormula_click)
+                print("[Logo] algormula组件创建成功")
             else:
-                print(f"[错误] 创建失败")
+                print("[警告] algormula图片未加载，跳过组件创建")
+                # 创建备用文本标签
+                algormula_component = tk.Label(logo_frame, text="LOGO", 
+                                             bg=bg_color, fg='#666666',
+                                             font=tkFont.Font(family="Arial", size=10))
+                algormula_component.pack(side=tk.LEFT, padx=(0, 20))
             
             # 创建tianteng logo组件
             if self.tianteng_image:
@@ -180,11 +199,16 @@ class LogoHandler:
                     self.show_contact_dialog(parent_window)
                 
                 tianteng_component.bind("<Button-1>", on_tianteng_click)
+                print("[Logo] tianteng组件创建成功")
             else:
-                # 备用文本显示
-                print(f"[错误] 创建失败")
+                print("[警告] tianteng图片未加载，跳过组件创建")
+                # 创建备用文本标签
+                tianteng_component = tk.Label(logo_frame, text="BRAND", 
+                                            bg=bg_color, fg='#666666',
+                                            font=tkFont.Font(family="Arial", size=10))
+                tianteng_component.pack(side=tk.LEFT)
             
-            return algorumla_component, tianteng_component
+            return algormula_component, tianteng_component
             
         except Exception as e:
             print(f"[错误] 创建logo组件异常: {e}")
@@ -202,6 +226,6 @@ def create_logo_components(parent_frame, bg_color='white'):
         bg_color: 背景颜色
         
     Returns:
-        tuple: (algorumla_component, tianteng_component)
+        tuple: (algormula_component, tianteng_component)
     """
     return logo_handler.create_logo_components(parent_frame, bg_color)

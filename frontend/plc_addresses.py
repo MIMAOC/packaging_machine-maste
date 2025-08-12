@@ -159,7 +159,7 @@ GLOBAL_CONTROL_ADDRESSES = {
     'GlobalDischarge': 5,    # 总放料
     'GlobalClean': 7,        # 总清料
     'AIMode': 40,           # 切换AI/传统模式地址
-    'PackagingMachineStop': 70  # 包装机停止地址
+    'PackagingMachineStop': 70  # 包装机停止地址(写入1允许停止，写入0允许人工启动)
 
 }
 
