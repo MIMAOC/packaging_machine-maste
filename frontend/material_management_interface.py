@@ -22,6 +22,7 @@ from tkinter import ttk, messagebox
 import tkinter.font as tkFont
 import threading
 from typing import List
+from touchscreen_utils import TouchScreenUtils
 
 # 导入数据库相关模块
 try:
@@ -78,6 +79,9 @@ class MaterialManagementInterface:
         
         # 创建界面组件
         self.create_widgets()
+        
+        # 添加触摸屏优化
+        TouchScreenUtils.optimize_window_for_touch(self.root)
         
         # 加载物料数据
         self.load_materials()
@@ -667,14 +671,14 @@ class MaterialManagementInterface:
             name_entry_frame.pack(pady=20)
             
             name_entry = tk.Entry(name_entry_frame, textvariable=name_var,
-                                 font=tkFont.Font(family="微软雅黑", size=12),
-                                 width=30, justify='center',
-                                 relief='solid', bd=1,
-                                 bg='white', fg='#333333')
-            name_entry.pack(ipady=8)
+                         font=tkFont.Font(family="微软雅黑", size=14),
+                         width=30, justify='center',
+                         relief='solid', bd=2,
+                         bg='white', fg='#333333')
+            name_entry.pack(ipady=12)
             
             # 设置占位符
-            self.setup_placeholder(name_entry, "请输入物料名称")
+            TouchScreenUtils.setup_touch_entry(name_entry, "请输入物料名称")
             name_entry.focus()  # 设置焦点到输入框
             
             # 按钮区域

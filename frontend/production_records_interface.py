@@ -20,6 +20,7 @@ from tkinter import ttk, messagebox
 import tkinter.font as tkFont
 from datetime import datetime, date
 from typing import List, Optional
+from touchscreen_utils import TouchScreenUtils
 
 # 导入数据库相关模块
 try:
@@ -85,6 +86,9 @@ class ProductionRecordsInterface:
         
         # 创建界面组件
         self.create_widgets()
+        
+        # 添加触摸屏优化
+        TouchScreenUtils.optimize_window_for_touch(self.root)
         
         # 加载生产记录数据
         self.load_production_records()
@@ -231,12 +235,13 @@ class ProductionRecordsInterface:
 
         # 搜索输入框
         search_entry = tk.Entry(search_frame, textvariable=self.search_text_var,
-                               font=self.content_font, width=25,
-                               relief='solid', bd=1)
-        search_entry.pack(side=tk.LEFT, padx=(0, 10))
+                           font=tkFont.Font(family="微软雅黑", size=12),
+                           width=25,
+                           relief='solid', bd=2)  # 增加边框
+        search_entry.pack(side=tk.LEFT, padx=(0, 10), ipady=8)  # 增加内边距
 
         # 设置占位符
-        self.setup_placeholder(search_entry, "请输入生产编号或物料名称")
+        TouchScreenUtils.setup_touch_entry(search_entry, "请输入生产编号或物料名称")
 
         # 日期选择输入框（修改这部分）
         self.date_entry = tk.Entry(search_frame, textvariable=self.search_date_var,
@@ -322,10 +327,11 @@ class ProductionRecordsInterface:
 
             start_date_var = tk.StringVar()
             start_date_entry = tk.Entry(start_frame, textvariable=start_date_var,
-                                       font=self.content_font, width=15,
-                                       relief='solid', bd=1)
-            start_date_entry.pack(side=tk.RIGHT, padx=(10, 0))
-            self.setup_placeholder(start_date_entry, "YYYY-MM-DD")
+                               font=tkFont.Font(family="微软雅黑", size=12),
+                               width=15,
+                               relief='solid', bd=2)  # 增加边框
+            start_date_entry.pack(side=tk.RIGHT, padx=(10, 0), ipady=6)
+            TouchScreenUtils.setup_touch_entry(start_date_entry, "YYYY-MM-DD")
 
             # 结束日期选择
             end_frame = tk.Frame(date_window, bg='white')
@@ -336,10 +342,11 @@ class ProductionRecordsInterface:
 
             end_date_var = tk.StringVar()
             end_date_entry = tk.Entry(end_frame, textvariable=end_date_var,
-                                     font=self.content_font, width=15,
-                                     relief='solid', bd=1)
-            end_date_entry.pack(side=tk.RIGHT, padx=(10, 0))
-            self.setup_placeholder(end_date_entry, "YYYY-MM-DD")
+                             font=tkFont.Font(family="微软雅黑", size=12),
+                             width=15,
+                             relief='solid', bd=2)
+            end_date_entry.pack(side=tk.RIGHT, padx=(10, 0), ipady=6)
+            TouchScreenUtils.setup_touch_entry(end_date_entry, "YYYY-MM-DD")
 
             # 快捷选择按钮
             shortcut_frame = tk.Frame(date_window, bg='white')

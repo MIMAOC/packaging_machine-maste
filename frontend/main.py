@@ -28,6 +28,7 @@ import time
 import requests
 import functools
 from typing import Optional, Callable, Any
+from touchscreen_utils import TouchScreenUtils
 
 # 导入重试库
 try:
@@ -209,13 +210,24 @@ class PackagingMachineGUI:
             self.test_backend_api_connection()
         else:
             self.show_api_error()
+        
+        # 添加触摸屏优化
+        TouchScreenUtils.optimize_window_for_touch(self.root)
     
     def setup_window(self):
         """设置主窗口属性"""
         self.root.title("多斗颗粒称重包装机 - MHWPM v1.5.2 (前端)")
-        self.root.geometry("950x750")
+    
+        # 设置全屏模式
+        self.root.attributes('-fullscreen', True)
+        self.root.state('zoomed')  # Windows系统的最大化
+        
+        self.root.geometry("1920x1080")
         self.root.configure(bg='white')
         self.root.resizable(True, True)  # 允许调整窗口大小
+    
+        # 添加强制退出机制
+        self.setup_force_exit_mechanism()
         
         # 设置窗口图标（如果有的话）
         try:
@@ -225,19 +237,19 @@ class PackagingMachineGUI:
             pass
     
     def setup_fonts(self):
-        """设置界面字体"""
-        self.title_font = tkFont.Font(family="微软雅黑", size=24, weight="bold")
-        self.subtitle_font = tkFont.Font(family="微软雅黑", size=14)
-        self.button_font = tkFont.Font(family="微软雅黑", size=18, weight="bold")
-        self.button_sub_font = tkFont.Font(family="微软雅黑", size=12)
-        self.footer_font = tkFont.Font(family="微软雅黑", size=10)
-        self.status_font = tkFont.Font(family="微软雅黑", size=11)
+        """设置界面字体 - 适应1920×1080分辨率"""
+        self.title_font = tkFont.Font(family="微软雅黑", size=36, weight="bold")  # 增大标题字体
+        self.subtitle_font = tkFont.Font(family="微软雅黑", size=20)  # 增大副标题字体
+        self.button_font = tkFont.Font(family="微软雅黑", size=24, weight="bold")  # 增大按钮字体
+        self.button_sub_font = tkFont.Font(family="微软雅黑", size=16)  # 增大按钮副字体
+        self.footer_font = tkFont.Font(family="微软雅黑", size=14)  # 增大底部字体
+        self.status_font = tkFont.Font(family="微软雅黑", size=16)  # 增大状态字体
     
     def create_widgets(self):
         """创建所有界面组件"""
         # 主容器框架
         main_frame = tk.Frame(self.root, bg='white')
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=50, pady=30)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=80, pady=20)
         
         # 创建状态栏（显示连接状态）
         self.create_status_bar(main_frame)
@@ -344,16 +356,10 @@ class PackagingMachineGUI:
         # 英文标题
         english_title = tk.Label(title_frame, text="Multi-head Weighing & Packaging Machine", 
                                font=self.subtitle_font, bg='white', fg='#666666')
-        english_title.pack(pady=(5, 0))
-        
-        # 版本信息
-        version_info = tk.Label(title_frame, text="前端GUI v1.5.2 | 前后端分离架构 | 增强重试机制", 
-                              font=tkFont.Font(family="微软雅黑", size=10), 
-                              bg='white', fg='#888888')
-        version_info.pack(pady=(5, 0))
+        english_title.pack(pady=(10, 0))
         
         # 蓝色分隔线
-        separator = tk.Frame(title_frame, height=3, bg='#7fb3d3', width=400)
+        separator = tk.Frame(title_frame, height=3, bg='#7fb3d3', width=600)
         separator.pack(pady=(15, 0))
         separator.pack_propagate(False)
     
@@ -367,16 +373,16 @@ class PackagingMachineGUI:
         # 选择模式标题
         mode_title = tk.Label(parent, text="选择您的操作模式", 
                             font=self.subtitle_font, bg='white', fg='#333333')
-        mode_title.pack(pady=(30, 50))
+        mode_title.pack(pady=(30, 40))
         
         # 按钮容器
         button_frame = tk.Frame(parent, bg='white')
-        button_frame.pack(pady=(0, 50))
+        button_frame.pack(pady=(0, 30))
         
         # 传统模式按钮容器
         traditional_frame = tk.Frame(button_frame, bg='#d3d3d3', relief='flat', bd=0)
-        traditional_frame.pack(side=tk.LEFT, padx=(0, 30))
-        traditional_frame.configure(width=250, height=120)
+        traditional_frame.pack(side=tk.LEFT, padx=(0, 60))  # 增大按钮间距
+        traditional_frame.configure(width=350, height=150)  # 增大按钮尺寸
         traditional_frame.pack_propagate(False)
         
         # 创建传统模式按钮
@@ -386,7 +392,7 @@ class PackagingMachineGUI:
         # AI模式按钮容器
         ai_frame = tk.Frame(button_frame, bg='#d3d3d3', relief='flat', bd=0)
         ai_frame.pack(side=tk.LEFT)
-        ai_frame.configure(width=250, height=120)
+        ai_frame.configure(width=350, height=150)
         ai_frame.pack_propagate(False)
         
         # 创建AI模式按钮
@@ -432,7 +438,7 @@ class PackagingMachineGUI:
             command: 点击回调函数
             bg_color: 背景颜色
         """
-        canvas = tk.Canvas(parent, width=250, height=120, highlightthickness=0, 
+        canvas = tk.Canvas(parent, width=350, height=150, highlightthickness=0, 
                           bg='white', relief='flat')
         canvas.pack(fill=tk.BOTH, expand=True)
         
@@ -440,9 +446,9 @@ class PackagingMachineGUI:
         self.draw_rounded_rectangle(canvas, bg_color)
         
         # 添加文本
-        canvas.create_text(125, 45, text=main_text, font=self.button_font, 
+        canvas.create_text(175, 60, text=main_text, font=self.button_font, 
                           fill='#333333', anchor='center')
-        canvas.create_text(125, 75, text=sub_text, font=self.button_sub_font, 
+        canvas.create_text(175, 100, text=sub_text, font=self.button_sub_font, 
                           fill='#666666', anchor='center')
         
         # 绑定事件
@@ -459,46 +465,84 @@ class PackagingMachineGUI:
             bg_color: 背景颜色
         """
         # 设置圆角半径
-        radius = 15
+        radius = 20  # 增大圆角半径
+        width = 350   # 新的按钮宽度
+        height = 150  # 新的按钮高度
         
         # 清空画布
         canvas.delete("all")
         
         # 绘制圆角矩形的各个部分
         # 主体矩形
-        canvas.create_rectangle(radius, 0, 250-radius, 120, 
-                              fill=bg_color, outline=bg_color)
-        canvas.create_rectangle(0, radius, 250, 120-radius, 
-                              fill=bg_color, outline=bg_color)
+        canvas.create_rectangle(radius, 0, width-radius, height, 
+                            fill=bg_color, outline=bg_color)
+        canvas.create_rectangle(0, radius, width, height-radius, 
+                            fill=bg_color, outline=bg_color)
         
         # 四个圆角
         canvas.create_arc(0, 0, 2*radius, 2*radius, 
-                         start=90, extent=90, fill=bg_color, outline=bg_color)
-        canvas.create_arc(250-2*radius, 0, 250, 2*radius, 
-                         start=0, extent=90, fill=bg_color, outline=bg_color)
-        canvas.create_arc(0, 120-2*radius, 2*radius, 120, 
-                         start=180, extent=90, fill=bg_color, outline=bg_color)
-        canvas.create_arc(250-2*radius, 120-2*radius, 250, 120, 
-                         start=270, extent=90, fill=bg_color, outline=bg_color)
+                        start=90, extent=90, fill=bg_color, outline=bg_color)
+        canvas.create_arc(width-2*radius, 0, width, 2*radius, 
+                        start=0, extent=90, fill=bg_color, outline=bg_color)
+        canvas.create_arc(0, height-2*radius, 2*radius, height, 
+                        start=180, extent=90, fill=bg_color, outline=bg_color)
+        canvas.create_arc(width-2*radius, height-2*radius, width, height, 
+                        start=270, extent=90, fill=bg_color, outline=bg_color)
     
     def on_button_enter(self, canvas, original_color, main_text, sub_text):
         """鼠标悬停效果"""
         hover_color = '#b0b0b0'  # 灰色悬停效果
         canvas.configure(bg='white')
         self.draw_rounded_rectangle(canvas, hover_color)
-        canvas.create_text(125, 45, text=main_text, font=self.button_font, 
+        canvas.create_text(175, 60, text=main_text, font=self.button_font, 
                           fill='#333333', anchor='center')
-        canvas.create_text(125, 75, text=sub_text, font=self.button_sub_font, 
+        canvas.create_text(175, 100, text=sub_text, font=self.button_sub_font, 
                           fill='#666666', anchor='center')
         
     def on_button_leave(self, canvas, original_color, main_text, sub_text):
         """鼠标离开效果"""
         canvas.configure(bg='white')
         self.draw_rounded_rectangle(canvas, original_color)
-        canvas.create_text(125, 45, text=main_text, font=self.button_font, 
+        canvas.create_text(175, 60, text=main_text, font=self.button_font, 
                           fill='#333333', anchor='center')
-        canvas.create_text(125, 75, text=sub_text, font=self.button_sub_font, 
+        canvas.create_text(175, 100, text=sub_text, font=self.button_sub_font, 
                           fill='#666666', anchor='center')
+        
+    def setup_force_exit_mechanism(self):
+        """设置强制退出机制"""
+        # 键盘快捷键强制退出
+        self.root.bind('<Control-Alt-q>', lambda e: self.force_exit())
+        self.root.bind('<Control-Alt-Q>', lambda e: self.force_exit())
+        self.root.bind('<Escape>', lambda e: self.show_exit_confirmation())
+        
+        # 添加隐藏的强制退出区域（右上角小区域）
+        exit_zone = tk.Frame(self.root, bg='white', width=100, height=50)
+        exit_zone.place(x=1450, y=0)  # 放在右上角
+        exit_zone.bind('<Double-Button-1>', lambda e: self.show_exit_confirmation())
+        
+        # 连续点击计数器用于紧急退出
+        self.click_count = 0
+        self.last_click_time = 0
+        
+    def show_exit_confirmation(self):
+        """显示退出确认对话框"""
+        result = messagebox.askyesno(
+            "退出确认", 
+            "确定要退出包装机程序吗？\n\n"
+            "退出将断开PLC连接并关闭所有功能。"
+        )
+        if result:
+            self.force_exit()
+
+    def force_exit(self):
+        """强制退出程序"""
+        try:
+            print("执行强制退出...")
+            self.on_closing()
+        except Exception as e:
+            print(f"强制退出时发生错误: {e}")
+            import os
+            os._exit(0)  # 强制终止进程
     
     def start_modbus_connection(self):
         """在后台线程中启动Modbus连接"""
@@ -728,8 +772,7 @@ class PackagingMachineGUI:
                  font=self.status_font, bg='#28a745', fg='white', padx=20).pack(side=tk.LEFT, padx=10)
         tk.Button(button_frame, text="取消", command=settings_window.destroy,
                  font=self.status_font, bg='#e0e0e0', padx=20).pack(side=tk.LEFT, padx=10)
-    
-    # 其他原有方法保持不变...
+        
     def reconnect_modbus(self):
         """重新连接Modbus"""
         self.status_label.config(text="正在重连...", fg='#ff6600')

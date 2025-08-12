@@ -29,6 +29,7 @@ import tkinter.font as tkFont
 import threading
 import time
 from typing import Dict, List
+from touchscreen_utils import TouchScreenUtils
 
 # 导入后端API客户端模块
 try:
@@ -369,6 +370,9 @@ class AIModeInterface:
         self.root.geometry("950x750")
         self.root.configure(bg='white')
         self.root.resizable(True, True)
+    
+        # 添加触摸屏优化
+        TouchScreenUtils.optimize_window_for_touch(self.root)
         
         # 绑定窗口关闭事件（无论是否为主窗口都需要处理）
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -439,6 +443,7 @@ class AIModeInterface:
                           font=tkFont.Font(family="微软雅黑", size=12, weight="bold"),
                           bg='#4a90e2', fg='white', width=4, height=1,
                           relief='flat', bd=0,
+                          padx=30, pady=15,  # 增加内边距
                           command=self.on_ai_icon_click)
         ai_icon.pack(side=tk.LEFT, padx=(15, 0))
         
@@ -451,7 +456,7 @@ class AIModeInterface:
                              font=self.small_button_font,
                              bg='#fd7e14', fg='white',
                              relief='flat', bd=1,
-                             padx=15, pady=8,
+                             padx=30, pady=15,  # 增加内边距
                              command=self.show_debug_menu)
         debug_btn.pack(side=tk.LEFT, padx=(0, 10))
         
@@ -460,7 +465,7 @@ class AIModeInterface:
                            font=self.small_button_font,
                            bg='#e9ecef', fg='#333333',
                            relief='flat', bd=1,
-                           padx=20, pady=8,
+                           padx=30, pady=15,  # 增加内边距
                            command=self.on_home_click)
         home_btn.pack(side=tk.LEFT, padx=(0, 10))
         
@@ -469,7 +474,7 @@ class AIModeInterface:
                           font=self.small_button_font,
                           bg='#d1ecf1', fg='#333333',
                           relief='flat', bd=1,
-                          padx=20, pady=8,
+                          padx=30, pady=15,  # 增加内边距
                           command=self.on_api_settings_click)
         api_btn.pack(side=tk.LEFT, padx=(0, 10))
         
@@ -478,7 +483,7 @@ class AIModeInterface:
                                font=self.small_button_font,
                                bg='#e9ecef', fg='#333333',
                                relief='flat', bd=1,
-                               padx=20, pady=8,
+                               padx=30, pady=15,  # 增加内边距
                                command=self.on_settings_click)
         settings_btn.pack(side=tk.LEFT)
         
@@ -521,7 +526,7 @@ class AIModeInterface:
                            font=tkFont.Font(family="微软雅黑", size=11),
                            bg='#e9ecef', fg='#333333',
                            relief='flat', bd=1,
-                           padx=20, pady=8,
+                           padx=30, pady=15,  # 增加内边距
                            command=command)
             btn.pack(pady=5, fill=tk.X, padx=20)
 
@@ -530,7 +535,7 @@ class AIModeInterface:
                  font=tkFont.Font(family="微软雅黑", size=12),
                  bg='#6c757d', fg='white',
                  relief='flat', bd=0,
-                 padx=20, pady=10,
+                 padx=30, pady=15,  # 增加内边距
                  command=debug_window.destroy).pack(pady=20)
         
     def debug_show_multi_bucket_status(self):
@@ -624,6 +629,7 @@ class AIModeInterface:
         test_api_btn = tk.Button(status_frame, text="测试API", 
                                font=tkFont.Font(family="微软雅黑", size=9),
                                bg='#28a745', fg='white',
+                               padx=30, pady=15,  # 增加内边距
                                command=self.test_api_connection)
         test_api_btn.pack(side=tk.RIGHT, padx=10, pady=2)
         
@@ -678,14 +684,14 @@ class AIModeInterface:
         
         # 输入框
         weight_entry = tk.Entry(weight_frame, textvariable=self.weight_var,
-                              font=self.entry_font,
-                              width=25,
-                              relief='solid', bd=1,
-                              bg='white', fg='#333333')
-        weight_entry.pack(ipady=8)
+                          font=tkFont.Font(family="微软雅黑", size=14),  # 增加字体
+                          width=25,
+                          relief='solid', bd=2,  # 增加边框
+                          bg='white', fg='#333333')
+        weight_entry.pack(ipady=12)  # 增加内边距
         
         # 设置输入框占位符效果
-        self.setup_placeholder(weight_entry, "请输入目标重量克数")
+        TouchScreenUtils.setup_touch_entry(weight_entry, "请输入目标重量克数")
     
     def create_quantity_section(self, parent):
         """
@@ -710,14 +716,14 @@ class AIModeInterface:
         
         # 输入框
         quantity_entry = tk.Entry(quantity_frame, textvariable=self.quantity_var,
-                                font=self.entry_font,
-                                width=25,
-                                relief='solid', bd=1,
-                                bg='white', fg='#333333')
-        quantity_entry.pack(ipady=8)
+                            font=tkFont.Font(family="微软雅黑", size=14),
+                            width=25,
+                            relief='solid', bd=2,
+                            bg='white', fg='#333333')
+        quantity_entry.pack(ipady=12)
         
         # 设置输入框占位符效果
-        self.setup_placeholder(quantity_entry, "请输入所需包装数量")
+        TouchScreenUtils.setup_touch_entry(quantity_entry, "请输入所需包装数量")
     
     def create_material_section(self, parent):
         """
@@ -744,22 +750,26 @@ class AIModeInterface:
                                    font=tkFont.Font(family="微软雅黑", size=10),
                                    bg='#28a745', fg='white',
                                    relief='flat', bd=0,
-                                   padx=15, pady=5,
+                                   padx=30, pady=15,  # 增加内边距
                                    command=self.on_new_material_click)
         new_material_btn.pack(side=tk.RIGHT)
         
         # 空白区域（对齐用）
         tk.Label(material_frame, text=" ", 
-               font=tkFont.Font(family="微软雅黑", size=12),
-               bg='white').pack(pady=(0, 10))
+               font=tkFont.Font(family="微软雅黑", size=6),
+               bg='white').pack(pady=0)
+    
+        # 配置下拉列表的字体大小
+        self.root.option_add('*TCombobox*Listbox.Font', ('微软雅黑', 14))
         
         # 下拉选择框
         material_combobox = ttk.Combobox(material_frame, textvariable=self.material_var,
                                        font=self.entry_font,
-                                       width=23,
+                                       width=25,
                                        values=self.material_list,
-                                       state='readonly')
-        material_combobox.pack(ipady=5)
+                                       state='readonly',
+                                       style="Large.TCombobox")
+        material_combobox.pack(ipady=12)
         material_combobox.set(self.material_list[0])  # 设置默认值
         
         # 保存下拉框引用，用于后续刷新
@@ -785,7 +795,7 @@ class AIModeInterface:
                                  font=self.button_font,
                                  bg='#6c757d', fg='white',
                                  relief='flat', bd=0,
-                                 padx=25, pady=12,
+                                 padx=30, pady=15,  # 增加内边距
                                  command=self.on_feed_clear_click)
         feed_clear_btn.pack(side=tk.LEFT, padx=(0, 15))
         
@@ -794,7 +804,7 @@ class AIModeInterface:
                             font=self.button_font,
                             bg='#6c757d', fg='white',
                             relief='flat', bd=0,
-                            padx=25, pady=12,
+                            padx=30, pady=15,  # 增加内边距
                             command=self.on_clear_click)
         clear_btn.pack(side=tk.LEFT)
         
@@ -807,7 +817,7 @@ class AIModeInterface:
                                font=tkFont.Font(family="微软雅黑", size=16, weight="bold"),
                                bg='#007bff', fg='white',
                                relief='flat', bd=0,
-                               padx=40, pady=15,
+                               padx=30, pady=15,  # 增加内边距
                                command=self.on_start_ai_click)
         start_ai_btn.pack()
     
@@ -848,25 +858,7 @@ class AIModeInterface:
             entry_widget: 输入框组件
             placeholder_text: 占位符文本
         """
-        def on_focus_in(event):
-            """输入框获得焦点时的处理"""
-            if entry_widget.get() == placeholder_text:
-                entry_widget.delete(0, tk.END)
-                entry_widget.config(fg='#333333')
-        
-        def on_focus_out(event):
-            """输入框失去焦点时的处理"""
-            if entry_widget.get() == '':
-                entry_widget.insert(0, placeholder_text)
-                entry_widget.config(fg='#999999')
-        
-        # 设置初始占位符
-        entry_widget.insert(0, placeholder_text)
-        entry_widget.config(fg='#999999')
-        
-        # 绑定事件
-        entry_widget.bind('<FocusIn>', on_focus_in)
-        entry_widget.bind('<FocusOut>', on_focus_out)
+        TouchScreenUtils.setup_touch_entry(entry_widget, placeholder_text)
     
     # 以下是按钮事件处理函数
     
@@ -1159,7 +1151,7 @@ class AIModeInterface:
                                   font=tkFont.Font(family="微软雅黑", size=12, weight="bold"),
                                   bg='#6c757d', fg='white',
                                   relief='flat', bd=0,
-                                  padx=40, pady=12,
+                                  padx=30, pady=15,  # 增加内边距
                                   command=on_cancel_click)
             cancel_btn.pack(side=tk.LEFT, padx=(0, 30))
             
@@ -1168,7 +1160,7 @@ class AIModeInterface:
                                 font=tkFont.Font(family="微软雅黑", size=12, weight="bold"),
                                 bg='#007bff', fg='white',
                                 relief='flat', bd=0,
-                                padx=40, pady=12,
+                                padx=30, pady=15,  # 增加内边距
                                 command=on_next_click)
             next_btn.pack(side=tk.LEFT, padx=(30, 0))
             
@@ -1372,7 +1364,7 @@ class AIModeInterface:
                                   font=tkFont.Font(family="微软雅黑", size=12, weight="bold"),
                                   bg='#6c757d', fg='white',
                                   relief='flat', bd=0,
-                                  padx=40, pady=12,
+                                  padx=30, pady=15,  # 增加内边距
                                   command=on_cancel_click)
             cancel_btn.pack(side=tk.LEFT, padx=(0, 30))
             
@@ -1381,7 +1373,7 @@ class AIModeInterface:
                                  font=tkFont.Font(family="微软雅黑", size=12, weight="bold"),
                                  bg='#007bff', fg='white',
                                  relief='flat', bd=0,
-                                 padx=40, pady=12,
+                                 padx=30, pady=15,  # 增加内边距
                                  command=on_start_click)
             start_btn.pack(side=tk.LEFT, padx=(30, 0))
             
@@ -1579,7 +1571,7 @@ class AIModeInterface:
                                font=tkFont.Font(family="微软雅黑", size=14, weight="bold"),
                                bg='#007bff', fg='white',
                                relief='flat', bd=0,
-                               padx=40, pady=12,
+                               padx=30, pady=15,  # 增加内边距
                                command=on_confirm_taken)
         confirm_btn.pack(pady=30)
         
@@ -1650,7 +1642,7 @@ class AIModeInterface:
                                font=tkFont.Font(family="微软雅黑", size=14, weight="bold"),
                                bg='#007bff', fg='white',
                                relief='flat', bd=0,
-                               padx=40, pady=12,
+                               padx=30, pady=15,  # 增加内边距
                                command=on_confirm_start_cleaning)
         confirm_btn.pack(pady=30)
         
@@ -1778,7 +1770,7 @@ class AIModeInterface:
                               font=tkFont.Font(family="微软雅黑", size=14, weight="bold"),
                               bg='#007bff', fg='white',
                               relief='flat', bd=0,
-                              padx=40, pady=12,
+                              padx=30, pady=15,  # 增加内边距
                               command=on_return_click)
         return_btn.pack(pady=20)
         
@@ -2099,7 +2091,7 @@ class AIModeInterface:
                                font=tkFont.Font(family="微软雅黑", size=14, weight="bold"),
                                bg='#007bff', fg='white',
                                relief='flat', bd=0,
-                               padx=40, pady=12,
+                               padx=30, pady=15,  # 增加内边距
                                command=on_confirm_start_production)
         confirm_btn.pack(pady=30)
 
@@ -2611,7 +2603,7 @@ class AIModeInterface:
                                                  font=tkFont.Font(family="微软雅黑", size=12, weight="bold"),
                                                  bg='#007bff', fg='white',
                                                  relief='flat', bd=0,
-                                                 padx=30, pady=10,
+                                                 padx=30, pady=15,  # 增加内边距
                                                  command=on_restart_from_beginning)
             restart_from_beginning_btn.pack(side=tk.LEFT, padx=10)
             
@@ -2620,7 +2612,7 @@ class AIModeInterface:
                                                font=tkFont.Font(family="微软雅黑", size=12, weight="bold"),
                                                bg='#28a745', fg='white',
                                                relief='flat', bd=0,
-                                               padx=30, pady=10,
+                                               padx=30, pady=15,  # 增加内边距
                                                command=on_restart_from_current_stage)
             restart_from_current_btn.pack(side=tk.LEFT, padx=10)
             
@@ -2629,7 +2621,7 @@ class AIModeInterface:
                                  font=tkFont.Font(family="微软雅黑", size=12),
                                  bg='#6c757d', fg='white',
                                  relief='flat', bd=0,
-                                 padx=30, pady=10,
+                                 padx=30, pady=15,  # 增加内边距
                                  command=on_cancel)
             cancel_btn.pack(side=tk.LEFT, padx=10)
             
@@ -2938,7 +2930,7 @@ class AIModeInterface:
                                         font=tkFont.Font(family="微软雅黑", size=14, weight="bold"),
                                         bg='#cccccc', fg='#666666',  # 禁用状态的颜色
                                         relief='flat', bd=0,
-                                        padx=40, pady=12,
+                                        padx=30, pady=15,  # 增加内边距
                                         command=on_confirm_click,
                                         state='disabled')  # 初始状态为禁用
             self.confirm_btn.pack(side=tk.LEFT, padx=(0, 30))  # 右侧留出30像素间距
@@ -2948,7 +2940,7 @@ class AIModeInterface:
                                       font=tkFont.Font(family="微软雅黑", size=14, weight="bold"),
                                       bg='#dc3545', fg='white',
                                       relief='flat', bd=0,
-                                      padx=40, pady=12,
+                                      padx=30, pady=15,  # 增加内边距
                                       command=on_cancel_click)
             self.cancel_btn.pack(side=tk.LEFT, padx=(30, 0))  # 左侧留出30像素间距
             
@@ -3336,7 +3328,7 @@ class AIModeInterface:
                                            font=tkFont.Font(family="微软雅黑", size=14, weight="bold"),
                                            bg='#007bff', fg='white',
                                            relief='flat', bd=0,
-                                           padx=40, pady=12,
+                                           padx=30, pady=15,  # 增加内边距
                                            command=on_start_production_click)
             start_production_btn.pack(pady=30)
             

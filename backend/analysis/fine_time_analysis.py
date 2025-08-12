@@ -29,8 +29,8 @@ class FineTimeAnalysisService:
         self.logger = logging.getLogger(__name__)
         
         # 慢加流速边界条件（g/s）
-        self.min_flow_rate = 0.35
-        self.max_flow_rate = 0.55
+        self.min_flow_rate = 0.30
+        self.max_flow_rate = 0.50
         
         # 慢加速度范围
         self.min_fine_speed = 1
