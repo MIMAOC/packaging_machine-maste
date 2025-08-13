@@ -87,43 +87,49 @@ class MaterialManagementInterface:
         self.load_materials()
         
         # 居中显示窗口
-        self.center_window()
+        # self.center_window()
     
     def setup_window(self):
         """设置窗口基本属性"""
         self.root.title("物料管理")
-        self.root.geometry("950x750")
+        # 设置全屏模式（参照main.py）
+        self.root.attributes('-fullscreen', True)
+        self.root.state('zoomed')  # Windows系统的最大化
+        self.root.geometry("1920x1080")
         self.root.configure(bg='white')
         self.root.resizable(True, True)
+    
+        # 添加强制退出机制
+        self.setup_force_exit_mechanism()
         
         # 绑定窗口关闭事件
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
     
     def setup_fonts(self):
         """设置界面字体"""
-        # 标题字体
-        self.title_font = tkFont.Font(family="微软雅黑", size=20, weight="bold")
+        # 标题字体 - 增大
+        self.title_font = tkFont.Font(family="微软雅黑", size=28, weight="bold")
         
-        # 表头字体
-        self.header_font = tkFont.Font(family="微软雅黑", size=14, weight="bold")
+        # 表头字体 - 增大
+        self.header_font = tkFont.Font(family="微软雅黑", size=18, weight="bold")
         
-        # 内容字体
-        self.content_font = tkFont.Font(family="微软雅黑", size=12)
+        # 内容字体 - 增大
+        self.content_font = tkFont.Font(family="微软雅黑", size=16)
         
-        # 按钮字体
-        self.button_font = tkFont.Font(family="微软雅黑", size=10)
+        # 按钮字体 - 增大
+        self.button_font = tkFont.Font(family="微软雅黑", size=14)
         
-        # 小按钮字体
-        self.small_button_font = tkFont.Font(family="微软雅黑", size=10)
+        # 小按钮字体 - 增大
+        self.small_button_font = tkFont.Font(family="微软雅黑", size=14)
         
-        # 底部信息字体
-        self.footer_font = tkFont.Font(family="微软雅黑", size=10)
+        # 底部信息字体 - 增大
+        self.footer_font = tkFont.Font(family="微软雅黑", size=14)
     
     def create_widgets(self):
         """创建所有界面组件"""
         # 主容器
         main_frame = tk.Frame(self.root, bg='white')
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=50, pady=30)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=80, pady=40)
         
         # 创建标题栏
         self.create_title_bar(main_frame)
@@ -173,6 +179,42 @@ class MaterialManagementInterface:
         # 蓝色分隔线（放在标题栏下方）
         separator = tk.Frame(parent, height=3, bg='#7fb3d3')
         separator.pack(fill=tk.X, pady=(0, 20))
+        
+    def setup_force_exit_mechanism(self):
+        """设置强制退出机制"""
+        # 键盘快捷键强制退出
+        self.root.bind('<Control-Alt-q>', lambda e: self.force_exit())
+        self.root.bind('<Control-Alt-Q>', lambda e: self.force_exit())
+        self.root.bind('<Escape>', lambda e: self.show_exit_confirmation())
+        
+        # 添加隐藏的强制退出区域（右上角小区域）
+        exit_zone = tk.Frame(self.root, bg='white', width=100, height=50)
+        exit_zone.place(x=1450, y=0)  # 放在右上角
+        exit_zone.bind('<Double-Button-1>', lambda e: self.show_exit_confirmation())
+        
+        # 连续点击计数器用于紧急退出
+        self.click_count = 0
+        self.last_click_time = 0
+
+    def show_exit_confirmation(self):
+        """显示退出确认对话框"""
+        result = messagebox.askyesno(
+            "退出确认", 
+            "确定要退出物料管理界面吗？\n\n"
+            "这将返回到AI模式界面。"
+        )
+        if result:
+            self.force_exit()
+
+    def force_exit(self):
+        """强制退出程序"""
+        try:
+            print("执行强制退出...")
+            self.on_closing()
+        except Exception as e:
+            print(f"强制退出时发生错误: {e}")
+            import os
+            os._exit(0)  # 强制终止进程
     
     def create_material_list_area(self, parent):
         """
@@ -186,7 +228,7 @@ class MaterialManagementInterface:
         list_container.pack(fill=tk.BOTH, expand=True, pady=(20, 20))
         
         # 表头
-        header_frame = tk.Frame(list_container, bg='#f8f9fa', height=50)
+        header_frame = tk.Frame(list_container, bg='#f8f9fa', height=60)
         header_frame.pack(fill=tk.X)
         header_frame.pack_propagate(False)
         
@@ -353,7 +395,7 @@ class MaterialManagementInterface:
         """
         try:
             # 行容器
-            row_frame = tk.Frame(parent, bg='white', height=65)
+            row_frame = tk.Frame(parent, bg='white', height=80)
             row_frame.pack(fill=tk.X, pady=1)
             row_frame.pack_propagate(False)
             
@@ -364,7 +406,7 @@ class MaterialManagementInterface:
             
             # 内容容器
             content_frame = tk.Frame(row_frame, bg='white')
-            content_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+            content_frame.pack(fill=tk.BOTH, expand=True, padx=13, pady=10)
             
             # 物料信息
             material_name_label = tk.Label(content_frame, text=material.material_name, 
@@ -397,9 +439,9 @@ class MaterialManagementInterface:
                                   font=self.button_font,
                                   bg=enable_color, fg='white',
                                   relief='flat', bd=0,
-                                  padx=15, pady=5,
+                                  padx=20, pady=8,
                                   command=lambda m=material: self.toggle_material_status(m))
-            enable_btn.pack(side=tk.LEFT, padx=(0, 20))
+            enable_btn.pack(side=tk.LEFT, padx=(0, 25))
 
             # 再学习按钮
             relearn_state = 'normal' if material.is_enabled == 1 else 'disabled'
@@ -408,7 +450,7 @@ class MaterialManagementInterface:
                                    font=self.button_font,
                                    bg=relearn_color, fg='white',
                                    relief='flat', bd=0,
-                                   padx=15, pady=5,
+                                   padx=20, pady=8,
                                    state=relearn_state,
                                    command=lambda m=material: self.relearn_material(m))
             relearn_btn.pack(side=tk.LEFT)
@@ -863,6 +905,15 @@ class MaterialManagementInterface:
                         return
                 except ValueError:
                     messagebox.showerror("参数错误", "请输入有效的重量数值")
+                    return
+    
+                # 重量范围检查
+                if target_weight < 60 or target_weight > 425:
+                    messagebox.showerror("参数错误", 
+                                    f"输入重量超出范围\n\n"
+                                    f"允许范围：60g - 425g\n"
+                                    f"当前输入：{target_weight}g\n\n"
+                                    f"请重新输入正确的重量范围")
                     return
                 
                 try:

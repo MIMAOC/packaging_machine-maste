@@ -94,14 +94,19 @@ class ProductionRecordsInterface:
         self.load_production_records()
         
         # 居中显示窗口
-        self.center_window()
+        # self.center_window()
     
     def setup_window(self):
         """设置窗口基本属性"""
         self.root.title("生产记录")
-        self.root.geometry("950x750")
+        self.root.attributes('-fullscreen', True)
+        self.root.state('zoomed')  # Windows系统的最大化
+        self.root.geometry("1920x1080")
         self.root.configure(bg='white')
         self.root.resizable(True, True)
+    
+        # 添加强制退出机制
+        self.setup_force_exit_mechanism()
         
         # 绑定窗口关闭事件
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -109,28 +114,28 @@ class ProductionRecordsInterface:
     def setup_fonts(self):
         """设置界面字体"""
         # 标题字体
-        self.title_font = tkFont.Font(family="微软雅黑", size=20, weight="bold")
+        self.title_font = tkFont.Font(family="微软雅黑", size=28, weight="bold")  # 增大标题字体
         
         # 表头字体
-        self.header_font = tkFont.Font(family="微软雅黑", size=12, weight="bold")
+        self.header_font = tkFont.Font(family="微软雅黑", size=16, weight="bold")  # 增大表头字体
         
         # 内容字体
-        self.content_font = tkFont.Font(family="微软雅黑", size=11)
+        self.content_font = tkFont.Font(family="微软雅黑", size=14)  # 增大内容字体
         
         # 按钮字体
-        self.button_font = tkFont.Font(family="微软雅黑", size=10)
+        self.button_font = tkFont.Font(family="微软雅黑", size=14)  # 增大按钮字体
         
         # 小按钮字体
-        self.small_button_font = tkFont.Font(family="微软雅黑", size=10)
+        self.small_button_font = tkFont.Font(family="微软雅黑", size=14)  # 增大小按钮字体
         
         # 底部信息字体
-        self.footer_font = tkFont.Font(family="微软雅黑", size=10)
+        self.footer_font = tkFont.Font(family="微软雅黑", size=14)  # 增大底部字体
     
     def create_widgets(self):
         """创建所有界面组件"""
         # 主容器
         main_frame = tk.Frame(self.root, bg='white')
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=50, pady=30)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=80, pady=30)
         
         # 创建标题栏
         self.create_title_bar(main_frame)
@@ -245,7 +250,7 @@ class ProductionRecordsInterface:
 
         # 日期选择输入框（修改这部分）
         self.date_entry = tk.Entry(search_frame, textvariable=self.search_date_var,
-                                  font=self.content_font, width=20,
+                                  font=self.content_font, width=25,
                                   relief='solid', bd=1, state='readonly')
         self.date_entry.pack(side=tk.LEFT, padx=(0, 10))
 
@@ -443,6 +448,42 @@ class ProductionRecordsInterface:
         except Exception as e:
             print(f"[错误] 显示日期选择对话框异常: {e}")
             
+    def setup_force_exit_mechanism(self):
+        """设置强制退出机制"""
+        # 键盘快捷键强制退出
+        self.root.bind('<Control-Alt-q>', lambda e: self.force_exit())
+        self.root.bind('<Control-Alt-Q>', lambda e: self.force_exit())
+        self.root.bind('<Escape>', lambda e: self.show_exit_confirmation())
+        
+        # 添加隐藏的强制退出区域（右上角小区域）
+        exit_zone = tk.Frame(self.root, bg='white', width=100, height=50)
+        exit_zone.place(x=1450, y=0)  # 放在右上角
+        exit_zone.bind('<Double-Button-1>', lambda e: self.show_exit_confirmation())
+        
+        # 连续点击计数器用于紧急退出
+        self.click_count = 0
+        self.last_click_time = 0
+
+    def show_exit_confirmation(self):
+        """显示退出确认对话框"""
+        result = messagebox.askyesno(
+            "退出确认", 
+            "确定要退出生产记录界面吗？\n\n"
+            "将返回到系统设置界面。"
+        )
+        if result:
+            self.force_exit()
+
+    def force_exit(self):
+        """强制退出程序"""
+        try:
+            print("执行强制退出...")
+            self.on_closing()
+        except Exception as e:
+            print(f"强制退出时发生错误: {e}")
+            import os
+            os._exit(0)  # 强制终止进程
+            
     def center_dialog_relative_to_main(self, dialog_window, dialog_width, dialog_height):
         """
         将弹窗相对于主界面居中显示
@@ -571,56 +612,6 @@ class ProductionRecordsInterface:
         except Exception as e:
             print(f"[错误] 加载生产记录数据异常: {e}")
             messagebox.showerror("数据加载失败", f"加载生产记录数据失败：\n{str(e)}")
-    
-    def get_mock_data(self) -> List[ProductionRecord]:
-        """获取模拟数据"""
-        mock_records = []
-        
-        # 模拟3条生产记录
-        mock_data = [
-            {
-                'id': 1,
-                'production_date': date(2025, 7, 12),
-                'production_id': 'P20250712001',
-                'material_name': '珠料A872',
-                'target_weight': 386.0,
-                'package_quantity': 100,
-                'completed_packages': 99,
-                'completion_rate': 99.0,
-                'create_time': datetime(2025, 7, 12, 10, 30),
-                'update_time': datetime(2025, 7, 12, 16, 45)
-            },
-            {
-                'id': 2,
-                'production_date': date(2025, 7, 15),
-                'production_id': 'P20250715001',
-                'material_name': '粉料C6',
-                'target_weight': 260.0,
-                'package_quantity': 200,
-                'completed_packages': 200,
-                'completion_rate': 100.0,
-                'create_time': datetime(2025, 7, 15, 8, 15),
-                'update_time': datetime(2025, 7, 15, 17, 20)
-            },
-            {
-                'id': 3,
-                'production_date': date(2025, 7, 20),
-                'production_id': 'P20250720001',
-                'material_name': '石料162G',
-                'target_weight': 192.0,
-                'package_quantity': 200,
-                'completed_packages': 126,
-                'completion_rate': 63.0,
-                'create_time': datetime(2025, 7, 20, 9, 0),
-                'update_time': datetime(2025, 7, 20, 15, 30)
-            }
-        ]
-        
-        for data in mock_data:
-            record = ProductionRecord(**data)
-            mock_records.append(record)
-        
-        return mock_records
     
     def refresh_records_display(self):
         """刷新生产记录显示"""

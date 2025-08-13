@@ -4,5 +4,3 @@ tenacity
 Pillow
 pyinstaller==6.15.0
 auto-py-to-exe==2.46.0
-pywin32
-comtypes

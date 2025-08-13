@@ -10,7 +10,7 @@ AI模式生产界面
 3. 生产计时器
 4. 进度条显示
 5. 状态指示灯
-6. 故障记录
+6. 运行日志记录
 
 文件名：production_interface.py
 作者：AI助手
@@ -164,9 +164,15 @@ class ProductionInterface:
     def setup_window(self):
         """设置窗口基本属性"""
         self.root.title("AI模式 - 正在生产")
-        self.root.geometry("1200x800")
+        # 设置全屏模式
+        self.root.attributes('-fullscreen', True)
+        self.root.state('zoomed')  # Windows系统的最大化
+        self.root.geometry("1920x1080")
         self.root.configure(bg='white')
         self.root.resizable(True, True)
+    
+        # 添加强制退出机制
+        self.setup_force_exit_mechanism()
         
         # 绑定窗口关闭事件
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -174,28 +180,28 @@ class ProductionInterface:
     def setup_fonts(self):
         """设置界面字体"""
         # 标题字体
-        self.title_font = tkFont.Font(family="微软雅黑", size=18, weight="bold")
+        self.title_font = tkFont.Font(family="微软雅黑", size=24, weight="bold")  
         
         # 标签字体
-        self.label_font = tkFont.Font(family="微软雅黑", size=14, weight="bold")
+        self.label_font = tkFont.Font(family="微软雅黑", size=18, weight="bold")  
         
         # 数据字体
-        self.data_font = tkFont.Font(family="微软雅黑", size=12)
+        self.data_font = tkFont.Font(family="微软雅黑", size=16)  
         
         # 大数据字体
-        self.big_data_font = tkFont.Font(family="微软雅黑", size=16, weight="bold")
+        self.big_data_font = tkFont.Font(family="微软雅黑", size=20, weight="bold")  
         
         # 按钮字体
-        self.button_font = tkFont.Font(family="微软雅黑", size=12, weight="bold")
+        self.button_font = tkFont.Font(family="微软雅黑", size=16, weight="bold")  
         
         # 小按钮字体
-        self.small_button_font = tkFont.Font(family="微软雅黑", size=10)
+        self.small_button_font = tkFont.Font(family="微软雅黑", size=12)  
     
     def create_widgets(self):
         """创建所有界面组件"""
         # 主容器
         main_frame = tk.Frame(self.root, bg='white')
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=40, pady=30)
         
         # 创建标题栏
         self.create_title_bar(main_frame)
@@ -218,6 +224,42 @@ class ProductionInterface:
     
         # 创建底部信息区域
         self.create_footer_section(main_frame)
+        
+    def setup_force_exit_mechanism(self):
+        """设置强制退出机制"""
+        # 键盘快捷键强制退出
+        self.root.bind('<Control-Alt-q>', lambda e: self.force_exit())
+        self.root.bind('<Control-Alt-Q>', lambda e: self.force_exit())
+        self.root.bind('<Escape>', lambda e: self.show_exit_confirmation())
+        
+        # 添加隐藏的强制退出区域（右上角小区域）
+        exit_zone = tk.Frame(self.root, bg='white', width=100, height=50)
+        exit_zone.place(x=1450, y=0)  # 放在右上角
+        exit_zone.bind('<Double-Button-1>', lambda e: self.show_exit_confirmation())
+        
+        # 连续点击计数器用于紧急退出
+        self.click_count = 0
+        self.last_click_time = 0
+
+    def show_exit_confirmation(self):
+        """显示退出确认对话框"""
+        result = messagebox.askyesno(
+            "退出确认", 
+            "确定要退出生产程序吗？\n\n"
+            "退出将停止生产并断开PLC连接。"
+        )
+        if result:
+            self.force_exit()
+
+    def force_exit(self):
+        """强制退出程序"""
+        try:
+            print("执行强制退出...")
+            self.on_closing()
+        except Exception as e:
+            print(f"强制退出时发生错误: {e}")
+            import os
+            os._exit(0)  # 强制终止进程
     
     def create_title_bar(self, parent):
         """
@@ -247,22 +289,22 @@ class ProductionInterface:
                                         font=self.button_font,
                                         bg='#ffc107', fg='white',
                                         relief='flat', bd=0,
-                                        padx=20, pady=8,
+                                        padx=30, pady=12,
                                         command=self.on_pause_resume_click)
-        self.pause_resume_btn.pack(side=tk.LEFT, padx=(0, 10))
+        self.pause_resume_btn.pack(side=tk.LEFT, padx=(0, 15))
         
         # 取消按钮
         cancel_btn = tk.Button(right_frame, text="✖ 取消", 
                              font=self.button_font,
                              bg='#dc3545', fg='white',
                              relief='flat', bd=0,
-                             padx=20, pady=8,
+                             padx=30, pady=12,
                              command=self.on_cancel_click)
         cancel_btn.pack(side=tk.LEFT)
         
         # 蓝色分隔线
-        separator = tk.Frame(parent, height=3, bg='#7fb3d3')
-        separator.pack(fill=tk.X, pady=(10, 0))
+        separator = tk.Frame(parent, height=4, bg='#7fb3d3')
+        separator.pack(fill=tk.X, pady=(15, 0))
         
     def create_bucket_monitoring_section(self, parent):
         """
@@ -274,21 +316,21 @@ class ProductionInterface:
         # 料斗监控容器
         for bucket_id in range(1, 7):
             bucket_frame = tk.Frame(parent, bg='#f8f9fa', relief='raised', bd=1)
-            bucket_frame.pack(fill=tk.X, pady=5)
-            bucket_frame.configure(width=200, height=50)
+            bucket_frame.pack(fill=tk.X, pady=8)
+            bucket_frame.configure(width=280, height=70)
             bucket_frame.pack_propagate(False)
             
             # 左侧指示灯和料斗标签
             left_frame = tk.Frame(bucket_frame, bg='#f8f9fa')
-            left_frame.pack(side=tk.LEFT, fill=tk.Y, padx=10, pady=5)
+            left_frame.pack(side=tk.LEFT, fill=tk.Y, padx=15, pady=8)
             
             # 状态指示灯（绿色圆圈）
-            indicator_canvas = tk.Canvas(left_frame, width=20, height=20, 
+            indicator_canvas = tk.Canvas(left_frame, width=25, height=25, 
                                        bg='#f8f9fa', highlightthickness=0)
-            indicator_canvas.pack(side=tk.LEFT, padx=(0, 10))
+            indicator_canvas.pack(side=tk.LEFT, padx=(0, 15))
             
             # 绘制绿色圆圈
-            indicator_canvas.create_oval(3, 3, 17, 17, fill='#28a745', outline='#28a745')
+            indicator_canvas.create_oval(3, 3, 22, 22, fill='#28a745', outline='#28a745')
             self.bucket_status_indicators[bucket_id] = indicator_canvas
             
             # 料斗标签
@@ -299,7 +341,7 @@ class ProductionInterface:
             # 右侧重量显示
             weight_label = tk.Label(bucket_frame, text="0.0g", 
                                   font=self.big_data_font, bg='#f8f9fa', fg='#333333')
-            weight_label.pack(side=tk.RIGHT, padx=10, pady=5)
+            weight_label.pack(side=tk.RIGHT, padx=15, pady=8)
             
             self.bucket_weight_labels[bucket_id] = weight_label
     
@@ -312,12 +354,12 @@ class ProductionInterface:
         """
         # 顶部生产参数显示
         params_frame = tk.Frame(parent, bg='white')
-        params_frame.pack(fill=tk.X, pady=(0, 20))
+        params_frame.pack(fill=tk.X, pady=(0, 30))
         
         # 物料名称
         material_frame = tk.Frame(params_frame, bg='#e3f2fd', relief='flat', bd=0)
-        material_frame.pack(side=tk.LEFT, padx=(0, 20))
-        material_frame.configure(width=200, height=80)
+        material_frame.pack(side=tk.LEFT, padx=(0, 30))
+        material_frame.configure(width=300, height=100)
         material_frame.pack_propagate(False)
         
         material_label = tk.Label(material_frame, 
@@ -327,8 +369,8 @@ class ProductionInterface:
         
         # 每包重量
         weight_frame = tk.Frame(params_frame, bg='#e8f5e8', relief='flat', bd=0)
-        weight_frame.pack(side=tk.LEFT, padx=(0, 20))
-        weight_frame.configure(width=150, height=80)
+        weight_frame.pack(side=tk.LEFT, padx=(0, 30))
+        weight_frame.configure(width=220, height=100)
         weight_frame.pack_propagate(False)
         
         weight_label = tk.Label(weight_frame, 
@@ -339,7 +381,7 @@ class ProductionInterface:
         # 总包数
         total_frame = tk.Frame(params_frame, bg='#f3e5f5', relief='flat', bd=0)
         total_frame.pack(side=tk.LEFT)
-        total_frame.configure(width=100, height=80)
+        total_frame.configure(width=150, height=100)
         total_frame.pack_propagate(False)
         
         total_label = tk.Label(total_frame, 
@@ -395,12 +437,12 @@ class ProductionInterface:
                                        font=self.big_data_font, bg='white', fg='#28a745')
         self.avg_weight_label.pack(side=tk.LEFT, padx=(20, 0))
         
-        # 故障记录区域
-        fault_frame = tk.LabelFrame(parent, text="故障记录", font=self.label_font,
+        # 运行日志记录区域
+        fault_frame = tk.LabelFrame(parent, text="运行日志记录", font=self.label_font,
                                   bg='white', fg='#333333')
         fault_frame.pack(fill=tk.BOTH, expand=True)
         
-        # 故障记录文本框
+        # 运行日志记录文本框
         self.fault_text = tk.Text(fault_frame, height=8, font=self.data_font,
                                 bg='white', fg='#333333', state='disabled')
         self.fault_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -518,6 +560,9 @@ class ProductionInterface:
                     if not self.modbus_client.write_coil(get_production_address('PackageCountClear'), False):
                         self.root.after(0, lambda: self.add_fault_record("发送包数清零=0命令失败"))
                         return
+                    
+                    # 等待50ms
+                    time.sleep(0.05)
                     
                     # 2. 包数清零=1
                     print("步骤2: 发送包数清零=1命令")
@@ -1195,7 +1240,7 @@ class ProductionInterface:
             print(f"生产完成处理异常: {e}")
     
     def add_fault_record(self, message: str):
-        """添加故障记录"""
+        """添加运行日志记录"""
         try:
             timestamp = datetime.now().strftime('%H:%M:%S')
             record = f"[{timestamp}] {message}\n"
@@ -1206,7 +1251,7 @@ class ProductionInterface:
             self.fault_text.config(state='disabled')
             
         except Exception as e:
-            print(f"添加故障记录异常: {e}")
+            print(f"添加运行日志记录异常: {e}")
     
     def on_pause_resume_click(self):
         """暂停/启动按钮点击事件"""
@@ -1266,6 +1311,9 @@ class ProductionInterface:
             # 确认按钮
             def on_confirm_pause():
                 pause_confirm_window.destroy()
+                # 执行暂停操作
+                self._pause_production()
+                # 显示暂停进行中弹窗
                 self.show_pausing_progress_dialog()
             
             confirm_btn = tk.Button(button_frame, text="确认", 
@@ -1335,6 +1383,8 @@ class ProductionInterface:
             def on_continue():
                 self.stop_pausing_timer()
                 self.pausing_progress_window.destroy()
+                # 恢复生产
+                self._resume_production()
             
             continue_btn = tk.Button(button_frame, text="▶ 继续", 
                                    font=tkFont.Font(family="微软雅黑", size=14),
@@ -1393,7 +1443,8 @@ class ProductionInterface:
             # 取消按钮
             def on_cancel():
                 cancel_confirm_window.destroy()
-                # 返回界面，不做任何操作
+                # 返回暂停进行中弹窗
+                self.show_pausing_progress_dialog()
             
             cancel_btn = tk.Button(button_frame, text="取消", 
                                  font=tkFont.Font(family="微软雅黑", size=14),
@@ -1406,8 +1457,8 @@ class ProductionInterface:
             # 确认按钮
             def on_confirm_cancel():
                 cancel_confirm_window.destroy()
-                # 执行暂停操作（实际是取消生产）
-                self._pause_production()
+                # 退出生产界面，返回AI模式界面
+                self.on_closing()
             
             confirm_btn = tk.Button(button_frame, text="确认", 
                                   font=tkFont.Font(family="微软雅黑", size=14),
@@ -1534,6 +1585,9 @@ class ProductionInterface:
                     if not success:
                         self.add_fault_record("发送总启动=0命令失败")
                         return
+                        
+                    # 等待50ms
+                    time.sleep(0.05)
                     
                     # 发送总停止=1（停止）
                     success = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStop'], True)

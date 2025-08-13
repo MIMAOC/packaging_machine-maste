@@ -257,7 +257,7 @@ def calculate_adjustment_parameters(
     
     # 应用约束
     new_coarse_advance = round(max(0.0, new_coarse_advance), 1)  # 保留1位小数
-    new_fall_value = max(0.0, min(1.0, new_fall_value))
+    new_fall_value = round(max(0.0, min(1.0, new_fall_value)), 1)
     
     # 检查调整后的落差值是否仍在范围内
     if new_fall_value < 0.0 or new_fall_value > 1.0:
@@ -269,7 +269,7 @@ def calculate_adjustment_parameters(
         adjustment_params["coarse_advance"] = round(new_coarse_advance, 1)  # 保留1位小数
     
     if new_fall_value != request.current_fall_value:
-        adjustment_params["fall_value"] = new_fall_value
+        adjustment_params["fall_value"] = round(new_fall_value, 1)
     
     return adjustment_params
 
@@ -323,7 +323,7 @@ def generate_analysis_message(
             if param == "coarse_advance":
                 adjustments.append(f"快加提前量→{value:.1f}g")
             elif param == "fall_value":
-                adjustments.append(f"落差值→{value}g")
+                adjustments.append(f"落差值→{value:.1f}g")
         
         if adjustments:
             message += f"; 调整参数: {', '.join(adjustments)}"

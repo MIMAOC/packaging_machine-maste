@@ -58,40 +58,52 @@ class SystemSettingsInterface:
         self.create_widgets()
         
         # 居中显示窗口
-        self.center_window()
+        # self.center_window()
+        
+        # 添加触摸屏优化
+        try:
+            from touchscreen_utils import TouchScreenUtils
+            TouchScreenUtils.optimize_window_for_touch(self.root)
+        except ImportError:
+            print("[警告] 无法导入touchscreen_utils模块")
     
     def setup_window(self):
         """设置窗口基本属性"""
         self.root.title("系统设置")
-        self.root.geometry("950x750")
+        self.root.attributes('-fullscreen', True)
+        self.root.state('zoomed')  # Windows系统的最大化
+        self.root.geometry("1920x1080")
         self.root.configure(bg='white')
         self.root.resizable(True, True)
+    
+        # 添加强制退出机制
+        self.setup_force_exit_mechanism()
         
         # 绑定窗口关闭事件
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
     
     def setup_fonts(self):
         """设置界面字体"""
-        # 标题字体
-        self.title_font = tkFont.Font(family="微软雅黑", size=20, weight="bold")
+        # 标题字体 - 增大
+        self.title_font = tkFont.Font(family="微软雅黑", size=28, weight="bold")
         
-        # 按钮字体
-        self.button_font = tkFont.Font(family="微软雅黑", size=16, weight="bold")
+        # 按钮字体 - 增大
+        self.button_font = tkFont.Font(family="微软雅黑", size=20, weight="bold")
         
-        # 描述字体
-        self.desc_font = tkFont.Font(family="微软雅黑", size=12)
+        # 描述字体 - 增大
+        self.desc_font = tkFont.Font(family="微软雅黑", size=16)
         
-        # 小按钮字体
-        self.small_button_font = tkFont.Font(family="微软雅黑", size=10)
+        # 小按钮字体 - 增大
+        self.small_button_font = tkFont.Font(family="微软雅黑", size=14)
         
-        # 底部信息字体
-        self.footer_font = tkFont.Font(family="微软雅黑", size=10)
+        # 底部信息字体 - 增大
+        self.footer_font = tkFont.Font(family="微软雅黑", size=14)
     
     def create_widgets(self):
         """创建所有界面组件"""
         # 主容器
         main_frame = tk.Frame(self.root, bg='white')
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=50, pady=30)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=80, pady=40)
         
         # 创建标题栏
         self.create_title_bar(main_frame)
@@ -111,7 +123,7 @@ class SystemSettingsInterface:
         """
         # 标题栏容器
         title_frame = tk.Frame(parent, bg='white')
-        title_frame.pack(fill=tk.X, pady=(0, 10))
+        title_frame.pack(fill=tk.X, pady=(0, 20))
         
         # 左侧标题
         left_frame = tk.Frame(title_frame, bg='white')
@@ -131,7 +143,7 @@ class SystemSettingsInterface:
                               font=self.small_button_font,
                               bg='#e9ecef', fg='#333333',
                               relief='flat', bd=1,
-                              padx=20, pady=8,
+                              padx=25, pady=10,
                               command=self.on_return_click)
         return_btn.pack(side=tk.LEFT)
         
@@ -148,7 +160,7 @@ class SystemSettingsInterface:
         """
         # 功能按钮容器
         function_frame = tk.Frame(parent, bg='white')
-        function_frame.pack(expand=True, fill='both', pady=(50, 100))
+        function_frame.pack(expand=True, fill='both', pady=(80, 150))
         
         # 三个功能按钮的容器（水平排列）
         buttons_container = tk.Frame(function_frame, bg='white')
@@ -159,14 +171,14 @@ class SystemSettingsInterface:
                                    "物料管理", 
                                    "新增物料并启动AI学习\n查看AI状态和管理物料启用",
                                    self.on_material_management_click,
-                                   side=tk.LEFT, padx=(0, 60))
+                                   side=tk.LEFT, padx=(0, 80))
         
         # 生产记录按钮
         self.create_function_button(buttons_container, 
                                    "生产记录", 
                                    "查看历史生产数据和合格率\n按时间和条件搜索记录",
                                    self.on_production_records_click,
-                                   side=tk.LEFT, padx=(0, 60))
+                                   side=tk.LEFT, padx=(0, 80))
         
         # 出厂设置按钮
         self.create_function_button(buttons_container, 
@@ -190,23 +202,23 @@ class SystemSettingsInterface:
         # 按钮容器
         button_container = tk.Frame(parent, bg='#d3d3d3', relief='flat', bd=0)
         button_container.pack(side=side, padx=padx)
-        button_container.configure(width=250, height=180)
+        button_container.configure(width=320, height=240)
         button_container.pack_propagate(False)
         
         # 创建按钮内容
         content_frame = tk.Frame(button_container, bg='#d3d3d3')
-        content_frame.pack(expand=True, fill='both', padx=20, pady=20)
+        content_frame.pack(expand=True, fill='both', padx=25, pady=25)
         
         # 标题
         title_label = tk.Label(content_frame, text=title, 
                               font=self.button_font, bg='#d3d3d3', fg='#333333')
-        title_label.pack(pady=(20, 10))
+        title_label.pack(pady=(30, 15))
         
         # 描述
         desc_label = tk.Label(content_frame, text=description, 
                              font=self.desc_font, bg='#d3d3d3', fg='#666666',
                              justify=tk.CENTER)
-        desc_label.pack(pady=(0, 20))
+        desc_label.pack(pady=(0, 30))
         
         # 绑定点击事件
         def bind_click_event(widget):
@@ -218,6 +230,42 @@ class SystemSettingsInterface:
         bind_click_event(content_frame)
         bind_click_event(title_label)
         bind_click_event(desc_label)
+        
+    def setup_force_exit_mechanism(self):
+        """设置强制退出机制"""
+        # 键盘快捷键强制退出
+        self.root.bind('<Control-Alt-q>', lambda e: self.force_exit())
+        self.root.bind('<Control-Alt-Q>', lambda e: self.force_exit())
+        self.root.bind('<Escape>', lambda e: self.show_exit_confirmation())
+        
+        # 添加隐藏的强制退出区域（右上角小区域）
+        exit_zone = tk.Frame(self.root, bg='white', width=100, height=50)
+        exit_zone.place(x=1450, y=0)  # 放在右上角
+        exit_zone.bind('<Double-Button-1>', lambda e: self.show_exit_confirmation())
+        
+        # 连续点击计数器用于紧急退出
+        self.click_count = 0
+        self.last_click_time = 0
+
+    def show_exit_confirmation(self):
+        """显示退出确认对话框"""
+        result = messagebox.askyesno(
+            "退出确认", 
+            "确定要退出系统设置界面吗？\n\n"
+            "这将返回到AI模式界面。"
+        )
+        if result:
+            self.force_exit()
+
+    def force_exit(self):
+        """强制退出程序"""
+        try:
+            print("执行强制退出...")
+            self.on_closing()
+        except Exception as e:
+            print(f"强制退出时发生错误: {e}")
+            import os
+            os._exit(0)  # 强制终止进程
     
     def on_button_enter(self, button_container):
         """鼠标悬停效果"""

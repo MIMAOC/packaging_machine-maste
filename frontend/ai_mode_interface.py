@@ -334,6 +334,51 @@ class AIModeInterface:
             x = (dialog_window.winfo_screenwidth() - dialog_width) // 2
             y = (dialog_window.winfo_screenheight() - dialog_height) // 2
             dialog_window.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
+            
+    def setup_force_exit_mechanism(self):
+        """设置强制退出机制"""
+        # 键盘快捷键强制退出
+        self.root.bind('<Control-Alt-q>', lambda e: self.force_exit())
+        self.root.bind('<Control-Alt-Q>', lambda e: self.force_exit())
+        self.root.bind('<Escape>', lambda e: self.show_exit_confirmation())
+        
+        # 添加隐藏的强制退出区域（右上角小区域）
+        exit_zone = tk.Frame(self.root, bg='white', width=100, height=50)
+        exit_zone.place(x=1450, y=0)  # 放在右上角
+        exit_zone.bind('<Double-Button-1>', lambda e: self.show_exit_confirmation())
+        
+        # 连续点击计数器用于紧急退出
+        self.click_count = 0
+        self.last_click_time = 0
+
+    def show_exit_confirmation(self):
+        """显示退出确认对话框"""
+        result = messagebox.askyesno(
+            "退出确认", 
+            "确定要退出AI模式吗？\n\n"
+            "退出将停止所有AI学习过程并返回主界面。"
+        )
+        if result:
+            self.force_exit()
+
+    def force_exit(self):
+        """强制退出程序"""
+        try:
+            print("执行AI模式强制退出...")
+            self.on_closing()
+        except Exception as e:
+            print(f"AI模式强制退出时发生错误: {e}")
+            # 对于AI模式，强制退出应该返回主界面而不是终止整个程序
+            if self.main_window:
+                try:
+                    self.main_window.show_main_window()
+                    self.root.destroy()
+                except:
+                    import os
+                    os._exit(0)  # 最后的备选方案
+            else:
+                import os
+                os._exit(0)
     
     def center_window(self):
         """将AI模式界面窗口居中显示"""
@@ -367,41 +412,48 @@ class AIModeInterface:
     def setup_window(self):
         """设置窗口基本属性"""
         self.root.title("AI模式 - 自学习自适应")
-        self.root.geometry("950x750")
+    
+        # 设置全屏模式 - 参考main.py
+        self.root.attributes('-fullscreen', True)
+        self.root.state('zoomed')  # Windows系统的最大化
+        self.root.geometry("1920x1080")
         self.root.configure(bg='white')
         self.root.resizable(True, True)
     
         # 添加触摸屏优化
         TouchScreenUtils.optimize_window_for_touch(self.root)
+    
+        # 设置强制退出机制
+        self.setup_force_exit_mechanism()
         
         # 绑定窗口关闭事件（无论是否为主窗口都需要处理）
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
     
     def setup_fonts(self):
-        """设置界面字体"""
-        # 标题字体
-        self.title_font = tkFont.Font(family="微软雅黑", size=20, weight="bold")
+        """设置界面字体 - 适应1920×1080分辨率"""
+        # 标题字体 - 增大
+        self.title_font = tkFont.Font(family="微软雅黑", size=28, weight="bold")
         
-        # 标签字体
-        self.label_font = tkFont.Font(family="微软雅黑", size=14, weight="bold")
+        # 标签字体 - 增大
+        self.label_font = tkFont.Font(family="微软雅黑", size=18, weight="bold")
         
-        # 输入框字体
-        self.entry_font = tkFont.Font(family="微软雅黑", size=12)
+        # 输入框字体 - 增大
+        self.entry_font = tkFont.Font(family="微软雅黑", size=16)
         
-        # 按钮字体
-        self.button_font = tkFont.Font(family="微软雅黑", size=12, weight="bold")
+        # 按钮字体 - 增大
+        self.button_font = tkFont.Font(family="微软雅黑", size=18, weight="bold")
         
-        # 小按钮字体
-        self.small_button_font = tkFont.Font(family="微软雅黑", size=10)
+        # 小按钮字体 - 增大
+        self.small_button_font = tkFont.Font(family="微软雅黑", size=14)
         
-        # 底部信息字体
-        self.footer_font = tkFont.Font(family="微软雅黑", size=10)
+        # 底部信息字体 - 增大
+        self.footer_font = tkFont.Font(family="微软雅黑", size=12)
     
     def create_widgets(self):
         """创建所有界面组件"""
         # 主容器
         main_frame = tk.Frame(self.root, bg='white')
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=50, pady=30)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=80, pady=20)
         
         # 创建标题栏
         self.create_title_bar(main_frame)
@@ -645,7 +697,7 @@ class AIModeInterface:
         """
         # 参数设置容器
         param_frame = tk.Frame(parent, bg='white')
-        param_frame.pack(fill=tk.X, pady=(40, 60))
+        param_frame.pack(fill=tk.X, pady=(60, 80))
         
         # 三个参数设置区域的容器
         params_container = tk.Frame(param_frame, bg='white')
@@ -678,7 +730,7 @@ class AIModeInterface:
         
         # 单位标签
         unit_label = tk.Label(weight_frame, text="克g", 
-                            font=tkFont.Font(family="微软雅黑", size=12),
+                            font=tkFont.Font(family="微软雅黑", size=14),
                             bg='white', fg='#666666')
         unit_label.pack(anchor='w', pady=(0, 10))
         
@@ -784,7 +836,7 @@ class AIModeInterface:
         """
         # 控制按钮容器
         control_frame = tk.Frame(parent, bg='white')
-        control_frame.pack(fill=tk.X, pady=(40, 60))
+        control_frame.pack(fill=tk.X, pady=(60, 80))
         
         # 左侧按钮区域
         left_buttons = tk.Frame(control_frame, bg='white')
@@ -795,16 +847,16 @@ class AIModeInterface:
                                  font=self.button_font,
                                  bg='#6c757d', fg='white',
                                  relief='flat', bd=0,
-                                 padx=30, pady=15,  # 增加内边距
+                                 padx=40, pady=20,  # 增加内边距
                                  command=self.on_feed_clear_click)
-        feed_clear_btn.pack(side=tk.LEFT, padx=(0, 15))
+        feed_clear_btn.pack(side=tk.LEFT, padx=(0, 20))
         
         # 清料按钮
         clear_btn = tk.Button(left_buttons, text="清料", 
                             font=self.button_font,
                             bg='#6c757d', fg='white',
                             relief='flat', bd=0,
-                            padx=30, pady=15,  # 增加内边距
+                            padx=40, pady=20,  # 增加内边距
                             command=self.on_clear_click)
         clear_btn.pack(side=tk.LEFT)
         
@@ -814,10 +866,10 @@ class AIModeInterface:
         
         # 开始AI生产按钮
         start_ai_btn = tk.Button(right_buttons, text="开始AI生产", 
-                               font=tkFont.Font(family="微软雅黑", size=16, weight="bold"),
+                               font=tkFont.Font(family="微软雅黑", size=20, weight="bold"),
                                bg='#007bff', fg='white',
                                relief='flat', bd=0,
-                               padx=30, pady=15,  # 增加内边距
+                               padx=50, pady=25,  # 增加内边距
                                command=self.on_start_ai_click)
         start_ai_btn.pack()
     
@@ -1286,6 +1338,15 @@ class AIModeInterface:
                         return
                 except ValueError:
                     messagebox.showerror("参数错误", "请输入有效的重量数值")
+                    return
+            
+                # 🔥 新增：重量范围检查
+                if target_weight < 60 or target_weight > 425:
+                    messagebox.showerror("参数错误", 
+                                    f"输入重量超出范围\n\n"
+                                    f"允许范围：60g - 425g\n"
+                                    f"当前输入：{target_weight}g\n\n"
+                                    f"请重新输入正确的重量范围")
                     return
                 
                 try:
@@ -1828,6 +1889,15 @@ class AIModeInterface:
                 return
         except ValueError:
             messagebox.showerror("参数错误", "请输入有效的目标重量数值")
+            return
+    
+        # 重量范围检查
+        if target_weight < 60 or target_weight > 425:
+            messagebox.showerror("参数错误", 
+                            f"输入重量超出范围\n\n"
+                            f"允许范围：60g - 425g\n"
+                            f"当前输入：{target_weight}g\n\n"
+                            f"请重新输入正确的重量范围")
             return
         
         # 验证数量是否为有效整数
