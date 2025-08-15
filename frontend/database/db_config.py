@@ -10,6 +10,7 @@
 """
 
 import os
+import sys
 from dataclasses import dataclass
 from typing import Optional
 
@@ -19,6 +20,17 @@ class DatabaseConfig:
     db_path: str = "packaging_machine.db"  # SQLite数据库文件路径
     timeout: int = 30  # 连接超时时间（秒）
     check_same_thread: bool = False  # 允许多线程访问
+    
+def get_resource_path(relative_path):
+    """获取资源文件的绝对路径，兼容打包后的程序"""
+    try:
+        # PyInstaller创建的临时文件夹
+        base_path = sys._MEIPASS
+    except Exception:
+        # 开发环境 - 获取当前脚本所在目录
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    
+    return os.path.join(base_path, relative_path)
 
 def get_database_config() -> DatabaseConfig:
     """
@@ -27,8 +39,14 @@ def get_database_config() -> DatabaseConfig:
     Returns:
         DatabaseConfig: 数据库配置对象
     """
+    # 使用环境变量或默认的相对路径
+    default_db_path = os.getenv('DB_PATH', 'data/packaging_machine.db')
+    
+    # 获取正确的绝对路径
+    db_path = get_resource_path(default_db_path)
+    
     return DatabaseConfig(
-        db_path=os.getenv('DB_PATH', 'data/packaging_machine.db'),
+        db_path=db_path,
         timeout=int(os.getenv('DB_TIMEOUT', '30')),
         check_same_thread=bool(os.getenv('DB_CHECK_SAME_THREAD', 'False'))
     )

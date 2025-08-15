@@ -196,7 +196,7 @@ class AIModeInterface:
         # 从数据库获取物料列表
         self.material_list = self.get_material_list_from_database()
         
-        # 快加时间测定控制器（新增）
+        # 快加时间测定控制器
         self.coarse_time_controller = None
         
         # 多斗学习状态弹窗相关变量
@@ -229,7 +229,7 @@ class AIModeInterface:
         # 居中显示窗口（新增）
         self.center_window()
         
-        # 【修复6】添加弹窗状态管理
+        # 添加弹窗状态管理
         self.active_dialogs = set()  # 记录当前活跃的弹窗
         self.material_shortage_dialogs = {}  # 记录物料不足弹窗 {bucket_id: dialog_window}
         self.dialog_lock = threading.Lock()  # 弹窗操作锁
@@ -2276,7 +2276,7 @@ class AIModeInterface:
                 # 添加root引用，用于跨线程UI操作
                 self.coarse_time_controller.root_reference = self.root
             
-                # 🔥 修复：立即设置物料名称到快加时间测定控制器
+                # 立即设置物料名称到快加时间测定控制器
                 if hasattr(self.coarse_time_controller, 'set_material_name'):
                     self.coarse_time_controller.set_material_name(material)
                     print(f"[信息] 已设置物料名称到快加时间测定控制器: {material}")
@@ -2295,7 +2295,7 @@ class AIModeInterface:
                     
                     # 更新学习状态管理器
                     if self.learning_state_manager:
-                        # 🔥 修改：根据消息内容判断阶段，直接处理单个料斗
+                        # 根据消息内容判断阶段，直接处理单个料斗
                         stage = self._determine_learning_stage_from_message(message)
                         if stage:
                             self.learning_state_manager.complete_bucket_stage(
@@ -2303,7 +2303,7 @@ class AIModeInterface:
                             )
                             print(f"[状态更新] 料斗{bucket_id} {stage.value}阶段: {'成功' if success else '失败'}")
                         
-                        # 🔥 新增：如果是自适应学习成功，立即更新为"学习成功"状态
+                        # 如果是自适应学习成功，立即更新为"学习成功"状态
                         if success and "自适应学习" in message:
                             bucket_state = self.learning_state_manager.get_bucket_state(bucket_id)
                             if bucket_state:

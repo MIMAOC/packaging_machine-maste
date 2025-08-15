@@ -15,9 +15,18 @@
 """
 
 import threading
+import time
 import tkinter as tk
 from tkinter import ttk, messagebox
 import tkinter.font as tkFont
+
+# 导入触摸屏工具模块
+try:
+    from touchscreen_utils import TouchScreenUtils
+    TOUCHSCREEN_UTILS_AVAILABLE = True
+except ImportError as e:
+    print(f"警告：无法导入触摸屏工具模块: {e}")
+    TOUCHSCREEN_UTILS_AVAILABLE = False
 
 class ErrorThresholdConfig:
     """误差阈值配置类"""
@@ -82,12 +91,8 @@ class FactorySettingsInterface:
         self.min_upper_error = 0.6
         self.min_error_diff = 0.8
     
-        # 从配置文件加载设置（新增）
+        # 从配置文件加载设置
         self._load_from_config_file()
-        
-        # 当前误差设置（确保精度）
-        self.current_lower_error = round(self.default_lower_error, 1)
-        self.current_upper_error = round(self.default_upper_error, 1)
         
         # 显示密码验证窗口
         self.show_password_verification()
@@ -104,8 +109,9 @@ class FactorySettingsInterface:
                 with open(config_file, 'r', encoding='utf-8') as f:
                     config_data = json.load(f)
                 
-                self.current_lower_error = config_data.get("lower_error", self.default_lower_error)
-                self.current_upper_error = config_data.get("upper_error", self.default_upper_error)
+                # 从配置文件加载并确保精度
+                self.current_lower_error = round(config_data.get("lower_error", self.default_lower_error), 1)
+                self.current_upper_error = round(config_data.get("upper_error", self.default_upper_error), 1)
                 
                 # 更新全局配置
                 global error_config
@@ -113,29 +119,39 @@ class FactorySettingsInterface:
                 
                 print(f"[配置文件] 已加载误差设置：下限={self.current_lower_error}g, 上限={self.current_upper_error}g")
             else:
-                # 使用默认值
-                self.current_lower_error = self.default_lower_error
-                self.current_upper_error = self.default_upper_error
+                # 使用默认值并确保精度
+                self.current_lower_error = round(self.default_lower_error, 1)
+                self.current_upper_error = round(self.default_upper_error, 1)
                 print(f"[配置文件] 使用默认误差设置")
                 
         except Exception as e:
             print(f"[警告] 加载配置文件失败: {e}，使用默认设置")
-            self.current_lower_error = self.default_lower_error
-            self.current_upper_error = self.default_upper_error
+            # 异常时使用默认值并确保精度
+            self.current_lower_error = round(self.default_lower_error, 1)
+            self.current_upper_error = round(self.default_upper_error, 1)
     
     def show_password_verification(self):
         """显示密码验证窗口（第一个窗口）"""
         # 创建密码验证窗口
         self.password_window = tk.Toplevel()
         self.password_window.title("出厂设置")
-        self.password_window.geometry("950x750")
+        self.password_window.attributes('-fullscreen', True)
+        self.password_window.state('zoomed')  # Windows系统的最大化
+        self.password_window.geometry("1920x1080")
         self.password_window.configure(bg='white')
         self.password_window.resizable(True, True)
         self.password_window.transient()
         self.password_window.grab_set()
+    
+        # 添加触摸屏优化
+        if TOUCHSCREEN_UTILS_AVAILABLE:
+            TouchScreenUtils.optimize_window_for_touch(self.password_window)
         
         # 绑定窗口关闭事件
         self.password_window.protocol("WM_DELETE_WINDOW", self.on_password_window_closing)
+        
+        # 添加强制退出机制
+        self.setup_force_exit_mechanism(self.password_window)
         
         # 设置字体
         self.setup_fonts()
@@ -144,39 +160,39 @@ class FactorySettingsInterface:
         self.create_password_widgets()
         
         # 居中显示窗口
-        self.center_window(self.password_window)
+        # self.center_window(self.password_window)
     
     def setup_fonts(self):
         """设置界面字体"""
-        # 标题字体
-        self.title_font = tkFont.Font(family="微软雅黑", size=20, weight="bold")
+        # 标题字体 - 增大
+        self.title_font = tkFont.Font(family="微软雅黑", size=32, weight="bold")
         
-        # 标签字体
-        self.label_font = tkFont.Font(family="微软雅黑", size=14)
+        # 标签字体 - 增大
+        self.label_font = tkFont.Font(family="微软雅黑", size=20)
         
-        # 输入框字体
-        self.entry_font = tkFont.Font(family="微软雅黑", size=12)
+        # 输入框字体 - 增大
+        self.entry_font = tkFont.Font(family="微软雅黑", size=18)
         
-        # 按钮字体
-        self.button_font = tkFont.Font(family="微软雅黑", size=12, weight="bold")
+        # 按钮字体 - 增大
+        self.button_font = tkFont.Font(family="微软雅黑", size=18, weight="bold")
         
-        # 小按钮字体
-        self.small_button_font = tkFont.Font(family="微软雅黑", size=10)
+        # 小按钮字体 - 增大
+        self.small_button_font = tkFont.Font(family="微软雅黑", size=14)
         
-        # 底部信息字体
-        self.footer_font = tkFont.Font(family="微软雅黑", size=10)
+        # 底部信息字体 - 增大
+        self.footer_font = tkFont.Font(family="微软雅黑", size=14)
         
-        # 数值字体
-        self.value_font = tkFont.Font(family="微软雅黑", size=16, weight="bold")
+        # 数值字体 - 增大
+        self.value_font = tkFont.Font(family="微软雅黑", size=24, weight="bold")
         
-        # 单位字体
-        self.unit_font = tkFont.Font(family="微软雅黑", size=12)
+        # 单位字体 - 增大
+        self.unit_font = tkFont.Font(family="微软雅黑", size=16)
     
     def create_password_widgets(self):
         """创建密码验证界面组件"""
         # 主容器
         main_frame = tk.Frame(self.password_window, bg='white')
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=50, pady=30)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=120, pady=50)
         
         # 创建标题栏
         self.create_password_title_bar(main_frame)
@@ -232,19 +248,20 @@ class FactorySettingsInterface:
         # 提示标签
         prompt_label = tk.Label(center_frame, text="请输入管理员密码", 
                                font=self.label_font, bg='white', fg='#333333')
-        prompt_label.pack(pady=(0, 30))
+        prompt_label.pack(pady=(0, 50))
         
         # 密码输入框
         self.password_var = tk.StringVar()
         password_entry = tk.Entry(center_frame, textvariable=self.password_var,
                                  font=self.entry_font,
-                                 width=25, show='*',
+                                 width=30, show='*',
                                  relief='solid', bd=1,
                                  bg='white', fg='#333333')
-        password_entry.pack(ipady=8, pady=(0, 50))
-        
-        # 设置占位符
-        self.setup_placeholder(password_entry, "请输入密码")
+        password_entry.pack(ipady=12, pady=(0, 80))
+    
+        # 使用触摸屏工具设置输入框
+        if TOUCHSCREEN_UTILS_AVAILABLE:
+            TouchScreenUtils.setup_touch_entry(password_entry, "请输入密码")
         
         # 设置焦点并绑定回车键
         password_entry.focus()
@@ -255,29 +272,34 @@ class FactorySettingsInterface:
                                font=self.button_font,
                                bg='#e9ecef', fg='#333333',
                                relief='flat', bd=1,
-                               padx=40, pady=12,
+                               padx=60, pady=18,
                                command=self.verify_password)
         confirm_btn.pack()
     
     def setup_placeholder(self, entry_widget, placeholder_text):
         """为输入框设置占位符效果"""
-        def on_focus_in(event):
-            if entry_widget.get() == placeholder_text:
-                entry_widget.delete(0, tk.END)
-                entry_widget.config(fg='#333333', show='*')
-        
-        def on_focus_out(event):
-            if entry_widget.get() == '':
-                entry_widget.insert(0, placeholder_text)
-                entry_widget.config(fg='#999999', show='')
-        
-        # 设置初始占位符
-        entry_widget.insert(0, placeholder_text)
-        entry_widget.config(fg='#999999', show='')
-        
-        # 绑定事件
-        entry_widget.bind('<FocusIn>', on_focus_in)
-        entry_widget.bind('<FocusOut>', on_focus_out)
+        if TOUCHSCREEN_UTILS_AVAILABLE:
+            # 使用触摸屏工具
+            TouchScreenUtils.setup_touch_entry(entry_widget, placeholder_text)
+        else:
+            # 原有的占位符实现
+            def on_focus_in(event):
+                if entry_widget.get() == placeholder_text:
+                    entry_widget.delete(0, tk.END)
+                    entry_widget.config(fg='#333333', show='*')
+            
+            def on_focus_out(event):
+                if entry_widget.get() == '':
+                    entry_widget.insert(0, placeholder_text)
+                    entry_widget.config(fg='#999999', show='')
+            
+            # 设置初始占位符
+            entry_widget.insert(0, placeholder_text)
+            entry_widget.config(fg='#999999', show='')
+            
+            # 绑定事件
+            entry_widget.bind('<FocusIn>', on_focus_in)
+            entry_widget.bind('<FocusOut>', on_focus_out)
     
     def verify_password(self):
         """验证管理员密码"""
@@ -302,26 +324,35 @@ class FactorySettingsInterface:
         # 创建设置窗口
         self.settings_window = tk.Toplevel()
         self.settings_window.title("出厂设置")
-        self.settings_window.geometry("950x750")
+        self.settings_window.attributes('-fullscreen', True)
+        self.settings_window.state('zoomed')  # Windows系统的最大化
+        self.settings_window.geometry("1920x1080")
         self.settings_window.configure(bg='white')
         self.settings_window.resizable(True, True)
         self.settings_window.transient()
         self.settings_window.grab_set()
+    
+        # 添加触摸屏优化
+        if TOUCHSCREEN_UTILS_AVAILABLE:
+            TouchScreenUtils.optimize_window_for_touch(self.settings_window)
         
         # 绑定窗口关闭事件
         self.settings_window.protocol("WM_DELETE_WINDOW", self.on_settings_window_closing)
+        
+        # 添加强制退出机制
+        self.setup_force_exit_mechanism(self.settings_window)
         
         # 创建设置界面
         self.create_settings_widgets()
         
         # 居中显示窗口
-        self.center_window(self.settings_window)
+        # self.center_window(self.settings_window)
     
     def create_settings_widgets(self):
         """创建设置界面组件"""
         # 主容器
         main_frame = tk.Frame(self.settings_window, bg='white')
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=50, pady=30)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=120, pady=50)
         
         # 创建标题栏
         self.create_settings_title_bar(main_frame)
@@ -388,6 +419,42 @@ class FactorySettingsInterface:
         # 上限误差设置
         self.create_error_setting(settings_row, "上限误差", self.current_upper_error, 
                                  self.on_upper_error_change, side=tk.LEFT)
+        
+    def setup_force_exit_mechanism(self, window):
+        """设置强制退出机制"""
+        # 键盘快捷键强制退出
+        window.bind('<Control-Alt-q>', lambda e: self.force_exit())
+        window.bind('<Control-Alt-Q>', lambda e: self.force_exit())
+        window.bind('<Escape>', lambda e: self.show_exit_confirmation())
+        
+        # 添加隐藏的强制退出区域（右上角小区域）
+        exit_zone = tk.Frame(window, bg='white', width=100, height=50)
+        exit_zone.place(x=1450, y=0)  # 放在右上角
+        exit_zone.bind('<Double-Button-1>', lambda e: self.show_exit_confirmation())
+        
+        # 连续点击计数器用于紧急退出
+        self.click_count = 0
+        self.last_click_time = 0
+
+    def show_exit_confirmation(self):
+        """显示退出确认对话框"""
+        result = messagebox.askyesno(
+            "退出确认", 
+            "确定要退出出厂设置吗？\n\n"
+            "退出将返回主界面。"
+        )
+        if result:
+            self.force_exit()
+
+    def force_exit(self):
+        """强制退出程序"""
+        try:
+            print("执行强制退出...")
+            self.on_return_to_ai_mode()
+        except Exception as e:
+            print(f"强制退出时发生错误: {e}")
+            import os
+            os._exit(0)  # 强制终止进程
     
     def create_error_setting(self, parent, title, initial_value, change_callback, side=tk.LEFT, padx=0):
         """创建误差设置组件"""

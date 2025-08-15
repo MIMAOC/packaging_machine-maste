@@ -174,7 +174,7 @@ class ProductionRecordsInterface:
         right_frame.pack(side=tk.RIGHT)
         
         # 返回AI模式按钮
-        return_btn = tk.Button(right_frame, text="返回AI模式", 
+        return_btn = tk.Button(right_frame, text="返回系统设置", 
                               font=self.small_button_font,
                               bg='#e9ecef', fg='#333333',
                               relief='flat', bd=1,
@@ -210,7 +210,7 @@ class ProductionRecordsInterface:
             ("目标重量g", 0.13),
             ("生产包数", 0.13),
             ("完成率", 0.1),
-            ("查看", 0.18)
+            ("操作", 0.18)
         ]
         
         for i, (header_text, width_ratio) in enumerate(headers):
@@ -248,11 +248,11 @@ class ProductionRecordsInterface:
         # 设置占位符
         TouchScreenUtils.setup_touch_entry(search_entry, "请输入生产编号或物料名称")
 
-        # 日期选择输入框（修改这部分）
+        # 日期选择输入框
         self.date_entry = tk.Entry(search_frame, textvariable=self.search_date_var,
                                   font=self.content_font, width=25,
                                   relief='solid', bd=1, state='readonly')
-        self.date_entry.pack(side=tk.LEFT, padx=(0, 10))
+        self.date_entry.pack(side=tk.LEFT, padx=(0, 10), ipady=6)
 
         # 绑定日期输入框点击事件
         self.date_entry.bind("<Button-1>", self.on_date_entry_click)
@@ -705,14 +705,23 @@ class ProductionRecordsInterface:
                                  font=self.content_font, bg='white', fg='#333333')
             rate_label.place(relx=0.72, rely=0.5, relwidth=0.1, anchor='w')
             
-            # 查看按钮
+            # 详情按钮
             view_btn = tk.Button(content_frame, text="详情", 
                                 font=self.button_font,
                                 bg='#28a745', fg='white',
                                 relief='flat', bd=0,
-                                padx=15, pady=5,
+                                padx=12, pady=5,
                                 command=lambda r=record: self.view_record_detail(r))
             view_btn.place(relx=0.85, rely=0.5, anchor='center')
+        
+            # 再学习按钮
+            relearn_btn = tk.Button(content_frame, text="再学习", 
+                                font=self.button_font,
+                                bg='#007bff', fg='white',
+                                relief='flat', bd=0,
+                                padx=10, pady=5,
+                                command=lambda r=record: self.on_relearn_click(r))
+            relearn_btn.place(relx=0.92, rely=0.5, anchor='center')
             
         except Exception as e:
             print(f"[错误] 创建生产记录行异常: {e}")
@@ -849,14 +858,14 @@ class ProductionRecordsInterface:
             # 创建详情弹窗
             detail_window = tk.Toplevel(self.root)
             detail_window.title("生产记录详情")
-            detail_window.geometry("600x500")
+            detail_window.geometry("800x600")
             detail_window.configure(bg='white')
             detail_window.resizable(False, False)
             detail_window.transient(self.root)
             detail_window.grab_set()
 
             # 居中显示弹窗
-            self.center_dialog_relative_to_main(detail_window, 600, 500)
+            self.center_dialog_relative_to_main(detail_window, 800, 600)
 
             # 关闭按钮（右上角X）
             close_frame = tk.Frame(detail_window, bg='white')
@@ -887,15 +896,15 @@ class ProductionRecordsInterface:
 
             # 统计数据区域
             stats_frame = tk.Frame(detail_window, bg='white')
-            stats_frame.pack(pady=20, padx=40, fill=tk.BOTH, expand=True)
+            stats_frame.pack(pady=20, padx=50, fill=tk.BOTH, expand=True)
 
             # 不合格数据（第一行）
             unqualified_frame = tk.Frame(stats_frame, bg='white')
-            unqualified_frame.pack(pady=(0, 20), fill=tk.X)
+            unqualified_frame.pack(pady=(0, 20), padx=100, fill=tk.X)
 
             # 不合格包数
             unq_count_frame = tk.Frame(unqualified_frame, bg='white')
-            unq_count_frame.pack(side=tk.LEFT, padx=(0, 40))
+            unq_count_frame.pack(side=tk.LEFT, padx=(0, 50))
             tk.Label(unq_count_frame, text="不合格包数", 
                     font=tkFont.Font(family="微软雅黑", size=12),
                     bg='white', fg='#333333').pack()
@@ -906,7 +915,7 @@ class ProductionRecordsInterface:
 
             # 不合格最低值
             unq_min_frame = tk.Frame(unqualified_frame, bg='white')
-            unq_min_frame.pack(side=tk.LEFT, padx=(0, 40))
+            unq_min_frame.pack(side=tk.LEFT, padx=(0, 50))
             tk.Label(unq_min_frame, text="不合格最低值", 
                     font=tkFont.Font(family="微软雅黑", size=12),
                     bg='white', fg='#333333').pack()
@@ -930,11 +939,11 @@ class ProductionRecordsInterface:
 
             # 合格数据（第二行）
             qualified_frame = tk.Frame(stats_frame, bg='white')
-            qualified_frame.pack(fill=tk.X)
+            qualified_frame.pack(pady=(0, 20), padx=100, fill=tk.X)
 
             # 合格包数
             q_count_frame = tk.Frame(qualified_frame, bg='white')
-            q_count_frame.pack(side=tk.LEFT, padx=(0, 40))
+            q_count_frame.pack(side=tk.LEFT, padx=(0, 50))
             tk.Label(q_count_frame, text="合格包数", 
                     font=tkFont.Font(family="微软雅黑", size=12),
                     bg='white', fg='#333333').pack()
@@ -945,7 +954,7 @@ class ProductionRecordsInterface:
 
             # 合格最低值
             q_min_frame = tk.Frame(qualified_frame, bg='white')
-            q_min_frame.pack(side=tk.LEFT, padx=(0, 40))
+            q_min_frame.pack(side=tk.LEFT, padx=(0, 50))
             tk.Label(q_min_frame, text="合格最低值", 
                     font=tkFont.Font(family="微软雅黑", size=12),
                     bg='white', fg='#333333').pack()
@@ -972,7 +981,7 @@ class ProductionRecordsInterface:
                                   font=tkFont.Font(family="微软雅黑", size=12, weight="bold"),
                                   bg='#e9ecef', fg='#333333',
                                   relief='flat', bd=0,
-                                  padx=30, pady=10,
+                                  padx=30, pady=15,
                                   command=detail_window.destroy)
             return_btn.pack(pady=30)
 
@@ -983,47 +992,94 @@ class ProductionRecordsInterface:
             print(f"[错误] {error_msg}")
             messagebox.showerror("显示异常", error_msg)
             
-    def get_mock_detail_data(self, record: ProductionRecord) -> ProductionRecordDetail:
-        """获取模拟详情数据"""
-        from database.production_record_dao import ProductionRecordDetail
-
-        # 根据不同的生产记录返回不同的模拟数据
-        if record.production_id == "P20250712001":
-            return ProductionRecordDetail(
-                production_date=record.production_date,
-                production_id=record.production_id,
-                material_name=record.material_name,
-                target_weight=record.target_weight,
-                package_quantity=record.package_quantity,
-                completed_packages=record.completed_packages,
-                completion_rate=record.completion_rate,
-                qualified_count=99,
-                qualified_min_weight=385.9,
-                qualified_max_weight=386.5,
-                unqualified_count=1,
-                unqualified_min_weight=None,
-                unqualified_max_weight=386.9
-            )
-        else:
-            return ProductionRecordDetail(
-                production_date=record.production_date,
-                production_id=record.production_id,
-                material_name=record.material_name,
-                target_weight=record.target_weight,
-                package_quantity=record.package_quantity,
-                completed_packages=record.completed_packages,
-                completion_rate=record.completion_rate,
-                qualified_count=record.completed_packages,
-                qualified_min_weight=record.target_weight - 2.0,
-                qualified_max_weight=record.target_weight + 1.5,
-                unqualified_count=0,
-                unqualified_min_weight=None,
-                unqualified_max_weight=None
-            )
+    def on_relearn_click(self, record: ProductionRecord):
+        """
+        再学习按钮点击事件
+        
+        Args:
+            record: 生产记录对象
+        """
+        try:
+            print(f"[信息] 点击了再学习按钮，生产记录ID: {record.production_id}")
+            
+            # 显示确认对话框
+            confirm_msg = f"再学习确认\n\n" \
+                        f"生产编号：{record.production_id}\n" \
+                        f"物料名称：{record.material_name}\n" \
+                        f"目标重量：{record.target_weight}g\n" \
+                        f"包装数量：{record.package_quantity}包\n\n" \
+                        f"确认使用此配置重新进行AI学习吗？\n" \
+                        f"这将启动新的AI学习流程。"
+            
+            result = messagebox.askyesno("再学习确认", confirm_msg)
+            if not result:
+                return
+            
+            print(f"[信息] 用户确认再学习，准备启动AI模式")
+            
+            # 获取生产记录详情（用于验证数据完整性）
+            if DATABASE_AVAILABLE:
+                try:
+                    detail = ProductionRecordDAO.get_production_record_detail_by_id(record.production_id)
+                    if not detail:
+                        messagebox.showerror("数据错误", "无法获取生产记录详情，再学习失败")
+                        return
+                except Exception as e:
+                    print(f"[错误] 获取生产记录详情异常: {e}")
+                    messagebox.showerror("数据异常", f"获取生产记录详情时发生错误：\n{str(e)}")
+                    return
+            
+            # 隐藏当前生产记录界面
+            self.root.withdraw()
+            
+            # 导入并创建AI模式界面
+            try:
+                from ai_mode_interface import AIModeInterface
+                
+                # 创建AI模式界面实例
+                ai_interface = AIModeInterface(parent=self.root.master)
+                
+                # 设置参数到AI模式界面
+                ai_interface.weight_var.set(str(record.target_weight))
+                ai_interface.quantity_var.set(str(record.package_quantity))
+                ai_interface.material_var.set(record.material_name)
+                
+                print(f"[信息] AI模式界面参数已设置 - 重量:{record.target_weight}g, 数量:{record.package_quantity}包, 物料:{record.material_name}")
+                
+                # 显示成功消息（修正引号嵌套问题）
+                success_msg = f"AI模式已启动，参数已自动设置：\n\n" \
+                            f"目标重量：{record.target_weight}g\n" \
+                            f"包装数量：{record.package_quantity}包\n" \
+                            f"选择物料：{record.material_name}\n\n" \
+                            f"请在AI模式界面中点击『开始AI生产』按钮继续。"
+                
+                messagebox.showinfo("再学习启动", success_msg)
+                
+                # 关闭当前生产记录界面
+                self.root.destroy()
+                
+            except ImportError as e:
+                # AI模式界面导入失败，重新显示生产记录界面
+                self.root.deiconify()
+                error_msg = f"无法导入AI模式界面模块：{str(e)}"
+                print(f"[错误] {error_msg}")
+                messagebox.showerror("模块错误", f"启动AI模式失败：\n{error_msg}")
+                
+            except Exception as e:
+                # 其他异常，重新显示生产记录界面
+                self.root.deiconify()
+                error_msg = f"启动AI模式异常：{str(e)}"
+                print(f"[错误] {error_msg}")
+                messagebox.showerror("启动失败", error_msg)
+                
+        except Exception as e:
+            error_msg = f"再学习操作异常：{str(e)}"
+            print(f"[错误] {error_msg}")
+            messagebox.showerror("操作异常", error_msg)
     
     def on_return_click(self):
-        """返回AI模式按钮点击事件"""
-        print("点击了返回AI模式")
+        """返回系统设置界面按钮点击事件"""
+        print("点击了返回系统设置界面")
         
         # 如果有系统设置界面引用，重新显示系统设置界面
         if self.system_settings_window:
