@@ -69,20 +69,20 @@ class ManualModeInterface:
     
     def setup_fonts(self):
         """设置字体（按1024x600→1400x900比例换算）"""
-        # 标题字体：原图约34pt → 48pt（1.43倍）
-        self.title_font = font.Font(family="Microsoft YaHei", size=48, weight="bold")
+        # 标题字体：增大到适应全屏
+        self.title_font = font.Font(family="Microsoft YaHei", size=56, weight="bold")
         
-        # 行标签字体：原图约30pt → 42pt
-        self.row_label_font = font.Font(family="Microsoft YaHei", size=42, weight="bold")
+        # 行标签字体：增大
+        self.row_label_font = font.Font(family="Microsoft YaHei", size=48, weight="bold")
         
-        # 料斗按钮字体：原图约34pt → 48pt
-        self.bucket_button_font = font.Font(family="Arial", size=48, weight="bold")
+        # 料斗按钮字体：增大
+        self.bucket_button_font = font.Font(family="Arial", size=54, weight="bold")
         
-        # 全局按钮字体：原图约22pt → 32pt
-        self.global_button_font = font.Font(family="Microsoft YaHei", size=32, weight="bold")
+        # 全局按钮字体：增大
+        self.global_button_font = font.Font(family="Microsoft YaHei", size=36, weight="bold")
         
-        # 主页按钮字体：原图约17pt → 24pt
-        self.home_button_font = font.Font(family="Microsoft YaHei", size=24, weight="bold")
+        # 主页按钮字体：增大
+        self.home_button_font = font.Font(family="Microsoft YaHei", size=28, weight="bold")
     
     def show_interface(self):
         """显示手动界面"""

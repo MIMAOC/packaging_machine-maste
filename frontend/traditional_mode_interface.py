@@ -60,10 +60,7 @@ class SimpleTianTengInterface:
             self.root.state('zoomed')  # Windows系统的最大化
             self.root.geometry("1920x1080")
             self.root.configure(bg='#ffffff')
-            self.root.resizable(True, True)  # 允许调整窗口大小
-            
-            # 添加强制退出机制
-            self.setup_force_exit_mechanism()
+            self.root.minsize(1200, 800)  # 最小尺寸
         
         # 界面状态管理
         self.current_interface = "menu"  # menu/monitoring/bucket_detail/manual
@@ -103,16 +100,9 @@ class SimpleTianTengInterface:
         # LOGO图片引用
         self.logo_image = None
         
-        # 强制退出相关变量
-        self.click_count = 0
-        self.last_click_time = 0
-        
         self.setup_fonts()
         self.create_base_layout()
         self.show_menu_interface()
-        
-        # 在嵌入模式下也设置强制退出机制
-        self.setup_force_exit_mechanism()
         
     def setup_fonts(self):
         """设置字体"""
@@ -134,51 +124,6 @@ class SimpleTianTengInterface:
         self.param_label_font = font.Font(family="Microsoft YaHei", size=24, weight="normal")
         self.param_value_font = font.Font(family="Arial", size=20, weight="bold")
         self.bucket_select_font = font.Font(family="Arial", size=18, weight="bold")
-        
-    def setup_force_exit_mechanism(self):
-        """设置强制退出机制"""
-        # 键盘快捷键强制退出
-        self.root.bind('<Control-Alt-q>', lambda e: self.force_exit())
-        self.root.bind('<Control-Alt-Q>', lambda e: self.force_exit())
-        self.root.bind('<Escape>', lambda e: self.show_exit_confirmation())
-        
-        # 添加隐藏的强制退出区域（右上角小区域）
-        # 直接在传统模式窗口上创建
-        exit_zone = tk.Frame(self.root, bg='white', width=100, height=50)
-        exit_zone.place(x=1450, y=0)  # 放在右上角
-        exit_zone.bind('<Double-Button-1>', lambda e: self.show_exit_confirmation())
-        
-        # 确保退出区域在最顶层，不被其他组件覆盖
-        exit_zone.tkraise()
-        
-        # 保存引用防止被垃圾回收
-        self.exit_zone = exit_zone
-
-    def show_exit_confirmation(self):
-        """显示退出确认对话框"""
-        result = messagebox.askyesno(
-            "退出确认", 
-            "确定要退出传统模式程序吗？\n\n"
-            "退出将返回主菜单或关闭程序。"
-        )
-        if result:
-            self.force_exit()
-
-    def force_exit(self):
-        """强制退出程序"""
-        try:
-            print("执行强制退出...")
-            if self.is_embedded and self.main_window:
-                # 嵌入模式：返回主窗口
-                self.return_to_main_menu()
-            else:
-                # 独立模式：直接退出
-                self.cleanup()
-                self.root.destroy()
-        except Exception as e:
-            print(f"强制退出时发生错误: {e}")
-            import os
-            os._exit(0)  # 强制终止进程
         
     def create_base_layout(self):
         """创建基础布局框架（Pack版本）"""
@@ -1544,12 +1489,10 @@ class SimpleTianTengInterface:
                 
         except Exception as e:
             print(f"清理传统模式界面资源时发生错误: {e}")
-
+    
     def run(self):
         """运行程序"""
         if not self.is_embedded:
-            # 设置窗口关闭事件
-            self.root.protocol("WM_DELETE_WINDOW", self.force_exit)
             self.root.mainloop()
         else:
             # 嵌入模式下直接显示菜单界面
