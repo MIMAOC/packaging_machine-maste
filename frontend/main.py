@@ -57,6 +57,15 @@ except ImportError as e:
     print("请确保ai_mode_interface.py文件在同一目录下")
     AI_MODE_AVAILABLE = False
 
+# 导入传统模式界面模块
+try:
+    from traditional_mode_interface import SimpleTianTengInterface
+    TRADITIONAL_MODE_AVAILABLE = True
+except ImportError as e:
+    print(f"警告：无法导入传统模式界面模块: {e}")
+    print("请确保traditional_mode_interface.py文件在同一目录下")
+    TRADITIONAL_MODE_AVAILABLE = False
+
 # 导入API配置模块
 try:
     from config.api_config import get_api_config, set_api_config
@@ -189,6 +198,7 @@ class PackagingMachineGUI:
         self.status_label = None  # PLC连接状态标签
         self.api_status_label = None  # API连接状态标签
         self.api_retry_count = 0  # API重试计数器
+        self.traditional_interface = None   # 传统模式界面实例
         
         # 窗口基本设置
         self.setup_window()
@@ -199,7 +209,7 @@ class PackagingMachineGUI:
         # 创建界面元素
         self.create_widgets()
         
-        # 启动Modbus连接（在单独线程中进行，避免阻塞界面）
+        # 启动Modbus连接
         if MODBUS_AVAILABLE:
             self.start_modbus_connection()
         else:
@@ -838,7 +848,45 @@ class PackagingMachineGUI:
         else:
             messagebox.showwarning("PLC未连接", "PLC未连接，无法发送模式切换命令")
         
-        messagebox.showinfo("开发中", "传统模式界面正在开发中...")
+        # 打开传统模式界面
+        if TRADITIONAL_MODE_AVAILABLE:
+            try:
+                # 隐藏主界面
+                self.hide_main_window()
+                
+                # 创建新的顶层窗口专门给传统模式使用
+                traditional_window = tk.Toplevel()
+                traditional_window.title("六头线性调节秤 V1.8 - 传统模式")
+                traditional_window.geometry("1400x900")
+                traditional_window.configure(bg='#ffffff')
+                traditional_window.minsize(1200, 800)
+                
+                # 让新窗口显示在前面并获得焦点
+                traditional_window.lift()
+                traditional_window.focus_force()
+                
+                # 设置窗口关闭事件
+                def on_traditional_close():
+                    traditional_window.destroy()
+                    self.show_main_window()
+                    self.cleanup_traditional_interface()
+                
+                traditional_window.protocol("WM_DELETE_WINDOW", on_traditional_close)
+                
+                # 创建传统模式界面实例，使用新窗口作为父窗口
+                self.traditional_interface = SimpleTianTengInterface(
+                    parent=traditional_window, 
+                    main_window=self,
+                    modbus_client=self.modbus_client
+                )
+                print("传统模式界面已打开在新窗口中")
+                
+            except Exception as e:
+                # 如果出错，重新显示主界面
+                self.show_main_window()
+                messagebox.showerror("界面错误", f"打开传统模式界面失败：{str(e)}")
+        else:
+            messagebox.showerror("模块错误", "传统模式界面模块未加载，无法打开传统模式")
     
     def on_ai_click(self):
         """AI模式按钮点击事件"""
@@ -936,10 +984,23 @@ class PackagingMachineGUI:
             print("主窗口已隐藏")
         except Exception as e:
             print(f"隐藏主窗口时发生错误: {e}")
+
+    def cleanup_traditional_interface(self):
+        """清理传统模式界面资源"""
+        if self.traditional_interface:
+            try:
+                if hasattr(self.traditional_interface, 'cleanup'):
+                    self.traditional_interface.cleanup()
+            except Exception as e:
+                print(f"清理传统模式界面时出错: {e}")
+            self.traditional_interface = None
     
     def on_closing(self):
         """程序关闭时的清理工作"""
         try:
+            # 清理传统模式界面
+            self.cleanup_traditional_interface()   
+            
             # 断开Modbus连接
             if self.modbus_client and self.connection_status:
                 self.modbus_client.disconnect()
