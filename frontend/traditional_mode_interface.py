@@ -73,6 +73,7 @@ class SimpleTianTengInterface:
         self.manual_interface = None     # 手动界面实例
         self.calibration_interface = None  # 重量校准界面实例
         self.parameter_interface = None  # 参数设置界面实例
+        self.system_interface = None     # 系统设置界面实例
         
         # 数据刷新定时器
         self.refresh_timer = None
@@ -215,6 +216,38 @@ class SimpleTianTengInterface:
         self.clear_main_content()
         self.current_interface = "calibration"
         self.parameter_interface.show_interface()
+
+    def show_parameter_interface(self):
+        """显示参数设置界面"""
+        # 延迟导入，避免循环导入
+        if self.parameter_interface is None:
+            try:
+                from parameter_setting_interface import ParameterSettingInterface
+                self.parameter_interface = ParameterSettingInterface(self.modbus_client, self)
+            except ImportError as e:
+                messagebox.showerror("错误", f"参数设置界面模块加载失败: {e}\n请确保parameter_setting_interface.py文件存在")
+                return
+        
+        # 清空当前界面并切换到参数设置界面
+        self.clear_main_content()
+        self.current_interface = "parameter"
+        self.parameter_interface.show_interface()
+
+    def show_system_interface(self):  # ←← 添加这整个方法
+        """显示系统设置界面"""
+        # 延迟导入，避免循环导入
+        if self.system_interface is None:
+            try:
+                from system_setting_interface import SystemSettingInterface
+                self.system_interface = SystemSettingInterface(self.modbus_client, self)
+            except ImportError as e:
+                messagebox.showerror("错误", f"系统设置界面模块加载失败: {e}\n请确保system_setting_interface.py文件存在")
+                return
+        
+        # 清空当前界面并切换到系统设置界面
+        self.clear_main_content()
+        self.current_interface = "system"
+        self.system_interface.show_interface()
     
     def show_bucket_detail_interface(self, bucket_id: int):
         """显示料斗详细界面"""
@@ -824,7 +857,7 @@ class SimpleTianTengInterface:
         elif text == "重量校准":
             self.show_calibration_interface()
         elif text == "系统设置":
-            messagebox.showinfo("提示", "系统设置功能开发中...")
+            self.show_system_interface()
         elif text == "返回主菜单" and self.is_embedded:
             # 返回主程序菜单
             self.return_to_main_menu()
@@ -1430,7 +1463,27 @@ class SimpleTianTengInterface:
                     self.parameter_interface.cleanup()
             except Exception as e:
                 print(f"清理参数设置界面时出错: {e}")
-            self.parameter_interface = None        
+            self.parameter_interface = None
+            
+    def cleanup_parameter_interface(self):
+        """清理参数设置界面资源"""
+        if self.parameter_interface:
+            try:
+                if hasattr(self.parameter_interface, 'cleanup'):
+                    self.parameter_interface.cleanup()
+            except Exception as e:
+                print(f"清理参数设置界面时出错: {e}")
+            self.parameter_interface = None
+
+    def cleanup_system_interface(self):  # ←← 添加这整个方法
+        """清理系统设置界面资源"""
+        if self.system_interface:
+            try:
+                if hasattr(self.system_interface, 'cleanup'):
+                    self.system_interface.cleanup()
+            except Exception as e:
+                print(f"清理系统设置界面时出错: {e}")
+            self.system_interface = None     
 
     # ==================== 工具方法 ====================
     
@@ -1482,6 +1535,7 @@ class SimpleTianTengInterface:
             self.cleanup_manual_interface()
             self.cleanup_calibration_interface()
             self.cleanup_parameter_interface()
+            self.cleanup_system_interface()
             
             # 清空主内容
             if self.is_embedded:
