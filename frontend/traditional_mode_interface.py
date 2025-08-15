@@ -193,29 +193,12 @@ class SimpleTianTengInterface:
                 self.calibration_interface = WeightCalibrationInterface(self.modbus_client, self)
             except ImportError as e:
                 messagebox.showerror("错误", f"重量校准界面模块加载失败: {e}\n请确保weight_calibration_interface.py文件存在")
-                return
-            
-    def show_parameter_interface(self):
-        """显示参数设置界面"""
-        # 延迟导入，避免循环导入
-        if self.parameter_interface is None:
-            try:
-                from parameter_setting_interface import ParameterSettingInterface
-                self.parameter_interface = ParameterSettingInterface(self.modbus_client, self)
-            except ImportError as e:
-                messagebox.showerror("错误", f"参数设置界面模块加载失败: {e}\n请确保parameter_setting_interface.py文件存在")
-                return
-        
-        # 清空当前界面并切换到参数设置界面
-        self.clear_main_content()
-        self.current_interface = "parameter"
-        self.parameter_interface.show_interface()
-        
+                return        
     
         # 清空当前界面并切换到重量校准界面
         self.clear_main_content()
         self.current_interface = "calibration"
-        self.parameter_interface.show_interface()
+        self.calibration_interface.show_interface()
 
     def show_parameter_interface(self):
         """显示参数设置界面"""
@@ -1464,18 +1447,8 @@ class SimpleTianTengInterface:
             except Exception as e:
                 print(f"清理参数设置界面时出错: {e}")
             self.parameter_interface = None
-            
-    def cleanup_parameter_interface(self):
-        """清理参数设置界面资源"""
-        if self.parameter_interface:
-            try:
-                if hasattr(self.parameter_interface, 'cleanup'):
-                    self.parameter_interface.cleanup()
-            except Exception as e:
-                print(f"清理参数设置界面时出错: {e}")
-            self.parameter_interface = None
 
-    def cleanup_system_interface(self):  # ←← 添加这整个方法
+    def cleanup_system_interface(self):  
         """清理系统设置界面资源"""
         if self.system_interface:
             try:
