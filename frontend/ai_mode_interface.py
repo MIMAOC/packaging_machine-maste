@@ -2519,6 +2519,59 @@ class AIModeInterface:
         }
         return stage_mapping.get(failed_stage)
     
+    def _format_error_message(self, original_message: str) -> str:
+        """
+        格式化错误消息，使其更用户友好
+        
+        Args:
+            original_message (str): 原始错误消息
+            
+        Returns:
+            str: 格式化后的用户友好消息
+        """
+        formatted_msg = original_message
+        
+        # 移除各种技术性前缀
+        prefixes_to_remove = [
+            "快加时间分析失败: ",
+            "飞料值分析失败: ",
+            "飞料值测定失败: ",
+            "慢加时间测定失败: ", 
+            "自适应学习失败: ",
+            "后端API分析失败: ",
+            "参数验证失败: ",
+            "网络请求失败: ",
+            "分析过程异常: ",
+            "停止和放料失败: ",
+            "重新启动失败: ",
+            "更新快加速度失败: "
+        ]
+        
+        for prefix in prefixes_to_remove:
+            if formatted_msg.startswith(prefix):
+                formatted_msg = formatted_msg.replace(prefix, "")
+                break
+        
+        # 处理技术术语替换
+        replacements = {
+            "coarse_time_ms": "快加时间",
+            "target_weight": "目标重量",
+            "current_coarse_speed": "快加速度",
+            "fine_time_ms": "慢加时间",
+            "flight_material_value": "飞料值",
+            "recorded_weights": "实时重量数据",
+            "flight_material": "飞料值",
+            "HTTP错误": "网络连接错误",
+            "JSON解析失败": "数据格式错误",
+            "连接超时": "网络超时",
+            "连接拒绝": "服务器无响应"
+        }
+        
+        for tech_term, user_friendly in replacements.items():
+            formatted_msg = formatted_msg.replace(tech_term, user_friendly)
+        
+        return formatted_msg.strip()
+    
     def show_relearning_choice_dialog(self, bucket_id: int, error_message: str, failed_stage: str):
         """
         显示重新学习选择弹窗
@@ -2537,7 +2590,7 @@ class AIModeInterface:
             relearning_window.resizable(False, False)
             relearning_window.transient(self.root)
         
-            # 修复：检查多斗学习状态弹窗是否存在且已grab_set
+            # 检查多斗学习状态弹窗是否存在且已grab_set
             if (self.learning_status_window and 
                 self.learning_status_window.winfo_exists()):
                 # 不要grab_set，避免与多斗学习状态弹窗冲突
@@ -2578,11 +2631,16 @@ class AIModeInterface:
                     font=tkFont.Font(family="微软雅黑", size=12),
                     bg='white', fg='#333333').pack(anchor='w', pady=2)
             
+            # 格式化错误消息
+            formatted_error = self._format_error_message(error_message)
+
             # 错误信息（限制长度）
-            error_text = error_message[:80] + "..." if len(error_message) > 80 else error_message
+            error_text = formatted_error[:120] + "..." if len(formatted_error) > 120 else formatted_error
             tk.Label(info_frame, text=f"错误信息：{error_text}", 
                     font=tkFont.Font(family="微软雅黑", size=10),
-                    bg='white', fg='#666666', wraplength=450).pack(anchor='w', pady=2)
+                    bg='white', fg='#666666', 
+                    wraplength=450,
+                    justify='left').pack(anchor='w', pady=2)
             
             # 提示信息
             tip_frame = tk.LabelFrame(relearning_window, text="重要提示", bg='white', fg='#333333')

@@ -135,9 +135,63 @@ class CoarseTimeAnalysisAPI:
             except json.JSONDecodeError as e:
                 error_msg = f"后端API响应JSON解析失败: {str(e)}"
                 return False, False, None, error_msg
+    
+        # 处理 422 验证错误
+        elif response.status_code == 422:
+            try:
+                error_data = response.json()
+                self.logger.debug(f"422错误响应: {error_data}")
+                
+                # 提取具体的错误信息
+                if 'error' in error_data:
+                    error_message = self._format_error_message(error_data['error'])
+                    return False, False, None, error_message
+                else:
+                    return False, False, None, "请求参数验证失败"
+                    
+            except json.JSONDecodeError:
+                error_msg = "服务器返回422错误，但响应格式无法解析"
+                self.logger.error(error_msg)
+                return False, False, None, error_msg
+    
+        # 处理其他HTTP错误状态码
         else:
-            error_msg = f"后端API HTTP错误: {response.status_code}"
-            return False, False, None, error_msg
+            try:
+                # 尝试解析错误响应
+                error_data = response.json()
+                error_message = error_data.get('error', f"HTTP错误: {response.status_code}")
+            except:
+                error_message = f"后端API HTTP错误: {response.status_code}"
+            
+            self.logger.error(f"HTTP错误: {response.status_code}, 响应: {error_message}")
+            return False, False, None, error_message
+        
+    def _format_error_message(self, error_message: str) -> str:
+        """
+        格式化API错误消息，使其更用户友好
+        
+        Args:
+            error_message (str): 原始错误消息
+            
+        Returns:
+            str: 格式化后的错误消息
+        """
+        # 移除技术性前缀
+        formatted_msg = error_message
+        
+        # 处理常见的验证错误前缀
+        prefixes_to_remove = [
+            "Value error, ",
+            "Validation error, ",
+            "Request validation failed: "
+        ]
+        
+        for prefix in prefixes_to_remove:
+            if formatted_msg.startswith(prefix):
+                formatted_msg = formatted_msg.replace(prefix, "")
+                break
+        
+        return formatted_msg
     
     def test_api_connection(self) -> Tuple[bool, str]:
         """测试API连接状态"""
