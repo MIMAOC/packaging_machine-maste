@@ -13,6 +13,8 @@ pip install fastapi uvicorn python-multipart
 """
 
 from fastapi import FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
+from exception_handlers import validation_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import logging
@@ -38,6 +40,9 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc"
 )
+
+# 注册全局异常处理器
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
 
 # 配置CORS中间件
 app.add_middleware(
