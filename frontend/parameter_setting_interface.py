@@ -24,6 +24,7 @@ import tkinter.font as font
 import time
 import threading
 from typing import Optional, Dict, Any
+from touchscreen_utils import TouchScreenUtils
 
 # 导入PLC相关模块
 try:
@@ -60,6 +61,10 @@ class ParameterSettingInterface:
         
         # 数据刷新定时器
         self.refresh_timer = None
+
+        # 添加触摸屏优化
+        TouchScreenUtils.optimize_window_for_touch(self.root)
+
         
         # 参数数据存储
         self.parameter_data = {
@@ -181,6 +186,22 @@ class ParameterSettingInterface:
         """创建参数设置界面"""
         # 获取主内容框架
         self.main_content_frame = self.parent.get_main_content_frame()
+        
+        # 强制重置父容器的grid配置（修复布局问题）
+        try:
+            # 清理可能的残留grid配置
+            for i in range(10):
+                self.main_content_frame.grid_rowconfigure(i, weight=0, minsize=0)
+                self.main_content_frame.grid_columnconfigure(i, weight=0, minsize=0)
+            
+            # 清理几何管理器状态
+            for child in self.main_content_frame.winfo_children():
+                child.grid_forget()
+                child.pack_forget()
+                
+            print("参数界面：主内容框架配置已重置")
+        except Exception as e:
+            print(f"重置主内容框架配置时出错: {e}")
         
         # 主容器 - 垂直居中布局
         main_frame = tk.Frame(self.main_content_frame, bg='#ffffff')
@@ -357,7 +378,7 @@ class ParameterSettingInterface:
                 # 根据参数类型处理数据
                 if config['type'] == 'decimal' and param_key in ['JogTime', 'DebounceTime', 'JogInterval', 'DischargeTime', 'DoorDelay', 'AllowableError']:
                     # 时间类参数可能需要除以特定值
-                    value = data[0] / 10.0 if data[0] > 100 else data[0]
+                    value = data[0] / 10.0
                 else:
                     value = data[0]
                 

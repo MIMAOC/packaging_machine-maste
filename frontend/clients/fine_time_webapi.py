@@ -109,6 +109,19 @@ class FineTimeAnalysisAPI:
             self.logger.info(f"分析慢加时间: 重量={target_weight}g, 时间={fine_time_ms}ms, 速度={current_fine_speed}")
             self.logger.info(f"原始目标重量={original_target_weight}g, 快加飞料值={flight_material_value}g")
             
+            # 输入验证
+            if fine_time_ms <= 0:
+                error_msg = self._format_error_message("慢加时间必须大于0毫秒")
+                return False, False, None, None, None, error_msg
+            
+            if current_fine_speed <= 0:
+                error_msg = self._format_error_message("当前慢加速度必须大于0")
+                return False, False, None, None, None, error_msg
+            
+            if target_weight <= 0:
+                error_msg = self._format_error_message("目标重量必须大于0")
+                return False, False, None, None, None, error_msg
+            
             # 调用后端API
             success, is_compliant, new_speed, coarse_advance, fine_flow_rate, message = self._call_backend_fine_time_api(
                 target_weight, fine_time_ms, current_fine_speed, original_target_weight, flight_material_value)
@@ -117,22 +130,22 @@ class FineTimeAnalysisAPI:
                 self.logger.info(f"后端API分析成功: 符合条件={is_compliant}, 新速度={new_speed}, 快加提前量={coarse_advance}, 慢加流速={fine_flow_rate}")
                 return True, is_compliant, new_speed, coarse_advance, fine_flow_rate, message
             else:
-                error_msg = f"后端API分析失败: {message}"
-                self.logger.error(error_msg)
-                return False, False, None, None, None, error_msg
+                # message 已经在 _call_backend_fine_time_api 中格式化过了
+                self.logger.error(f"后端API分析失败: {message}")
+                return False, False, None, None, None, message
                 
         except requests.exceptions.ConnectionError:
-            error_msg = f"无法连接到后端API服务器 ({self.config.base_url})"
+            error_msg = self._format_error_message(f"无法连接到后端API服务器 ({self.config.base_url})")
             self.logger.error(error_msg)
             return False, False, None, None, None, error_msg
             
         except requests.exceptions.Timeout:
-            error_msg = f"后端API请求超时（超过{self.config.timeout}秒）"
+            error_msg = self._format_error_message(f"后端API请求超时（超过{self.config.timeout}秒）")
             self.logger.error(error_msg)
             return False, False, None, None, None, error_msg
             
         except Exception as e:
-            error_msg = f"慢加时间分析异常: {str(e)}"
+            error_msg = self._format_error_message(f"慢加时间分析异常: {str(e)}")
             self.logger.error(error_msg)
             return False, False, None, None, None, error_msg
     
@@ -263,11 +276,11 @@ class FineTimeAnalysisAPI:
 # 创建全局API客户端实例
 fine_time_analysis_api = FineTimeAnalysisAPI()
 
-def analyze_fine_time(self, target_weight: float, fine_time_ms: int, 
+def analyze_fine_time(target_weight: float, fine_time_ms: int, 
                      current_fine_speed: int, original_target_weight: float = 0.0,
                      flight_material_value: float = 0.0) -> Tuple[bool, bool, Optional[int], Optional[float], Optional[float], str]:
     """
-    分析慢加时间是否符合条件
+    分析慢加时间是否符合条件（全局便利函数）
     
     Args:
         target_weight (float): 目标重量（克）固定为6g
@@ -280,49 +293,10 @@ def analyze_fine_time(self, target_weight: float, fine_time_ms: int,
         Tuple[bool, bool, Optional[int], Optional[float], Optional[float], str]: 
             (是否成功, 是否符合条件, 新的慢加速度, 快加提前量, 慢加流速, 消息)
     """
-    try:
-        self.logger.info(f"分析慢加时间: 重量={target_weight}g, 时间={fine_time_ms}ms, 速度={current_fine_speed}")
-        self.logger.info(f"原始目标重量={original_target_weight}g, 快加飞料值={flight_material_value}g")
-        
-        # 输入验证
-        if fine_time_ms <= 0:
-            error_msg = self._format_error_message("慢加时间必须大于0毫秒")
-            return False, False, None, None, None, error_msg
-        
-        if current_fine_speed <= 0:
-            error_msg = self._format_error_message("当前慢加速度必须大于0")
-            return False, False, None, None, None, error_msg
-        
-        if target_weight <= 0:
-            error_msg = self._format_error_message("目标重量必须大于0")
-            return False, False, None, None, None, error_msg
-        
-        # 调用后端API
-        success, is_compliant, new_speed, coarse_advance, fine_flow_rate, message = self._call_backend_fine_time_api(
-            target_weight, fine_time_ms, current_fine_speed, original_target_weight, flight_material_value)
-        
-        if success:
-            self.logger.info(f"后端API分析成功: 符合条件={is_compliant}, 新速度={new_speed}, 快加提前量={coarse_advance}, 慢加流速={fine_flow_rate}")
-            return True, is_compliant, new_speed, coarse_advance, fine_flow_rate, message
-        else:
-            # message 已经在 _call_backend_fine_time_api 中格式化过了
-            self.logger.error(f"后端API分析失败: {message}")
-            return False, False, None, None, None, message
-            
-    except requests.exceptions.ConnectionError:
-        error_msg = self._format_error_message(f"无法连接到后端API服务器 ({self.config.base_url})")
-        self.logger.error(error_msg)
-        return False, False, None, None, None, error_msg
-        
-    except requests.exceptions.Timeout:
-        error_msg = self._format_error_message(f"后端API请求超时（超过{self.config.timeout}秒）")
-        self.logger.error(error_msg)
-        return False, False, None, None, None, error_msg
-        
-    except Exception as e:
-        error_msg = self._format_error_message(f"慢加时间分析异常: {str(e)}")
-        self.logger.error(error_msg)
-        return False, False, None, None, None, error_msg
+    return fine_time_analysis_api.analyze_fine_time(
+        target_weight, fine_time_ms, current_fine_speed, 
+        original_target_weight, flight_material_value
+    )
 
 def test_fine_time_api_connection() -> Tuple[bool, str]:
     """

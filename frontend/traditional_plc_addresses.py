@@ -174,7 +174,7 @@ TRADITIONAL_GLOBAL_ADDRESSES = {
 # 校准相关地址映射（脉冲写入）
 TRADITIONAL_CALIBRATION_ADDRESSES = {
     1: {
-        'ZeroCalibration': 12,      # 零点标定 (M12)
+        'ZeroCalibration': 11,      # 零点标定 (M11)
         'WeightCalibration': 3,     # 重量校准 (M3)
     },
     2: {
@@ -207,26 +207,27 @@ TRADITIONAL_SYSTEM_ADDRESSES = {
     'CleanSpeed': 41378,            # 清料速度 (HD290 → 41088+290)
     
     # 时间参数
-    'JogTime': 49350,               # 点动时间 (HD70 → 49280+70)
-    'JogInterval': 49352,           # 点动间隔 (HD72 → 49280+72)
-    'DebounceTime': 49340,          # 消抖时间 (HD60 → 49280+60)
-    'DischargeTime': 49370,         # 放料时间 (HD90 → 49280+90)
-    'DoorDelay': 49371,             # 关门延时 (HD91 → 49280+91)
+    'JogTime': 41158,               # 点动时间 (HD70 → 41088+70)
+    'JogInterval': 41160,           # 点动间隔 (HD72 → 41088+72)
+    'DebounceTime': 41168,          # 消抖时间 (HD80 → 41088+80)
+    'DischargeTime': 41178,         # 放料时间 (HD90 → 41088+90)
+    'DoorDelay': 41179,             # 关门延时 (HD91 → 41088+91)
     
     # 零点追踪参数
-    'ZeroTrackRange': 49480,        # 零点追踪范围 (HD200 → 49280+200)
-    'ZeroTrackTime': 49481,         # 零点追踪时间 (HD201 → 49280+201)
-    'ZeroClearRange': 49482,        # 清零范围% (HD202 → 49280+202)
+    'ZeroTrackRange': 41288,        # 零点追踪范围 (HD200 → 41088+200)
+    'ZeroTrackTime': 41289,         # 零点追踪时间 (HD201 → 41088+201)
+    'ZeroClearRange': 41290,        # 清零范围% (HD202 → 41088+202)
     
     # 稳定性参数
-    'StabilityRange': 49483,        # 判稳范围 (HD203 → 49280+203)
-    'StabilityTime': 49484,         # 判稳时间 (HD204 → 49280+204)
-    'FilterLevelA': 49485,          # 滤波等级A (HD205 → 49280+205)
-    'FilterLevelB': 49486,          # 滤波等级B (HD206 → 49280+206)
+    'StabilityRange': 41291,        # 判稳范围 (HD203 → 41088+203)
+    'StabilityTime': 41292,         # 判稳时间 (HD204 → 41088+204)
+    'FilterLevelA': 41293,          # 滤波等级A (HD205 → 41088+205)
+    'FilterLevelB': 41294,          # 滤波等级B (HD206 → 41088+206)
     
     # 量程参数
-    'MinDivision': 49380,           # 最小分度 (HD100 → 49280+100)
-    'MaxCapacity': 49384,           # 最大量程 (HD104 → 49280+104)
+    'MinDivision': 41188,           # 最小分度 (HD100 → 41088+100)
+    'MaxCapacity': 41192,           # 最大量程 (HD104 → 41088+104)
+    'StandardWeight': 41098,        # 砝码重量 (HD10 → 41088+10)
 }
 
 # 系统初始化地址映射（脉冲写入）

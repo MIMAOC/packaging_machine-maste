@@ -56,6 +56,7 @@ class ManualModeInterface:
         # 料斗状态
         self.bucket_disabled = {}       # 禁用状态 {bucket_id: True/False}
         self.bucket_cleaning = {}       # 清料状态 {bucket_id: True/False}
+        self.global_cleaning = False    # 全局清料状态
         
         # 初始化状态
         for i in range(1, 7):
@@ -357,21 +358,28 @@ class ManualModeInterface:
             messagebox.showerror("错误", f"总放料操作异常: {e}")
     
     def global_clean(self):
-        """总清料操作（脉冲控制）"""
+        """总清料操作（状态保持控制）"""
         if not self.modbus_client or not self.modbus_client.is_connected:
             messagebox.showerror("错误", "PLC未连接")
             return
         
         try:
-            # 调用父界面的共享全局脉冲控制方法
-            success = self.parent.shared_send_global_pulse_command("GlobalClean")
+            # 获取总清料地址
+            global_clean_addr = get_traditional_global_address('GlobalClean')
+            
+            # 切换全局清料状态
+            new_state = not self.global_cleaning
+            success = self.modbus_client.write_coil(global_clean_addr, new_state)
             
             if success:
-                # 提供视觉反馈
-                self.provide_global_feedback('clean')
-                print("总清料操作完成")
+                # 更新本地状态
+                self.global_cleaning = new_state
+                self.update_global_clean_button_display()
+                
+                state_text = "开始总清料" if new_state else "停止总清料"
+                print(f"{state_text}")
             else:
-                messagebox.showerror("错误", "总清料操作失败")
+                messagebox.showerror("错误", "总清料状态切换失败")
                 
         except Exception as e:
             messagebox.showerror("错误", f"总清料操作异常: {e}")
@@ -442,6 +450,8 @@ class ManualModeInterface:
             self.update_disable_states()
             # 读取清料状态
             self.update_clean_states()
+            # 读取全局清料状态
+            self.update_global_clean_state()
             
         except Exception as e:
             print(f"手动界面数据更新错误: {e}")
@@ -492,11 +502,14 @@ class ManualModeInterface:
             # 立即更新一次状态显示
             self.update_disable_states()
             self.update_clean_states()
-            
+            self.update_global_clean_state()
+
             # 更新所有按钮显示
             for bucket_id in range(1, 7):
                 self.update_disable_button_display(bucket_id)
                 self.update_clean_button_display(bucket_id)
+            # 更新全局清料按钮显示
+                self.update_global_clean_button_display()
             
             print("初始状态加载完成")
             
@@ -514,6 +527,35 @@ class ManualModeInterface:
         except Exception as e:
             print(f"返回主菜单失败: {e}")
             messagebox.showerror("错误", f"返回主菜单失败: {e}")
+
+    def update_global_clean_button_display(self):
+        """更新总清料按钮显示"""
+        if 'clean' in self.global_buttons:
+            btn = self.global_buttons['clean']
+            if self.global_cleaning:
+                # 清料中状态：红色背景
+                btn.configure(bg='#ff4444', fg='white')
+            else:
+                # 正常状态：蓝色背景
+                btn.configure(bg='#1e90ff', fg='white')
+
+    def update_global_clean_state(self):
+        """更新全局清料状态"""
+        try:
+            # 读取PLC中的全局清料状态
+            global_clean_addr = get_traditional_global_address('GlobalClean')
+            state_data = self.modbus_client.read_coils(global_clean_addr, 1)
+            
+            if state_data and len(state_data) > 0:
+                plc_global_cleaning = state_data[0]
+                
+                # 如果状态有变化，更新本地状态和显示
+                if self.global_cleaning != plc_global_cleaning:
+                    self.global_cleaning = plc_global_cleaning
+                    self.update_global_clean_button_display()
+                    
+        except Exception as e:
+            print(f"更新全局清料状态失败: {e}")
     
     def cleanup(self):
         """清理资源"""

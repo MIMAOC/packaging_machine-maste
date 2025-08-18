@@ -24,6 +24,7 @@ import tkinter.font as font
 import time
 import threading
 from typing import Optional, Dict, Any
+from touchscreen_utils import TouchScreenUtils
 
 # 导入PLC相关模块
 try:
@@ -61,6 +62,9 @@ class WeightCalibrationInterface:
         self.standard_weight_entry = None # 标准重量输入框
         self.calibration_buttons = {}    # 校准按钮
         
+        # 添加触摸屏优化
+        TouchScreenUtils.optimize_window_for_touch(self.root)
+
         # 设置字体
         self.setup_fonts()
         
@@ -122,9 +126,12 @@ class WeightCalibrationInterface:
         # 创建校准界面
         self.create_calibration_interface()
         
+        # 加载标准重量
+        self.load_standard_weight()
+
         # 启动数据刷新
         self.start_data_refresh()
-        
+
         print("重量校准界面已显示")
     
     def create_calibration_interface(self):
@@ -175,8 +182,10 @@ class WeightCalibrationInterface:
         self.standard_weight_entry.pack(side='left', padx=(0, content_padding))
         self.standard_weight_entry.insert(0, "000.0")
         
-        # 绑定输入验证
+        # 绑定输入验证和保存事件
         self.standard_weight_entry.bind('<KeyRelease>', self.validate_standard_weight)
+        self.standard_weight_entry.bind('<FocusOut>', self.save_standard_weight)
+        self.standard_weight_entry.bind('<Return>', self.save_standard_weight)
         
         # 提示文字（g标准砝码...）
         tk.Label(line2_frame, text="g标准砝码按校准键确认。",
@@ -415,7 +424,7 @@ class WeightCalibrationInterface:
             
             # 发送100ms脉冲
             if hasattr(self.parent, 'shared_send_pulse_command'):
-                return self.parent.shared_send_pulse_command(coil_address, 100)
+                return self.parent.shared_send_pulse_command(coil_address, 1000)
             else:
                 # 直接使用modbus客户端发送脉冲
                 return self.send_pulse_command(coil_address, 100)
@@ -424,7 +433,7 @@ class WeightCalibrationInterface:
             print(f"发送校准脉冲命令异常: {e}")
             return False
     
-    def send_pulse_command(self, address: int, pulse_duration: int = 100) -> bool:
+    def send_pulse_command(self, address: int, pulse_duration: int = 1000) -> bool:
         """发送脉冲控制指令
         
         Args:
@@ -543,8 +552,15 @@ class WeightCalibrationInterface:
                         # 读取重量数据
                         weight_data = self.modbus_client.read_holding_registers(weight_address, 1)
                         if weight_data:
+                            # 处理16位有符号整数（修复负数显示问题）
+                            raw_value = weight_data[0]
+                            if raw_value > 32767:
+                                signed_value = raw_value - 65536  # 转换为负数（16位补码）
+                            else:
+                                signed_value = raw_value
+                            
                             # PLC重量值除以10得到实际重量
-                            weight_value = weight_data[0] / 10.0
+                            weight_value = signed_value / 10.0
                             weight_text = f"{weight_value:.1f}"
                             self.weight_labels[hopper_id].configure(text=weight_text)
                             
@@ -577,6 +593,59 @@ class WeightCalibrationInterface:
         except Exception as e:
             print(f"返回主菜单时出错: {e}")
             messagebox.showerror("错误", f"返回主菜单时出错: {str(e)}")
+
+    def load_standard_weight(self):
+        """从PLC加载标准重量"""
+        if not self.modbus_client or not self.modbus_client.is_connected:
+            return
+        
+        try:
+            from traditional_plc_addresses import get_traditional_system_address
+            address = get_traditional_system_address('StandardWeight')
+            data = self.modbus_client.read_holding_registers(address, 1)
+            
+            if data:
+                # 标准重量需要除以10显示
+                standard_weight = data[0] / 10.0
+                self.standard_weight_entry.delete(0, tk.END)
+                self.standard_weight_entry.insert(0, f"{standard_weight:.1f}")
+                print(f"成功加载标准重量: {standard_weight}g")
+            else:
+                print("读取标准重量失败")
+                
+        except Exception as e:
+            print(f"加载标准重量失败: {e}")
+
+    def save_standard_weight(self, event=None):
+        """保存标准重量到PLC"""
+        if not self.modbus_client or not self.modbus_client.is_connected:
+            messagebox.showerror("错误", "PLC未连接，无法保存标准重量")
+            return
+        
+        try:
+            standard_weight_str = self.standard_weight_entry.get().strip()
+            standard_weight = float(standard_weight_str)
+            
+            if standard_weight < 0:
+                messagebox.showerror("错误", "标准重量不能为负数")
+                return
+            
+            # 标准重量需要乘以10存储到PLC
+            plc_value = int(standard_weight * 10)
+            
+            from traditional_plc_addresses import get_traditional_system_address
+            address = get_traditional_system_address('StandardWeight')
+            success = self.modbus_client.write_holding_register(address, plc_value)
+            
+            if success:
+                print(f"成功保存标准重量: {standard_weight}g (PLC值: {plc_value})")
+            else:
+                messagebox.showerror("错误", "保存标准重量失败")
+                
+        except ValueError:
+            messagebox.showerror("错误", f"标准重量格式错误: {standard_weight_str}")
+        except Exception as e:
+            messagebox.showerror("错误", f"保存标准重量异常: {e}")
     
     def cleanup(self):
         """清理资源"""

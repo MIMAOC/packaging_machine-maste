@@ -22,6 +22,7 @@ import tkinter.font as font
 import time
 import threading
 from typing import Optional, Dict, Any
+from touchscreen_utils import TouchScreenUtils
 
 # 导入PLC相关模块
 try:
@@ -69,21 +70,24 @@ class SystemSettingInterface:
         # 系统参数数据存储
         self.parameter_data = {}
         
+        # 添加触摸屏优化
+        TouchScreenUtils.optimize_window_for_touch(self.root)
+
         # 界面组件引用
         self.parameter_entries = {}  # 参数输入框
         self.control_buttons = {}    # 控制按钮
         
         # 系统参数配置（9个参数）
         self.parameter_configs = {
-            'ZeroTrackRange': {'type': 'integer', 'min': 0, 'max': 999, 'decimals': 0, 'label': '零点追踪范围'},
-            'ZeroTrackTime': {'type': 'integer', 'min': 0, 'max': 999, 'decimals': 0, 'label': '零点追踪时间'},
-            'ZeroClearRange': {'type': 'integer', 'min': 0, 'max': 100, 'decimals': 0, 'label': '清零范围(%)'},
-            'StabilityRange': {'type': 'integer', 'min': 0, 'max': 999, 'decimals': 0, 'label': '判稳范围'},
-            'StabilityTime': {'type': 'integer', 'min': 0, 'max': 9999, 'decimals': 0, 'label': '判稳时间'},
-            'FilterLevelA': {'type': 'integer', 'min': 0, 'max': 10, 'decimals': 0, 'label': '滤波等级A'},
-            'FilterLevelB': {'type': 'integer', 'min': 0, 'max': 10, 'decimals': 0, 'label': '滤波等级B'},
-            'MinDivision': {'type': 'integer', 'min': 1, 'max': 99, 'decimals': 0, 'label': '最小分度'},
-            'MaxCapacity': {'type': 'integer', 'min': 1000, 'max': 999999, 'decimals': 0, 'label': '最大量程'}
+            'ZeroTrackRange': {'type': 'integer', 'decimals': 0, 'label': '零点追踪范围'},
+            'ZeroTrackTime': {'type': 'integer', 'decimals': 0, 'label': '零点追踪时间'},
+            'ZeroClearRange': {'type': 'integer', 'decimals': 0, 'label': '清零范围(%)'},
+            'StabilityRange': {'type': 'integer', 'decimals': 0, 'label': '判稳范围'},
+            'StabilityTime': {'type': 'integer', 'decimals': 0, 'label': '判稳时间'},
+            'FilterLevelA': {'type': 'integer', 'decimals': 0, 'label': '滤波等级A'},
+            'FilterLevelB': {'type': 'integer', 'decimals': 0, 'label': '滤波等级B'},
+            'MinDivision': {'type': 'integer', 'decimals': 0, 'label': '最小分度'},
+            'MaxCapacity': {'type': 'integer', 'decimals': 0, 'label': '最大量程'}
         }
         
         # 系统控制命令配置（4个命令）
@@ -231,6 +235,8 @@ class SystemSettingInterface:
         try:
             # 首先进行密码验证
             if not self.verify_password():
+                print("密码验证失败，返回主菜单")
+                self.parent.show_menu_interface()
                 return
             
             print("开始显示系统设置界面")
@@ -250,6 +256,8 @@ class SystemSettingInterface:
         except Exception as e:
             print(f"显示系统设置界面失败: {e}")
             messagebox.showerror("界面错误", f"显示系统设置界面时发生错误: {e}")
+            # 发生异常时也返回主菜单
+            self.parent.show_menu_interface()
     
     def create_system_interface(self):
         """创建系统设置界面"""
@@ -381,8 +389,6 @@ class SystemSettingInterface:
                            lambda e, pk=param_key: self.on_parameter_changed(pk, e.widget.get()))
             param_entry.bind('<Return>', 
                            lambda e, pk=param_key: self.on_parameter_changed(pk, e.widget.get()))
-            param_entry.bind('<KeyRelease>', 
-                           lambda e, pk=param_key: self.validate_input(pk, e.widget.get(), e.widget))
             
             # 保存输入框引用
             self.parameter_entries[param_key] = param_entry
@@ -566,36 +572,6 @@ class SystemSettingInterface:
         except Exception as e:
             print(f"加载默认参数 {param_key} 失败: {e}")
     
-    def validate_input(self, param_key: str, input_value: str, entry_widget):
-        """实时输入验证"""
-        try:
-            config = self.parameter_configs[param_key]
-            
-            if not input_value.strip():
-                # 空值，恢复默认边框
-                entry_widget.configure(highlightcolor='#4a90e2', highlightbackground='#cccccc')
-                return
-            
-            # 验证数值
-            if config['type'] == 'decimal':
-                value = float(input_value)
-            else:
-                value = int(input_value)
-            
-            # 验证范围
-            if config['min'] <= value <= config['max']:
-                # 有效值，绿色边框
-                entry_widget.configure(highlightcolor='#00aa00', highlightbackground='#00aa00')
-            else:
-                # 超出范围，红色边框
-                entry_widget.configure(highlightcolor='#ff4444', highlightbackground='#ff4444')
-                
-        except ValueError:
-            # 非法格式，红色边框
-            entry_widget.configure(highlightcolor='#ff4444', highlightbackground='#ff4444')
-        except Exception as e:
-            print(f"验证输入 {param_key} 异常: {e}")
-    
     def on_parameter_changed(self, param_key: str, input_value: str):
         """参数修改事件处理"""
         try:
@@ -614,12 +590,6 @@ class SystemSettingInterface:
                     value = int(input_value)
             except ValueError:
                 messagebox.showerror("参数错误", f"{config['label']}输入格式错误")
-                return
-            
-            # 范围验证
-            if not (config['min'] <= value <= config['max']):
-                messagebox.showerror("参数错误", 
-                                   f"{config['label']}值必须在 {config['min']} - {config['max']} 之间")
                 return
             
             # 格式化显示值
@@ -764,6 +734,11 @@ class SystemSettingInterface:
             if success:
                 print(f"成功发送系统命令 {command_name} (地址: {address})")
                 messagebox.showinfo("命令成功", f"'{command_name}'命令已发送")
+                
+                # 特定命令执行完后刷新参数
+                if command_key in ['FeedDataInit', 'ModuleInit', 'ModuleDataRead']:
+                    self.root.after(200, self.refresh_parameters_after_command)  # 0.2秒后刷新
+                    
             else:
                 print(f"发送系统命令 {command_name} 失败")
                 messagebox.showerror("命令失败", f"'{command_name}'命令发送失败")
@@ -813,6 +788,16 @@ class SystemSettingInterface:
             
         except Exception as e:
             print(f"清理系统设置界面资源时发生错误: {e}")
+
+    def refresh_parameters_after_command(self):
+        """命令执行后刷新参数"""
+        try:
+            print("正在刷新系统参数...")
+            self.load_all_parameters()
+            print("系统参数刷新完成")
+        except Exception as e:
+            print(f"刷新系统参数失败: {e}")
+
 
 
 # 测试代码

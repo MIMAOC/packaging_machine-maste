@@ -22,6 +22,7 @@ import tkinter.font as font
 import time
 import threading
 from typing import Optional, Dict, Any
+from touchscreen_utils import TouchScreenUtils
 
 # 导入PLC相关模块
 try:
@@ -31,6 +32,7 @@ try:
         get_traditional_control_address,
         get_traditional_parameter_address,
         get_traditional_global_address,
+        get_traditional_system_address,
         get_traditional_disable_address,
         TRADITIONAL_MONITORING_ADDRESSES,
         TRADITIONAL_PARAMETER_ADDRESSES
@@ -98,12 +100,49 @@ class SimpleTianTengInterface:
             self.bucket_started[i] = False
             self.bucket_cleaning[i] = False
         
+        # 添加触摸屏优化
+        TouchScreenUtils.optimize_window_for_touch(self.root)
+        
         # LOGO图片引用
         self.logo_image = None
+
+        # 设置logo文件路径
+        self.setup_logo_path()
         
         self.setup_fonts()
         self.create_base_layout()
         self.show_menu_interface()
+
+    def setup_logo_path(self):
+        """设置logo文件路径"""
+        import os
+        
+        # 获取当前文件目录
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # 可能的logo文件名
+        logo_files = ["tianteng.png", "tianteng.PNG", "LOGO.png", "LOGO.PNG", "logo.png"]
+        
+        # 搜索logo文件
+        self.logo_path = None
+        for logo_file in logo_files:
+            # 在当前目录查找
+            logo_path = os.path.join(current_dir, logo_file)
+            if os.path.exists(logo_path):
+                self.logo_path = logo_path
+                print(f"[传统模式] 找到logo文件: {logo_path}")
+                break
+            
+            # 在父目录查找
+            parent_dir = os.path.dirname(current_dir)
+            logo_path = os.path.join(parent_dir, logo_file)
+            if os.path.exists(logo_path):
+                self.logo_path = logo_path
+                print(f"[传统模式] 找到logo文件: {logo_path}")
+                break
+        
+        if not self.logo_path:
+            print(f"[传统模式] 未找到logo文件，搜索目录: {current_dir}")    
         
     def setup_fonts(self):
         """设置字体"""
@@ -152,6 +191,7 @@ class SimpleTianTengInterface:
         self.parameter_entries.clear()
         self.control_buttons.clear()
         self.target_weight_entry = None
+        self.detail_target_weight_entry = None
 
     # ==================== 界面切换方法 ====================
     
@@ -193,13 +233,12 @@ class SimpleTianTengInterface:
                 self.calibration_interface = WeightCalibrationInterface(self.modbus_client, self)
             except ImportError as e:
                 messagebox.showerror("错误", f"重量校准界面模块加载失败: {e}\n请确保weight_calibration_interface.py文件存在")
-                return        
-    
+                return
         # 清空当前界面并切换到重量校准界面
         self.clear_main_content()
         self.current_interface = "calibration"
         self.calibration_interface.show_interface()
-
+            
     def show_parameter_interface(self):
         """显示参数设置界面"""
         # 延迟导入，避免循环导入
@@ -214,7 +253,7 @@ class SimpleTianTengInterface:
         # 清空当前界面并切换到参数设置界面
         self.clear_main_content()
         self.current_interface = "parameter"
-        self.parameter_interface.show_interface()
+        self.parameter_interface.show_interface()      
 
     def show_system_interface(self):  # ←← 添加这整个方法
         """显示系统设置界面"""
@@ -325,12 +364,11 @@ class SimpleTianTengInterface:
         
         # Logo区域
         self.logo_label = tk.Label(content_frame, text="TiAN TENG", 
-                                  font=self.logo_font, bg='#ffffff', fg='#1a365d')
+                                font=self.logo_font, bg='#ffffff', fg='#1a365d')
         self.logo_label.pack(pady=(0, 30))
-        
-        # 如果有保存的LOGO图片，重新应用
-        if self.logo_image:
-            self.logo_label.configure(image=self.logo_image, text='')
+
+        # 加载并应用logo图片
+        self.load_logo_image()
         
         # 标题容器
         title_frame = tk.Frame(content_frame, bg='#ffffff')
@@ -541,6 +579,8 @@ class SimpleTianTengInterface:
         
         # 加载参数数据
         self.load_bucket_parameters(bucket_id)
+        # 加载详细界面的目标重量
+        self.load_detail_target_weight(bucket_id)
         
     def create_detail_top_area(self, parent, bucket_id: int):
         """创建顶部重量显示区域（Pack版本）"""
@@ -605,7 +645,8 @@ class SimpleTianTengInterface:
             
             # 参数标签
             param_label = tk.Label(param_row, text=param_text,
-                                  font=('Microsoft YaHei', 24, 'normal'), bg='#ffffff', fg='#333333')
+                      font=('Microsoft YaHei', 24, 'normal'), bg='#ffffff', fg='#333333',
+                      width=8, anchor='e')  # ←← 添加这行：设置宽度为8个字符，右对齐
             param_label.pack(side=tk.LEFT, padx=(0, 40))
             
             # 参数输入框
@@ -631,9 +672,14 @@ class SimpleTianTengInterface:
                 font=('Microsoft YaHei', 24, 'bold'), bg='#ffffff', fg='#333333').pack()
         
         weight_entry = tk.Entry(weight_frame, font=('Arial', 36, 'bold'), justify='center',
-                               relief='solid', bd=2, width=8)
+                       relief='solid', bd=2, width=8)
         weight_entry.pack(pady=(10, 0))
-        weight_entry.insert(0, "0000.0")
+        # 保存到实例变量用于后续数据绑定
+        self.detail_target_weight_entry = weight_entry
+
+        # 绑定数据保存事件
+        weight_entry.bind('<FocusOut>', self.save_detail_target_weight)
+        weight_entry.bind('<Return>', self.save_detail_target_weight)
         
         # 控制按钮区域
         buttons_frame = tk.Frame(parent, bg='#ffffff')
@@ -699,7 +745,7 @@ class SimpleTianTengInterface:
     # 保留原有的所有方法，不涉及布局的部分完全不变
     
     def save_target_weight(self, event=None):
-        """保存目标重量到所有料斗"""
+        """保存目标重量到全局目标重量（HD4）"""
         if not self.modbus_client or not self.modbus_client.is_connected:
             messagebox.showerror("错误", "PLC未连接，无法保存目标重量")
             return
@@ -712,23 +758,14 @@ class SimpleTianTengInterface:
             # 目标重量需要乘以10存储到PLC
             plc_value = int(target_weight * 10)
             
-            # 写入所有料斗的目标重量
-            success_count = 0
-            for bucket_id in range(1, 7):
-                try:
-                    address = get_traditional_parameter_address(bucket_id, 'TargetWeight')
-                    success = self.modbus_client.write_holding_register(address, plc_value)
-                    if success:
-                        success_count += 1
-                    else:
-                        print(f"料斗{bucket_id}目标重量保存失败")
-                except Exception as e:
-                    print(f"保存料斗{bucket_id}目标重量异常: {e}")
+            # 写入全局目标重量（HD4）
+            address = get_traditional_system_address('GlobalTargetWeight')
+            success = self.modbus_client.write_holding_register(address, plc_value)
             
-            if success_count == 6:
-                print(f"成功保存目标重量到所有料斗: {target_weight}g (PLC值: {plc_value})")
+            if success:
+                print(f"成功保存全局目标重量: {target_weight}g (PLC值: {plc_value}, 地址: {address})")
             else:
-                messagebox.showwarning("警告", f"只有{success_count}/6个料斗目标重量保存成功")
+                messagebox.showerror("错误", "保存全局目标重量失败")
                 
         except ValueError:
             messagebox.showerror("错误", f"目标重量格式错误: {target_weight_str}")
@@ -736,13 +773,13 @@ class SimpleTianTengInterface:
             messagebox.showerror("错误", f"保存目标重量异常: {e}")
     
     def load_target_weight(self):
-        """加载目标重量（读取料斗1的目标重量作为全局目标重量）"""
+        """加载目标重量（读取全局目标重量HD4）"""
         if not self.modbus_client or not self.modbus_client.is_connected:
             return
         
         try:
-            # 读取料斗1的目标重量作为全局目标重量
-            address = get_traditional_parameter_address(1, 'TargetWeight')
+            # 读取全局目标重量（HD4）
+            address = get_traditional_system_address('GlobalTargetWeight')
             data = self.modbus_client.read_holding_registers(address, 1)
             
             if data:
@@ -824,6 +861,67 @@ class SimpleTianTengInterface:
             messagebox.showerror("错误", f"参数格式错误: {value_str}")
         except Exception as e:
             messagebox.showerror("错误", f"保存参数异常: {e}")
+
+    def load_detail_target_weight(self, bucket_id: int):
+        """加载详细界面的目标重量"""
+        if not self.modbus_client or not self.modbus_client.is_connected:
+            return
+        
+        try:
+            address = get_traditional_parameter_address(bucket_id, 'TargetWeight')
+            data = self.modbus_client.read_holding_registers(address, 1)
+            
+            if data and hasattr(self, 'detail_target_weight_entry') and self.detail_target_weight_entry:
+                # 目标重量需要除以10显示
+                target_weight = data[0] / 10.0
+                self.detail_target_weight_entry.delete(0, tk.END)
+                self.detail_target_weight_entry.insert(0, f"{target_weight:.1f}")
+                print(f"成功加载料斗{bucket_id}目标重量: {target_weight}g")
+            else:
+                print(f"料斗{bucket_id}目标重量数据读取失败或界面元素不存在")
+                
+        except Exception as e:
+            print(f"加载料斗{bucket_id}目标重量失败: {e}")
+            # 设置默认值
+            if hasattr(self, 'detail_target_weight_entry') and self.detail_target_weight_entry:
+                self.detail_target_weight_entry.delete(0, tk.END)
+                self.detail_target_weight_entry.insert(0, "0000.0")
+
+    def save_detail_target_weight(self, event=None):
+        """保存详细界面的目标重量"""
+        if not self.modbus_client or not self.modbus_client.is_connected:
+            messagebox.showerror("错误", "PLC未连接，无法保存目标重量")
+            return
+        
+        try:
+            target_weight_str = self.detail_target_weight_entry.get().strip()
+            target_weight = float(target_weight_str)
+            
+            if target_weight < 0:
+                messagebox.showerror("错误", "目标重量不能为负数")
+                return
+            
+            # 目标重量需要乘以10存储到PLC
+            plc_value = int(target_weight * 10)
+            
+            # 写入当前料斗的目标重量
+            address = get_traditional_parameter_address(self.current_bucket_id, 'TargetWeight')
+            success = self.modbus_client.write_holding_register(address, plc_value)
+            
+            if success:
+                print(f"成功保存料斗{self.current_bucket_id}目标重量: {target_weight}g (PLC值: {plc_value})")
+                
+                # 同时更新总目标重量显示（如果在监控界面）
+                if hasattr(self, 'target_weight_entry') and self.target_weight_entry:
+                    self.target_weight_entry.delete(0, tk.END)
+                    self.target_weight_entry.insert(0, f"{target_weight:.1f}")
+            else:
+                messagebox.showerror("错误", f"保存料斗{self.current_bucket_id}目标重量失败")
+                
+        except ValueError:
+            messagebox.showerror("错误", f"目标重量格式错误: {target_weight_str}")
+        except Exception as e:
+            messagebox.showerror("错误", f"保存目标重量异常: {e}")
 
     # ==================== 事件处理方法 ====================
     
@@ -1047,7 +1145,7 @@ class SimpleTianTengInterface:
         """发送全局脉冲控制命令"""
         if not self.modbus_client or not self.modbus_client.is_connected:
             messagebox.showerror("错误", "PLC未连接")
-            return
+            return False  # 添加返回值
         
         try:
             address = get_traditional_global_address(command)
@@ -1055,17 +1153,20 @@ class SimpleTianTengInterface:
             
             if success:
                 print(f"全局命令{command}发送成功")
+                return True  # 添加返回值
             else:
                 messagebox.showerror("错误", f"全局命令{command}发送失败")
+                return False  # 添加返回值
                 
         except Exception as e:
             messagebox.showerror("错误", f"发送全局命令异常: {e}")
+            return False  # 添加返回值
     
     def send_bucket_pulse_command(self, bucket_id: int, command: str):
         """发送料斗脉冲控制命令（只用于脉冲控制的命令）"""
         if not self.modbus_client or not self.modbus_client.is_connected:
             messagebox.showerror("错误", "PLC未连接")
-            return
+            return False  # 修改这里
         
         try:
             # 脉冲控制命令：Clear、Discharge、Jog
@@ -1073,18 +1174,28 @@ class SimpleTianTengInterface:
             
             if command not in pulse_commands:
                 print(f"警告: {command} 不是脉冲控制命令")
-                return
+                return False  # 修改这里
             
             address = get_traditional_control_address(bucket_id, command)
-            success = self.send_pulse_command(address)
+            
+            # 根据命令类型设置脉冲时间
+            if command == "Discharge":
+                pulse_duration = 1500  # 放料命令使用1.5秒脉冲
+            else:
+                pulse_duration = 100   # 其他命令使用100ms脉冲
+            
+            success = self.send_pulse_command(address, pulse_duration)
             
             if success:
                 print(f"料斗{bucket_id}命令{command}发送成功")
+                return True  # 添加这行
             else:
                 messagebox.showerror("错误", f"料斗{bucket_id}命令{command}发送失败")
+                return False  # 添加这行
                 
         except Exception as e:
             messagebox.showerror("错误", f"发送料斗命令异常: {e}")
+            return False  # 添加这行
     
     def toggle_bucket_clean(self, bucket_id: int):
         """切换料斗清料状态（状态保持控制）"""
@@ -1154,6 +1265,14 @@ class SimpleTianTengInterface:
         try:
             # 发送脉冲
             success1 = self.modbus_client.write_coil(address, True)
+            
+            # 调试信息 - 查看实际返回值
+            print(f"=== Modbus调试信息 ===")
+            print(f"地址: {address}")
+            print(f"写入返回值: {success1}")
+            print(f"返回值类型: {type(success1)}")
+            print(f"====================")
+            
             if success1:
                 # 延时后关闭
                 self.root.after(pulse_duration, lambda: self.modbus_client.write_coil(address, False))
@@ -1184,8 +1303,8 @@ class SimpleTianTengInterface:
                 self.update_monitoring_data()
             elif self.current_interface == "bucket_detail":
                 self.update_detail_data()
-            elif self.current_interface == "manual" and hasattr(self, '_external_update_callback'):
-                # 调用外部回调函数（手动界面的数据更新）
+            elif self.current_interface in ["manual", "calibration"] and hasattr(self, '_external_update_callback'):  # 修改点1
+            # 调用外部回调函数（手动界面和校准界面的数据更新）
                 if self._external_update_callback:
                     self._external_update_callback()
                 
@@ -1193,7 +1312,7 @@ class SimpleTianTengInterface:
             print(f"数据更新错误: {e}")
         finally:
             # 继续下一次更新
-            if self.current_interface in ["monitoring", "bucket_detail", "manual"]:
+            if self.current_interface in ["monitoring", "bucket_detail", "manual", "calibration"]:  # 修改点2
                 self.refresh_timer = self.root.after(100, self.update_realtime_data)
     
     def update_monitoring_data(self):
@@ -1448,7 +1567,7 @@ class SimpleTianTengInterface:
                 print(f"清理参数设置界面时出错: {e}")
             self.parameter_interface = None
 
-    def cleanup_system_interface(self):  
+    def cleanup_system_interface(self):  # ←← 添加这整个方法
         """清理系统设置界面资源"""
         if self.system_interface:
             try:
@@ -1463,40 +1582,41 @@ class SimpleTianTengInterface:
     def set_modbus_client(self, modbus_client: ModbusClient):
         """设置Modbus客户端"""
         self.modbus_client = modbus_client
-    
-    def set_logo_image(self, image_path: str):
-        """设置logo图片"""
+
+    def load_logo_image(self):
+        """加载logo图片"""
+        if not self.logo_path:
+            print("[传统模式] 没有可用的logo文件，使用文字logo")
+            return
+        
         try:
             # 加载原始图片
-            original_image = tk.PhotoImage(file=image_path)
+            original_image = tk.PhotoImage(file=self.logo_path)
             
             # 获取原始尺寸
             original_width = original_image.width()
             original_height = original_image.height()
             
-            # 计算缩放比例
+            # 计算缩放比例（目标宽度450像素）
             target_width = 450
-            scale_factor = max(1, original_width // target_width)
-            
-            # 缩放图片
-            if scale_factor > 1:
-                logo_image = original_image.subsample(scale_factor)
-            else:
-                logo_image = original_image
-            
-            # 保存图片引用
-            self.logo_image = logo_image
-            
-            # 更新logo标签（如果存在）
-            if hasattr(self, 'logo_label') and self.logo_label:
-                self.logo_label.configure(image=logo_image, text='')
-                self.logo_label.image = logo_image  # 保持引用防止被垃圾回收
-                print("Logo加载成功！")
-            else:
-                print("Logo图片已保存，将在界面创建时应用")
+            if original_width > target_width:
+                scale_factor = original_width // target_width
+                scale_factor = max(1, scale_factor)
                 
+                # 缩放图片
+                self.logo_image = original_image.subsample(scale_factor)
+            else:
+                self.logo_image = original_image
+            
+            # 应用到标签
+            if hasattr(self, 'logo_label') and self.logo_label:
+                self.logo_label.configure(image=self.logo_image, text='')
+                self.logo_label.image = self.logo_image  # 保持引用
+                print(f"[传统模式] Logo图片加载成功: {self.logo_path}")
+            
         except Exception as e:
-            print(f"Logo加载失败: {e}")
+            print(f"[传统模式] Logo图片加载失败: {e}")
+            print(f"[传统模式] 使用文字logo")
 
     def cleanup(self):
         """清理资源"""
@@ -1538,26 +1658,6 @@ if __name__ == "__main__":
     
     # 创建界面
     app = SimpleTianTengInterface()
-    
-    # 尝试加载logo文件
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    logo_files = ["LOGO", "LOGO.png", "logo.png", "LOGO.PNG"]
-    logo_loaded = False
-    
-    for logo_file in logo_files:
-        logo_path = os.path.join(script_dir, logo_file)
-        try:
-            if os.path.exists(logo_path):
-                app.set_logo_image(logo_path)
-                logo_loaded = True
-                print(f"找到并加载了logo: {logo_path}")
-                break
-        except Exception as e:
-            print(f"尝试加载 {logo_path} 失败: {e}")
-            continue
-    
-    if not logo_loaded:
-        print("未找到LOGO文件，使用文字logo")
     
     print("传统模式完整界面系统启动！（Pack布局版本）")
     app.run()

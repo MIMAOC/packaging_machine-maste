@@ -250,7 +250,7 @@ class FlightMaterialAnalysisAPI:
 # 创建全局API客户端实例
 flight_material_analysis_api = FlightMaterialAnalysisAPI()
 
-def analyze_flight_material(self, target_weight: float, 
+def analyze_flight_material(target_weight: float, 
                           recorded_weights: List[float]) -> Tuple[bool, float, List[float], str]:
     """
     分析飞料值
@@ -262,40 +262,7 @@ def analyze_flight_material(self, target_weight: float,
     Returns:
         Tuple[bool, float, List[float], str]: (是否成功, 平均飞料值, 3次飞料值详情, 消息)
     """
-    try:
-        self.logger.info(f"分析飞料值: 目标重量={target_weight}g, 实时重量={recorded_weights}")
-        
-        # 输入验证
-        if len(recorded_weights) != 3:
-            error_msg = self._format_error_message(f"需要3次实时重量数据，实际提供了{len(recorded_weights)}次")
-            return False, 0.0, [], error_msg
-        
-        # 调用后端API
-        success, avg_flight_material, flight_details, message = self._call_backend_flight_material_api(
-            target_weight, recorded_weights)
-        
-        if success:
-            self.logger.info(f"后端API分析成功，平均飞料值: {avg_flight_material}g")
-            return True, avg_flight_material, flight_details, message
-        else:
-            # message 已经在 _call_backend_flight_material_api 中格式化过了
-            self.logger.error(f"后端API分析失败: {message}")
-            return False, 0.0, [], message
-            
-    except requests.exceptions.ConnectionError:
-        error_msg = self._format_error_message(f"无法连接到后端API服务器 ({self.config.base_url})")
-        self.logger.error(error_msg)
-        return False, 0.0, [], error_msg
-        
-    except requests.exceptions.Timeout:
-        error_msg = self._format_error_message(f"后端API请求超时（超过{self.config.timeout}秒）")
-        self.logger.error(error_msg)
-        return False, 0.0, [], error_msg
-        
-    except Exception as e:
-        error_msg = self._format_error_message(f"飞料值分析异常: {str(e)}")
-        self.logger.error(error_msg)
-        return False, 0.0, [], error_msg
+    return flight_material_analysis_api.analyze_flight_material(target_weight, recorded_weights)
 
 def test_flight_material_api_connection() -> Tuple[bool, str]:
     """
