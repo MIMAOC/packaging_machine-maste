@@ -1281,13 +1281,21 @@ class AIModeInterface:
                     bg='white', fg='#333333').pack()
             
             weight_var = tk.StringVar()
+            # 读取AI模式界面的当前每包重量值
+            current_weight = self.weight_var.get()
+            if current_weight and current_weight != "请输入目标重量克数":
+                weight_var.set(current_weight)
+            
             weight_entry = tk.Entry(weight_frame, textvariable=weight_var,
-                                   font=tkFont.Font(family="微软雅黑", size=12),
-                                   width=30, justify='center',
-                                   relief='solid', bd=1,
-                                   bg='white', fg='#333333')
+                                font=tkFont.Font(family="微软雅黑", size=12),
+                                width=30, justify='center',
+                                relief='solid', bd=1,
+                                bg='white', fg='#333333')
             weight_entry.pack(ipady=8, pady=(5, 0))
-            self.setup_placeholder(weight_entry, "请输入目标重量")
+            
+            # 只有在没有值的时候才设置占位符
+            if not weight_var.get():
+                self.setup_placeholder(weight_entry, "请输入目标重量")
             
             # 包装数量输入
             quantity_frame = tk.Frame(params_dialog, bg='white')
@@ -1298,13 +1306,21 @@ class AIModeInterface:
                     bg='white', fg='#333333').pack()
             
             quantity_var = tk.StringVar()
+            # 读取AI模式界面的当前包装数量值
+            current_quantity = self.quantity_var.get()
+            if current_quantity and current_quantity != "请输入所需包装数量":
+                quantity_var.set(current_quantity)
+            
             quantity_entry = tk.Entry(quantity_frame, textvariable=quantity_var,
-                                     font=tkFont.Font(family="微软雅黑", size=12),
-                                     width=30, justify='center',
-                                     relief='solid', bd=1,
-                                     bg='white', fg='#333333')
+                                    font=tkFont.Font(family="微软雅黑", size=12),
+                                    width=30, justify='center',
+                                    relief='solid', bd=1,
+                                    bg='white', fg='#333333')
             quantity_entry.pack(ipady=8, pady=(5, 0))
-            self.setup_placeholder(quantity_entry, "请输入目标包数")
+            
+            # 只有在没有值的时候才设置占位符
+            if not quantity_var.get():
+                self.setup_placeholder(quantity_entry, "请输入目标包数")
             
             # 按钮区域
             button_frame = tk.Frame(params_dialog, bg='white')
@@ -1340,7 +1356,7 @@ class AIModeInterface:
                     messagebox.showerror("参数错误", "请输入有效的重量数值")
                     return
             
-                # 🔥 新增：重量范围检查
+                # 重量范围检查
                 if target_weight < 60 or target_weight > 425:
                     messagebox.showerror("参数错误", 
                                     f"输入重量超出范围\n\n"
