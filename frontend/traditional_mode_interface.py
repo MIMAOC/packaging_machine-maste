@@ -88,6 +88,7 @@ class SimpleTianTengInterface:
         self.weight_labels = {}          # 重量标签引用
         self.parameter_entries = {}      # 参数输入框引用
         self.control_buttons = {}        # 控制按钮引用
+        self.bucket_number_labels = {}   # 料斗数字标签引用
         self.target_weight_entry = None  # 目标重量输入框引用
         
         # 全局启动状态
@@ -284,7 +285,7 @@ class SimpleTianTengInterface:
     def create_menu_interface(self):
         """创建主菜单界面（Pack版本）"""
         # 顶部空白区域
-        top_spacer = tk.Frame(self.main_content_frame, bg='#ffffff', height=60)
+        top_spacer = tk.Frame(self.main_content_frame, bg='#ffffff', height=20)
         top_spacer.pack(side=tk.TOP, fill=tk.X)
         
         # 主内容区域 - 水平布局
@@ -308,7 +309,7 @@ class SimpleTianTengInterface:
         
         # 底部公司信息
         company_frame = tk.Frame(self.main_content_frame, bg='#ffffff')
-        company_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=(0, 45))
+        company_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=(0, 25))
         
         company_label = tk.Label(company_frame, 
                                text="温州天腾机械有限公司 • 13395779890",
@@ -324,9 +325,7 @@ class SimpleTianTengInterface:
             "重量校准",
             "系统设置"
         ]
-        # 如果是嵌入模式，添加返回主菜单选项
-        if self.is_embedded:
-            menu_items.append("返回主菜单")
+        menu_items.append("返回主菜单")  # 总是添加，去掉if条件
         
         # 顶部空白
         top_spacer = tk.Frame(parent, bg='#ffffff', height=50)
@@ -336,7 +335,7 @@ class SimpleTianTengInterface:
         for i, text in enumerate(menu_items):
             # 菜单项容器
             menu_item_frame = tk.Frame(parent, bg='#ffffff')
-            menu_item_frame.pack(side=tk.TOP, fill=tk.X, pady=20)
+            menu_item_frame.pack(side=tk.TOP, fill=tk.X, pady=15)
             
             # 三角形
             triangle = tk.Label(menu_item_frame, text="▶", 
@@ -450,28 +449,29 @@ class SimpleTianTengInterface:
     def create_bucket_widget(self, parent, bucket_id: int):
         """创建单个料斗组件（Pack版本）"""
         # 主容器 - 料斗卡片
-        bucket_frame = tk.Frame(parent, bg='#d5d5d5', relief='raised', bd=2, height=250)
+        bucket_frame = tk.Frame(parent, bg='#d5d5d5', relief='raised', bd=2, height=230)
         bucket_frame.pack_propagate(False)  # 保持固定高度
         
         # 上半部分：料斗编号 + 重量显示（水平布局）
         content_frame = tk.Frame(bucket_frame, bg='#d5d5d5')
-        content_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=20, pady=(20, 12))
+        content_frame.pack(side=tk.TOP, fill=tk.X, padx=20, pady=(5, 0))
         
         # 左侧：料斗编号
         number_label = tk.Label(content_frame, text=str(bucket_id),
                                font=('Arial', 110, 'bold'), bg='#d5d5d5', fg='#333333')
-        number_label.pack(side=tk.LEFT, padx=(15, 40))
+        number_label.pack(side=tk.LEFT, padx=(15, 40), anchor='n')
+        self.bucket_number_labels[bucket_id] = number_label  # 保存数字标签引用
         
         # 右侧：重量显示
         weight_label = tk.Label(content_frame, text="-0000.0",
                                font=('Arial', 68, 'bold'), bg='#d5d5d5', fg='#333333')
-        weight_label.pack(side=tk.RIGHT, padx=(0, 15))
+        weight_label.pack(side=tk.RIGHT, padx=(0, 15), pady=(20, 0), anchor='n')
         self.weight_labels[bucket_id] = weight_label
         
         # 下半部分：状态指示灯（水平排列）
         status_frame = tk.Frame(bucket_frame, bg='#d5d5d5')
-        status_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=20, pady=(0, 20))
-        
+        status_frame.pack(side=tk.TOP, fill=tk.X, padx=20, pady=(20, 0))
+
         # 4个状态指示灯
         status_types = ['CoarseAdd', 'FineAdd', 'Jog', 'TargetReached']
         status_texts = ['快加', '慢加', '点动', '到重']
@@ -516,6 +516,9 @@ class SimpleTianTengInterface:
                                relief='solid', bd=2, width=8)
         self.target_weight_entry.pack(pady=(8, 0))
         self.target_weight_entry.insert(0, "0000.0")
+
+        # 添加触摸屏支持
+        TouchScreenUtils.setup_touch_entry(self.target_weight_entry)
         
         # 绑定目标重量修改事件
         self.target_weight_entry.bind('<FocusOut>', self.save_target_weight)
@@ -653,6 +656,9 @@ class SimpleTianTengInterface:
             param_entry = tk.Entry(param_row, font=('Arial', 28, 'bold'), justify='center',
                                   relief='solid', bd=2, width=15, highlightthickness=2)
             param_entry.pack(side=tk.LEFT)
+
+            # 添加触摸屏支持
+            TouchScreenUtils.setup_touch_entry(param_entry)
             
             # 绑定参数修改事件
             param_entry.bind('<FocusOut>', 
@@ -939,9 +945,13 @@ class SimpleTianTengInterface:
             self.show_calibration_interface()
         elif text == "系统设置":
             self.show_system_interface()
-        elif text == "返回主菜单" and self.is_embedded:
-            # 返回主程序菜单
-            self.return_to_main_menu()
+        elif text == "返回主菜单":
+            if self.is_embedded:
+                # 返回主程序菜单
+                self.return_to_main_menu()
+            else:
+                # 独立模式下回到主菜单
+                self.show_menu_interface()
 
     def return_to_main_menu(self):
         """返回主程序菜单"""
@@ -1342,6 +1352,20 @@ class SimpleTianTengInterface:
                             self.weight_labels[bucket_id].configure(text=weight_text)
                     except Exception as e:
                         print(f"读取料斗{bucket_id}重量失败: {e}")
+                    
+                    # 读取并更新禁用状态显示
+                    try:
+                        disable_addr = get_traditional_disable_address(bucket_id)
+                        disable_data = self.modbus_client.read_coils(disable_addr, 1)
+                        if disable_data and bucket_id in self.bucket_number_labels:
+                            is_disabled = disable_data[0]
+                            number_label = self.bucket_number_labels[bucket_id]
+                            if is_disabled:
+                                number_label.configure(fg='#ff0000')  # 红色表示禁用
+                            else:
+                                number_label.configure(fg='#333333')  # 黑色表示正常
+                    except Exception as e:
+                        print(f"读取料斗{bucket_id}禁用状态失败: {e}")
             
             # 更新状态指示灯
             self.update_status_indicators()

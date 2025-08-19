@@ -182,6 +182,9 @@ class WeightCalibrationInterface:
         self.standard_weight_entry.pack(side='left', padx=(0, content_padding))
         self.standard_weight_entry.insert(0, "000.0")
         
+        # 添加触摸屏支持
+        TouchScreenUtils.setup_touch_entry(self.standard_weight_entry)
+
         # 绑定输入验证和保存事件
         self.standard_weight_entry.bind('<KeyRelease>', self.validate_standard_weight)
         self.standard_weight_entry.bind('<FocusOut>', self.save_standard_weight)
@@ -227,7 +230,7 @@ class WeightCalibrationInterface:
         """
         # 动态计算间距（大幅增大内部间距）
         hopper_padding = max(6, int(content_padding * 0.3))  # 减小外部间距给内部让空间
-        element_spacing = max(80, int(content_padding * 2.5))  # 大幅增加间距系数从0.8到1.2
+        element_spacing = max(40, int(content_padding * 1.0))  # 大幅增加间距系数从0.8到1.2
         
         # 料斗容器
         hopper_frame = tk.Frame(parent, bg='#e8e8e8')

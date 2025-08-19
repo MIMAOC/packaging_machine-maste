@@ -210,14 +210,13 @@ class ParameterSettingInterface:
         # 配置主框架的行列权重
         self.main_content_frame.grid_rowconfigure(0, weight=1)
         self.main_content_frame.grid_columnconfigure(0, weight=1)
-        main_frame.grid_rowconfigure(0, weight=1)  # 上部空白
-        main_frame.grid_rowconfigure(1, weight=0)  # 主内容区域
-        main_frame.grid_rowconfigure(2, weight=1)  # 下部空白
+        main_frame.grid_rowconfigure(0, weight=0)  # 主内容区域，置顶
+        main_frame.grid_rowconfigure(1, weight=1)  # 下部空白
         main_frame.grid_columnconfigure(0, weight=1)
         
         # 创建主内容区域
         content_frame = tk.Frame(main_frame, bg='#ffffff')
-        content_frame.grid(row=1, column=0, sticky='nsew', padx=self.base_padding, pady=self.base_padding)
+        content_frame.grid(row=0, column=0, sticky='nsew', padx=self.base_padding, pady=(0, self.base_padding))
         content_frame.grid_rowconfigure(0, weight=0)  # 标题区域
         content_frame.grid_rowconfigure(1, weight=1)  # 参数区域
         content_frame.grid_rowconfigure(2, weight=0)  # 按钮区域
@@ -294,7 +293,7 @@ class ParameterSettingInterface:
         
         # 参数行容器
         row_frame = tk.Frame(parent, bg='#ffffff')
-        row_frame.grid(row=row, column=0, sticky='ew', padx=0, pady=int(self.element_spacing * 1.5))
+        row_frame.grid(row=row, column=0, sticky='ew', padx=0, pady=int(self.element_spacing * 0.5))
         row_frame.grid_columnconfigure(0, weight=0)
         row_frame.grid_columnconfigure(1, weight=1)
         row_frame.grid_rowconfigure(0, weight=1)
@@ -312,6 +311,9 @@ class ParameterSettingInterface:
                               width=12, 
                               highlightthickness=2, highlightcolor='#4a90e2')
         param_entry.grid(row=0, column=1, sticky='w', padx=0, pady=8, ipady=8)  # 增加内部padding
+
+        # 添加触摸屏支持
+        TouchScreenUtils.setup_touch_entry(param_entry)
         
         # 绑定输入验证和保存事件
         param_entry.bind('<KeyRelease>', lambda e, key=param_key: self.validate_input(key, e.widget.get()))

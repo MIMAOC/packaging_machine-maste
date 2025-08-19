@@ -197,26 +197,83 @@ class SystemSettingInterface:
     
     def verify_password(self):
         """
-        密码验证
+        密码验证（自定义对话框支持触摸屏）
         
         Returns:
             bool: 验证成功返回True，失败返回False
         """
         try:
-            # 使用简单对话框获取密码输入
-            password = simpledialog.askstring(
-                "系统设置密码验证",
-                "请输入管理员密码:",
-                show='*',  # 密码遮盖
-                parent=self.root
-            )
+            # 创建自定义密码输入对话框
+            password_dialog = tk.Toplevel(self.root)
+            password_dialog.title("系统设置密码验证")
+            password_dialog.geometry("400x200")
+            password_dialog.resizable(False, False)
+            password_dialog.configure(bg='white')
+            password_dialog.grab_set()  # 模态对话框
             
-            if password is None:
-                # 用户点击取消
+            # 居中显示
+            password_dialog.transient(self.root)
+            password_dialog.update_idletasks()
+            x = (password_dialog.winfo_screenwidth() // 2) - (400 // 2)
+            y = (password_dialog.winfo_screenheight() // 2) - (200 // 2)
+            password_dialog.geometry(f"400x200+{x}+{y}")
+            
+            # 结果变量
+            password_result = {"password": None, "confirmed": False}
+            
+            # 标题标签
+            title_label = tk.Label(password_dialog, text="请输入管理员密码:", 
+                                font=("Microsoft YaHei", 16), bg='white', fg='#333333')
+            title_label.pack(pady=20)
+            
+            # 密码输入框
+            password_entry = tk.Entry(password_dialog, font=("Arial", 14), justify='center',
+                                    show='*', width=20, relief='solid', bd=2)
+            password_entry.pack(pady=10)
+            
+            # 添加触摸屏支持
+            TouchScreenUtils.setup_touch_entry(password_entry)
+            
+            # 按钮框架
+            button_frame = tk.Frame(password_dialog, bg='white')
+            button_frame.pack(pady=20)
+            
+            # 确认按钮
+            def on_confirm():
+                password_result["password"] = password_entry.get()
+                password_result["confirmed"] = True
+                password_dialog.destroy()
+            
+            # 取消按钮
+            def on_cancel():
+                password_result["confirmed"] = False
+                password_dialog.destroy()
+            
+            confirm_btn = tk.Button(button_frame, text="确认", font=("Microsoft YaHei", 12),
+                                bg='#4a90e2', fg='white', width=8, height=1,
+                                command=on_confirm)
+            confirm_btn.pack(side=tk.LEFT, padx=10)
+            
+            cancel_btn = tk.Button(button_frame, text="取消", font=("Microsoft YaHei", 12),
+                                bg='#e0e0e0', fg='#333333', width=8, height=1,
+                                command=on_cancel)
+            cancel_btn.pack(side=tk.LEFT, padx=10)
+            
+            # 绑定回车键
+            password_entry.bind('<Return>', lambda e: on_confirm())
+            
+            # 设置焦点
+            password_entry.focus_set()
+            
+            # 等待对话框关闭
+            password_dialog.wait_window()
+            
+            # 处理结果
+            if not password_result["confirmed"]:
                 print("用户取消密码验证")
                 return False
             
-            if password.strip() == self.SYSTEM_PASSWORD:
+            if password_result["password"] and password_result["password"].strip() == self.SYSTEM_PASSWORD:
                 print("密码验证成功")
                 messagebox.showinfo("验证成功", "密码验证通过，进入系统设置界面", parent=self.root)
                 return True
@@ -383,6 +440,9 @@ class SystemSettingInterface:
                                  highlightthickness=2, highlightcolor='#4a90e2', 
                                  bg='white', fg='#333333')
             param_entry.pack(side=tk.RIGHT, anchor='e', ipady=10)
+
+            # 添加触摸屏支持
+            TouchScreenUtils.setup_touch_entry(param_entry)
             
             # 绑定参数修改事件
             param_entry.bind('<FocusOut>', 
