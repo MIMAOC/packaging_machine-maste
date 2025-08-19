@@ -1009,6 +1009,10 @@ class ProductionInterface:
                     time.sleep(0.05)
                 
                     self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStop'], True)
+                    # 等待500ms
+                    time.sleep(0.5)
+                    
+                    self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], False)
 
                 self.add_fault_record(f"料斗{bucket_id}选择重新学习，跳转到AI模式")
 
@@ -1192,6 +1196,10 @@ class ProductionInterface:
                 time.sleep(0.05)
                 
                 self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStop'], True)
+                # 等待500ms
+                time.sleep(0.5)
+                
+                self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], False)
 
             # 获取物料名称
             material_name = self.production_params.get('material_name', '')
@@ -2307,12 +2315,9 @@ class ProductionInterface:
                 print("[生产界面] 物料监测服务已停止")
             
             # 停止PLC
-            if self.modbus_client and self.modbus_client.is_connected:
-                self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], True)
-                # 等待50ms
-                time.sleep(0.05)
-                
+            if self.modbus_client and self.modbus_client.is_connected:                
                 self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStart'], False)
+                
                 # 等待50ms
                 time.sleep(0.05)
                 
