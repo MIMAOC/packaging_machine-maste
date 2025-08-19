@@ -128,7 +128,7 @@ class ProductionInterface:
         self.is_production_running = False
         self.production_start_time = None
         self.monitoring_threads_running = False
-        self.is_paused = False  # ✅ 新增：暂停状态标志
+        self.is_paused = False  # 暂停状态标志
         
         # 界面数据
         self.bucket_weights = {i: 0.0 for i in range(1, 7)}  # 料斗重量
@@ -674,7 +674,7 @@ class ProductionInterface:
                         self.root.after(0, lambda: self.add_fault_record(f"包装数量监控异常: {str(e)}"))
                         break
             
-            # 新增：启动平均重量更新线程（每2s）
+            # 启动平均重量更新线程（每2s）
             def avg_weight_update_thread():
                 while self.monitoring_threads_running:
                     try:
@@ -998,9 +998,17 @@ class ProductionInterface:
                 if self.monitoring_service:
                     self.monitoring_service.stop_production_monitoring()
 
-                # 停止PLC
+                # 停止PLC和包装机
                 if self.modbus_client and self.modbus_client.is_connected:
+                    self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], True)
+                    # 等待50ms
+                    time.sleep(0.05)
+                
                     self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStart'], False)
+                    # 等待50ms
+                    time.sleep(0.05)
+                
+                    self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStop'], True)
 
                 self.add_fault_record(f"料斗{bucket_id}选择重新学习，跳转到AI模式")
 
@@ -1112,15 +1120,20 @@ class ProductionInterface:
                         print(f"[生产界面] 料斗{bucket_id}禁用命令发送失败")
 
                     # 继续生产（总停止=0，总启动=1）先发送总停止=0
-                    success1 = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStop'], False)
+                    success1 = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], False)
+                    
+                    # 等待50ms
+                    time.sleep(0.05)
+                    
+                    success2 = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStop'], False)
 
                     # 等待50ms
                     time.sleep(0.05)
 
                     # 发送总启动=1
-                    success2 = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStart'], True)
+                    success3 = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStart'], True)
 
-                    if success1 and success2:
+                    if success1 and success2 and success3:
                         self.root.after(0, lambda: self.add_fault_record(f"料斗{bucket_id}已弃用，其他料斗继续生产"))
                         print(f"[生产界面] 料斗{bucket_id}弃用后继续生产成功")
                     else:
@@ -1168,14 +1181,22 @@ class ProductionInterface:
             self.monitoring_threads_running = False
             self.is_production_running = False
 
-            # 停止PLC
+            # 停止PLC和包装机
             if self.modbus_client and self.modbus_client.is_connected:
+                self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], True)
+                # 等待50ms
+                time.sleep(0.05)
+                
                 self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStart'], False)
+                # 等待50ms
+                time.sleep(0.05)
+                
+                self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStop'], True)
 
             # 获取物料名称
             material_name = self.production_params.get('material_name', '')
 
-            # 新增：更新生产记录
+            # 更新生产记录
             if PRODUCTION_RECORD_DAO_AVAILABLE and self.production_id:
                 success, message = ProductionRecordDAO.update_production_record(
                     production_id=self.production_id,
@@ -1579,7 +1600,16 @@ class ProductionInterface:
                 self.monitoring_threads_running = False
                 
                 # 发送停止命令到PLC
-                if self.modbus_client and self.modbus_client.is_connected:
+                if self.modbus_client and self.modbus_client.is_connected:                    
+                    # 向包装机停止地址发送1
+                    success2 = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], True)
+                    if not success2:
+                        self.add_fault_record("发送包装机停止命令失败")
+                        return
+                        
+                    # 等待50ms
+                    time.sleep(0.05)
+                    
                     # 发送总启动=0（停止）
                     success = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStart'], False)
                     if not success:
@@ -1590,8 +1620,8 @@ class ProductionInterface:
                     time.sleep(0.05)
                     
                     # 发送总停止=1（停止）
-                    success = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStop'], True)
-                    if not success:
+                    success1 = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStop'], True)
+                    if not success1:
                         self.add_fault_record("发送总停止=1命令失败")
                         return
                 
@@ -1617,6 +1647,15 @@ class ProductionInterface:
                 # 在后台线程执行PLC操作，避免阻塞界面
                 def resume_thread():
                     try:
+                        # 向包装机停止地址发送0
+                        print("恢复生产：发送包装机取消停止命令")
+                        if not self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], False):
+                            self.root.after(0, lambda: self.add_fault_record("发送包装机取消停止命令失败"))
+                            return
+                        
+                        # 等待50ms
+                        time.sleep(0.05)
+                        
                         # 互斥保护：先发送总停止=0
                         print("恢复生产：发送总停止=0命令（互斥保护）")
                         if not self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStop'], False):
@@ -1728,7 +1767,7 @@ class ProductionInterface:
                         self.root.after(0, lambda: self.add_fault_record(f"包装数量监控异常: {str(e)}"))
                         break
             
-            # 新增：启动平均重量更新线程
+            # 启动平均重量更新线程
             def avg_weight_update_thread():
                 while self.monitoring_threads_running:
                     try:
@@ -1801,15 +1840,25 @@ class ProductionInterface:
                 # 在后台线程执行PLC操作
                 def stop_thread():
                     try:
+                        print("[生产界面] 物料不足，发送包装机取消停止命令")
+                        success = self.modbus_client.write_coil(
+                            GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], True)
+                        
+                        # 等待50ms
+                        time.sleep(0.05)
+                        
                         print("[生产界面] 物料不足，发送总启动=0命令")
                         success1 = self.modbus_client.write_coil(
                             GLOBAL_CONTROL_ADDRESSES['GlobalStart'], False)
+                        
+                        # 等待50ms
+                        time.sleep(0.05)
                         
                         print("[生产界面] 物料不足，发送总停止=1命令")
                         success2 = self.modbus_client.write_coil(
                             GLOBAL_CONTROL_ADDRESSES['GlobalStop'], True)
                         
-                        if success1 and success2:
+                        if success and success1 and success2:
                             self.root.after(0, lambda: self.add_fault_record("物料不足，生产已自动停止"))
                             print("[生产界面] 物料不足总停止命令发送成功")
                         else:
@@ -2197,6 +2246,13 @@ class ProductionInterface:
                 # 在后台线程执行PLC操作
                 def resume_thread():
                     try:
+                        print("[生产界面] 物料不足问题解决，发送包装机取消停止命令")
+                        success = self.modbus_client.write_coil(
+                            GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], False)
+                        
+                        # 等待50ms
+                        time.sleep(0.05)
+                        
                         print("[生产界面] 物料不足问题解决，发送总停止=0命令（互斥保护）")
                         success1 = self.modbus_client.write_coil(
                             GLOBAL_CONTROL_ADDRESSES['GlobalStop'], False)
@@ -2208,7 +2264,7 @@ class ProductionInterface:
                         success2 = self.modbus_client.write_coil(
                             GLOBAL_CONTROL_ADDRESSES['GlobalStart'], True)
                         
-                        if success1 and success2:
+                        if success and success1 and success2:
                             self.root.after(0, lambda: self.add_fault_record("物料不足问题已解决，生产已恢复"))
                             print("[生产界面] 物料不足问题解决，生产恢复成功")
                         else:
@@ -2252,7 +2308,15 @@ class ProductionInterface:
             
             # 停止PLC
             if self.modbus_client and self.modbus_client.is_connected:
+                self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], True)
+                # 等待50ms
+                time.sleep(0.05)
+                
                 self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStart'], False)
+                # 等待50ms
+                time.sleep(0.05)
+                
+                self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStop'], True)
             
             # 如果有主窗口引用，重新显示AI模式界面
             if self.main_window:

@@ -16,6 +16,7 @@ from plc_addresses import (
     BUCKET_PARAMETER_ADDRESSES,
     BUCKET_MONITORING_ADDRESSES,
     GLOBAL_CONTROL_ADDRESSES,
+    COARSE_TIME_MONITORING_ADDRESSES,  # 新增这一行
     get_all_bucket_weight_addresses
 )
 
@@ -108,30 +109,61 @@ class PLCOperations:
         执行放料和清零序列操作
         
         操作流程：
+        单斗启动=0
+        等待50ms
+        单斗停止=1
+        等待50ms
         1. 总启动=0
-        2. 总放料=1
-        3. 延迟1.5秒
-        4. 总放料=0
-        5. 总清零=1
-        6. 延迟100ms
-        7. 总清零=0
-        8. 总停止=0
+        等待50ms
+        2. 总停止=1
+        等待50ms
+        3. 总放料=1
+        4. 延迟1.5秒
+        5. 总放料=0
+        6. 总清零=1
+        7. 延迟100ms
+        8. 总清零=0
         
         Returns:
             Tuple[bool, str]: (是否成功, 操作消息)
         """
         try:
             self.logger.info("开始执行放料和清零序列操作")
+            # 向6个料斗分别发送启动=0命令（连续地址写入）
+            self.logger.info("步骤1.1: 发送所有料斗启动=0命令")
+            start_coil_address = COARSE_TIME_MONITORING_ADDRESSES['START_COIL_START_ADDRESS']
+            start_values = [False] * 6  # 6个料斗都设置为False（启动=0）
+            if not self.modbus_client.write_multiple_coils(start_coil_address, start_values):
+                return False, "发送所有料斗启动命令失败"
+
+            # 等待50ms
+            time.sleep(0.05)
+
+            # 向6个料斗分别发送停止=1命令（连续地址写入）
+            self.logger.info("步骤1.2: 发送所有料斗停止=1命令")
+            stop_coil_address = COARSE_TIME_MONITORING_ADDRESSES['STOP_COIL_START_ADDRESS']
+            stop_values = [True] * 6  # 6个料斗都设置为True（停止=1）
+            if not self.modbus_client.write_multiple_coils(stop_coil_address, stop_values):
+                return False, "发送所有料斗停止命令失败"
+
+            # 等待50ms
+            time.sleep(0.05)
             
             # 1. 总启动=0
             self.logger.info("步骤1: 发送总启动=0命令")
             if not self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStart'], False):
                 return False, "发送总启动命令失败"
             
+            # 等待50ms
+            time.sleep(0.05)
+            
             # 1. 总停止=1
             self.logger.info("步骤1: 发送总停止命令")
             if not self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStop'], True):
                 return False, "发送总停止命令失败"
+            
+            # 等待50ms
+            time.sleep(0.05)
             
             # 2. 总放料=1
             self.logger.info("步骤2: 发送总放料开始命令")
@@ -162,11 +194,27 @@ class PLCOperations:
             self.logger.info("步骤7: 发送总清零停止命令")
             if not self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalClear'], False):
                 return False, "发送总清零停止命令失败"
+
+            # 等待1秒
+            time.sleep(1)
             
-            # 8. 总停止=0
-            self.logger.info("步骤8: 取消总停止命令")
-            if not self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStop'], False):
-                return False, "取消总停止命令失败"
+            self.logger.info("开始执行放料和清零序列操作")
+            # 向6个料斗分别发送启动=0命令（连续地址写入）
+            self.logger.info("步骤1.1: 发送所有料斗启动=0命令")
+            start_coil_address = COARSE_TIME_MONITORING_ADDRESSES['START_COIL_START_ADDRESS']
+            start_values = [False] * 6  # 6个料斗都设置为False（启动=0）
+            if not self.modbus_client.write_multiple_coils(start_coil_address, start_values):
+                return False, "发送所有料斗启动命令失败"
+
+            # 等待50ms
+            time.sleep(0.05)
+
+            # 向6个料斗分别发送停止=1命令（连续地址写入）
+            self.logger.info("步骤1.2: 发送所有料斗停止=1命令")
+            stop_coil_address = COARSE_TIME_MONITORING_ADDRESSES['STOP_COIL_START_ADDRESS']
+            stop_values = [True] * 6  # 6个料斗都设置为True（停止=1）
+            if not self.modbus_client.write_multiple_coils(stop_coil_address, stop_values):
+                return False, "发送所有料斗停止命令失败"
             
             success_msg = "✅ 放料和清零序列操作执行成功"
             self.logger.info(success_msg)

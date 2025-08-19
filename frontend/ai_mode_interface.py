@@ -234,8 +234,14 @@ class AIModeInterface:
         self.material_shortage_dialogs = {}  # 记录物料不足弹窗 {bucket_id: dialog_window}
         self.dialog_lock = threading.Lock()  # 弹窗操作锁
     
-        # 新增：学习完成通知标志
+        # 学习完成通知标志
         self.all_learning_completed_notified = False  # 是否已通知所有学习完成
+        
+        # 定时器ID管理
+        self.learning_timer_id = None           # 学习计时器ID
+        self.statistics_timer_id = None         # 统计更新定时器ID
+        self.learning_timer_running = False     # 学习计时器运行标志
+        self.statistics_timer_running = False   # 统计定时器运行标志
     
     def get_material_list_from_database(self) -> List[str]:
         """
@@ -2800,7 +2806,7 @@ class AIModeInterface:
                 # 在主线程中更新标签
                 self.root.after(0, lambda: status_label.config(text=status_text, fg=status_color))
             
-                # 🔥 新增：如果料斗学习成功，立即检查确认按钮状态
+                # 如果料斗学习成功，立即检查确认按钮状态
                 if state.status.value == "completed" and state.is_successful:
                     self.root.after(100, self._check_confirm_button_state)
                     
@@ -2929,13 +2935,15 @@ class AIModeInterface:
         在参数写入完成、开启测定后立即显示
         """
         try:
-            # 如果弹窗已存在，先关闭
+            # 如果弹窗已存在，先关闭并清理定时器
             if self.learning_status_window:
+                self._stop_learning_timer()
+                self._stop_statistics_timer()
                 self.learning_status_window.destroy()
                 self.learning_status_window = None
                 self.bucket_status_labels.clear()
         
-            # 🔥 新增：重置学习完成通知标志
+            # 重置学习完成通知标志
             self.all_learning_completed_notified = False
             
             # 创建多斗学习状态弹窗
@@ -2964,7 +2972,7 @@ class AIModeInterface:
             self.learning_timer_label.pack(pady=(0, 10))
             
 
-            # 启动学习计时器（新增这行）
+            # 启动学习计时器
             self._start_learning_timer()
             
             # 状态网格容器
@@ -3034,8 +3042,9 @@ class AIModeInterface:
                 
                 print("[信息] 用户点击确认，关闭多斗学习状态弹窗")
     
-                # 停止学习计时器（新增）
+                # 停止学习计时器
                 self._stop_learning_timer()
+                self._stop_statistics_timer()
                 
                 # 关闭多斗学习状态弹窗
                 self.learning_status_window.destroy()
@@ -3089,7 +3098,7 @@ class AIModeInterface:
             self.cancel_btn.pack(side=tk.LEFT, padx=(30, 0))  # 左侧留出30像素间距
             
             # 启动定时更新统计信息
-            self._update_learning_statistics()
+            self._start_statistics_timer()
             
             print("[信息] 多斗学习状态弹窗已显示")
             
@@ -3101,42 +3110,49 @@ class AIModeInterface:
         """启动学习计时器"""
         try:
             import datetime
-
+            
+            # 先停止之前的计时器
+            self._stop_learning_timer()
+            
             # 记录学习开始时间
             self.learning_timer_start_time = datetime.datetime.now()
             self.learning_timer_running = True
-
+            
             def update_learning_timer():
                 """更新学习计时器显示"""
-                if hasattr(self, 'learning_timer_running') and self.learning_timer_running:
-                    try:
-                        # 计算经过的时间
-                        current_time = datetime.datetime.now()
-                        elapsed_time = current_time - self.learning_timer_start_time
-
-                        # 格式化为 HH:MM:SS
-                        total_seconds = int(elapsed_time.total_seconds())
-                        hours = total_seconds // 3600
-                        minutes = (total_seconds % 3600) // 60
-                        seconds = total_seconds % 60
-
-                        time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-
-                        # 更新标签
-                        if hasattr(self, 'learning_timer_label') and self.learning_timer_label.winfo_exists():
-                            self.learning_timer_label.config(text=time_str)
-                            # 继续更新
-                            self.root.after(1000, update_learning_timer)
-                        else:
-                            self.learning_timer_running = False
-                    except Exception as e:
-                        print(f"[错误] 更新学习计时器异常: {e}")
+                if not self.learning_timer_running:
+                    return
+                    
+                try:
+                    # 计算经过的时间
+                    current_time = datetime.datetime.now()
+                    elapsed_time = current_time - self.learning_timer_start_time
+                    
+                    # 格式化为 HH:MM:SS
+                    total_seconds = int(elapsed_time.total_seconds())
+                    hours = total_seconds // 3600
+                    minutes = (total_seconds % 3600) // 60
+                    seconds = total_seconds % 60
+                    
+                    time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                    
+                    # 更新标签
+                    if hasattr(self, 'learning_timer_label') and self.learning_timer_label.winfo_exists():
+                        self.learning_timer_label.config(text=time_str)
+                        # 调度下次更新
+                        if self.learning_timer_running:
+                            self.learning_timer_id = self.root.after(1000, update_learning_timer)
+                    else:
                         self.learning_timer_running = False
-
+                        
+                except Exception as e:
+                    print(f"[错误] 更新学习计时器异常: {e}")
+                    self.learning_timer_running = False
+            
             # 开始更新计时器
-            update_learning_timer()
+            self.learning_timer_id = self.root.after(1000, update_learning_timer)
             print("[信息] 学习计时器已启动")
-
+            
         except Exception as e:
             error_msg = f"启动学习计时器异常: {str(e)}"
             print(f"[错误] {error_msg}")
@@ -3144,11 +3160,47 @@ class AIModeInterface:
     def _stop_learning_timer(self):
         """停止学习计时器"""
         try:
-            if hasattr(self, 'learning_timer_running'):
-                self.learning_timer_running = False
-                print("[信息] 学习计时器已停止")
+            self.learning_timer_running = False
+            
+            # 取消定时器
+            if hasattr(self, 'learning_timer_id') and self.learning_timer_id:
+                self.root.after_cancel(self.learning_timer_id)
+                self.learning_timer_id = None
+                
+            print("[信息] 学习计时器已停止")
+            
         except Exception as e:
             print(f"[错误] 停止学习计时器异常: {e}")
+    
+    def _start_statistics_timer(self):
+        """启动统计更新定时器"""
+        try:
+            # 先停止之前的定时器
+            self._stop_statistics_timer()
+            
+            self.statistics_timer_running = True
+            # 立即执行一次，然后开始定时更新
+            self._update_learning_statistics()
+            
+            print("[信息] 统计更新定时器已启动")
+            
+        except Exception as e:
+            print(f"[错误] 启动统计定时器异常: {e}")
+
+    def _stop_statistics_timer(self):
+        """停止统计更新定时器"""
+        try:
+            self.statistics_timer_running = False
+            
+            # 取消定时器
+            if hasattr(self, 'statistics_timer_id') and self.statistics_timer_id:
+                self.root.after_cancel(self.statistics_timer_id)
+                self.statistics_timer_id = None
+                
+            print("[信息] 统计更新定时器已停止")
+            
+        except Exception as e:
+            print(f"[错误] 停止统计定时器异常: {e}")
 
     def _execute_cancel_learning_process(self):
         """
@@ -3292,6 +3344,7 @@ class AIModeInterface:
                 
             # 停止学习计时器（新增）
             self._stop_learning_timer()
+            self._stop_statistics_timer()
             
             # 关闭多斗学习状态弹窗
             if self.learning_status_window:
@@ -3329,6 +3382,10 @@ class AIModeInterface:
         """
         try:
             if not self.learning_status_window or not self.learning_state_manager:
+                self.statistics_timer_running = False
+                return
+            
+            if not self.statistics_timer_running:
                 return
             
             # 获取统计信息
@@ -3362,7 +3419,7 @@ class AIModeInterface:
                         fg='white',
                         text="确认 全部完成"
                     )
-                    # 🔥 修改：只在第一次检测到完成时打印日志
+                    # 只在第一次检测到完成时打印日志
                     if not self.all_learning_completed_notified:
                         print("[信息] 所有料斗学习完成，确认按钮已启用")
                         self.all_learning_completed_notified = True
@@ -3374,16 +3431,18 @@ class AIModeInterface:
                         fg='#666666',
                         text="确认"
                     )
-                    # 🔥 新增：如果状态从完成变为未完成（例如重新学习），重置通知标志
+                    # 如果状态从完成变为未完成（例如重新学习），重置通知标志
                     if self.all_learning_completed_notified:
                         self.all_learning_completed_notified = False
                         print("[信息] 检测到学习状态变化，重置完成通知标志")
             
-            # 继续定时更新（每秒更新一次）
-            self.root.after(1000, self._update_learning_statistics)
+            # 调度下次更新（非递归方式）
+            if self.statistics_timer_running:
+                self.statistics_timer_id = self.root.after(1000, self._update_learning_statistics)
             
         except Exception as e:
             print(f"[错误] 更新学习统计信息异常: {e}")
+            self.statistics_timer_running = False
     
     def _show_training_completed_dialog(self):
         """
