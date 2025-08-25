@@ -24,6 +24,7 @@ import threading
 import time
 from datetime import datetime, timedelta
 from typing import Optional, Dict
+from plc_addresses import get_all_bucket_target_reached_addresses
 
 # 导入PLC操作模块
 try:
@@ -1191,13 +1192,56 @@ class ProductionInterface:
                 # 等待50ms
                 time.sleep(0.05)
                 
-                self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStart'], False)
+                try:                    
+                    target_reached_addresses = get_all_bucket_target_reached_addresses()
+    
+                    # 设置最大等待时间和检查间隔
+                    max_wait_time = 60.0  # 最多等待60秒
+                    check_interval = 0.5  # 每500ms检查一次
+                    start_wait_time = time.time()
+                    all_buckets_reached = False
+                    
+                    self.add_fault_record("开始等待6个斗全部到量...")
+                    
+                    while time.time() - start_wait_time < max_wait_time:
+                        # 读取所有斗的到量状态
+                        coil_states = self.modbus_client.read_coils(
+                            target_reached_addresses[0], len(target_reached_addresses))
+                        
+                        if coil_states is not None and len(coil_states) >= 6:
+                            # 检查前6个斗是否都到量=1
+                            all_buckets_reached = all(coil_states[i] for i in range(6))
+                            
+                            if all_buckets_reached:
+                                break
+                        
+                        time.sleep(check_interval)
+                    
+                    if all_buckets_reached:
+                        self.add_fault_record("6个斗都已到量，执行总停止命令")
+                        
+                        # 先发送总启动=0
+                        success1 = self.modbus_client.write_coil(
+                            GLOBAL_CONTROL_ADDRESSES['GlobalStart'], False)
+                        time.sleep(0.05)
+                        
+                        # 发送总停止=1
+                        success2 = self.modbus_client.write_coil(
+                            GLOBAL_CONTROL_ADDRESSES['GlobalStop'], True)
+                        
+                        if success1 and success2:
+                            self.add_fault_record("总停止命令发送成功")
+                        else:
+                            self.add_fault_record("总停止命令发送失败")
+                    else:
+                        self.add_fault_record(f"等待{max_wait_time}秒后仍有斗未到量，跳过总停止命令")
+                        
+                except Exception as e:
+                    error_msg = f"监测斗到量状态异常: {str(e)}"
+                    self.add_fault_record(error_msg)
+                
                 # 等待50ms
                 time.sleep(0.05)
-                
-                self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStop'], True)
-                # 等待500ms
-                time.sleep(0.5)
                 
                 self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], False)
 
