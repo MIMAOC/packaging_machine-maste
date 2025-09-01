@@ -12,6 +12,8 @@ import threading
 import time
 from datetime import datetime, timedelta
 from typing import Optional, Dict
+from touchscreen_utils import TouchScreenUtils
+from plc_addresses import get_all_bucket_target_reached_addresses
 
 try:
     from plc_addresses import BUCKET_MONITORING_ADDRESSES, GLOBAL_CONTROL_ADDRESSES, get_production_address
@@ -87,7 +89,6 @@ class ProductionInterface:
         self.progress_var = None
         self.package_count_label = None
         self.completion_rate_label = None
-        self.avg_weight_label = None
         self.pause_resume_btn = None
         
         self.setup_window()
@@ -103,6 +104,9 @@ class ProductionInterface:
         self.root.geometry("1920x1080")
         self.root.configure(bg='white')
         self.root.resizable(True, True)
+        
+        TouchScreenUtils.optimize_window_for_touch(self.root)
+        TouchScreenUtils.setup_window_focus_handling(self.root)
         
         self.setup_force_exit_mechanism()
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -290,16 +294,6 @@ class ProductionInterface:
                                      maximum=100, length=600)
         progress_bar.pack(fill=tk.X, pady=5)
         
-        avg_frame = tk.Frame(parent, bg='white')
-        avg_frame.pack(fill=tk.X, pady=(0, 20))
-        
-        tk.Label(avg_frame, text="平均重量", font=self.data_font,
-                bg='white', fg='#333333').pack(side=tk.LEFT)
-        
-        self.avg_weight_label = tk.Label(avg_frame, text="0.0g", 
-                                       font=self.big_data_font, bg='white', fg='#28a745')
-        self.avg_weight_label.pack(side=tk.LEFT, padx=(20, 0))
-        
         fault_frame = tk.LabelFrame(parent, text="运行日志记录", font=self.label_font,
                                   bg='white', fg='#333333')
         fault_frame.pack(fill=tk.BOTH, expand=True)
@@ -395,6 +389,14 @@ class ProductionInterface:
                         self.root.after(0, lambda: self.add_fault_record("发送包数清零=1命令失败"))
                         return
                     
+                    time.sleep(0.05)
+                    
+                    if not self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], False):
+                        self.root.after(0, lambda: self.add_fault_record("发送包装机允许启动命令失败"))
+                        return
+                    
+                    time.sleep(0.05)
+                    
                     if not self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStop'], False):
                         self.root.after(0, lambda: self.add_fault_record("发送总停止=0命令失败"))
                         return
@@ -472,18 +474,9 @@ class ProductionInterface:
                         self.root.after(0, lambda: self.add_fault_record(f"包装数量监控异常: {str(e)}"))
                         break
             
-            def avg_weight_update_thread():
-                while self.monitoring_threads_running:
-                    try:
-                        self._update_average_weight_from_database()
-                        time.sleep(2)
-                    except Exception:
-                        break
-            
             threading.Thread(target=timer_update_thread, daemon=True).start()
             threading.Thread(target=weight_monitoring_thread, daemon=True).start()
             threading.Thread(target=package_monitoring_thread, daemon=True).start()
-            threading.Thread(target=avg_weight_update_thread, daemon=True).start()
             
         except Exception as e:
             error_msg = f"启动监控异常: {str(e)}"
@@ -493,10 +486,6 @@ class ProductionInterface:
         try:
             if not self.modbus_client or not self.modbus_client.is_connected:
                 return
-            
-            weights_updated = False
-            total_weight = 0
-            valid_count = 0
             
             for bucket_id in range(1, 7):
                 weight_address = BUCKET_MONITORING_ADDRESSES[bucket_id]['Weight']
@@ -519,18 +508,12 @@ class ProductionInterface:
                         
                         self.root.after(0, lambda bid=bucket_id, w=weight_value: 
                                       self.bucket_weight_labels[bid].config(text=f"{w:.1f}g"))
-                    
-                    total_weight += weight_value
-                    valid_count += 1
+                        
                 else:
                     if self.bucket_status[bucket_id] != 'error':
                         self.bucket_status[bucket_id] = 'error'
                         self.root.after(0, lambda bid=bucket_id: self._update_bucket_status(bid, 'error'))
                         self.root.after(0, lambda: self.add_fault_record(f"料斗{bucket_id}重量读取失败"))
-            
-            if valid_count > 0:
-                avg_weight = total_weight / valid_count
-                self.root.after(0, lambda: self.avg_weight_label.config(text=f"{avg_weight:.1f}g"))
                 
         except Exception:
             pass
@@ -567,7 +550,7 @@ class ProductionInterface:
                 
                 self.progress_var.set(completion_rate)
                 
-                if self.current_package_count >= total_packages:
+                if self.current_package_count >= total_packages + 1:
                     self._production_completed()
             
         except Exception:
@@ -586,23 +569,6 @@ class ProductionInterface:
                 else:
                     canvas.create_oval(3, 3, 17, 17, fill='#dc3545', outline='#dc3545')
                     
-        except Exception:
-            pass
-    
-    def _update_average_weight_from_database(self):
-        try:
-            if not PRODUCTION_DETAIL_DAO_AVAILABLE or not self.production_id:
-                return
-            
-            total_weight, valid_count = ProductionDetailDAO.get_valid_weight_sum_by_production(
-                self.production_id)
-            
-            if valid_count > 0:
-                avg_weight = total_weight / valid_count
-                self.root.after(0, lambda: self.avg_weight_label.config(text=f"{avg_weight:.1f}g"))
-            else:
-                self.root.after(0, lambda: self.avg_weight_label.config(text="0.0g"))
-                
         except Exception:
             pass
             
@@ -624,7 +590,7 @@ class ProductionInterface:
             self.add_fault_record(f"生产已停止 - 料斗{bucket_id}: {reason}")
             
             if "连续3次不合格" in reason:
-                pass
+                self.root.after(0, lambda: self.show_e002_dialog(bucket_id))
             else:
                 self.root.after(0, self._handle_production_auto_pause)
 
@@ -715,7 +681,7 @@ class ProductionInterface:
                     time.sleep(0.05)
                 
                     self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStop'], True)
-                    time.sleep(0.5)
+                    time.sleep(0.05)
                     
                     self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], False)
 
@@ -797,15 +763,13 @@ class ProductionInterface:
                         self.root.after(0, lambda: self.add_fault_record(f"料斗{bucket_id}已禁用"))
                     else:
                         self.root.after(0, lambda: self.add_fault_record(f"料斗{bucket_id}禁用命令发送失败"))
-                    
-                    success1 = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], False)
-                    time.sleep(0.05)
-                    success2 = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStop'], False)
+                        
+                    success1 = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStop'], False)
                     time.sleep(0.05)
                     
-                    success3 = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStart'], True)
+                    success2 = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStart'], True)
 
-                    if success1 and success2 and success3:
+                    if success and success1 and success2:
                         self.root.after(0, lambda: self.add_fault_record(f"料斗{bucket_id}已弃用，其他料斗继续生产"))
                     else:
                         self.root.after(0, lambda: self.add_fault_record("继续生产命令发送失败"))
@@ -836,20 +800,56 @@ class ProductionInterface:
     
     def _production_completed(self):
         try:
-            self.monitoring_threads_running = False
-            self.is_production_running = False
-            
             if self.modbus_client and self.modbus_client.is_connected:
                 self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], True)
                 time.sleep(0.05)
                 
-                self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStart'], False)
-                time.sleep(0.05)
-                
-                self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['GlobalStop'], True)
-                time.sleep(0.5)
-                
-                self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], False)
+                try:                    
+                    target_reached_addresses = get_all_bucket_target_reached_addresses()
+                    
+                    max_wait_time = 120.0
+                    check_interval = 0.5
+                    start_wait_time = time.time()
+                    all_buckets_reached = False
+                    
+                    while time.time() - start_wait_time < max_wait_time:
+                        coil_states = self.modbus_client.read_coils(
+                            target_reached_addresses[0], len(target_reached_addresses))
+                        
+                        if coil_states is not None and len(coil_states) >= 6:
+                            all_buckets_reached = all(coil_states[i] for i in range(6))
+                            
+                            if all_buckets_reached:
+                                break
+                        
+                        time.sleep(check_interval)
+                    
+                    if all_buckets_reached:
+                        success1 = self.modbus_client.write_coil(
+                            GLOBAL_CONTROL_ADDRESSES['GlobalStart'], False)
+                        
+                        time.sleep(0.05)
+                        
+                        success2 = self.modbus_client.write_coil(
+                            GLOBAL_CONTROL_ADDRESSES['GlobalStop'], True)
+                        
+                        time.sleep(0.05)
+                                
+                        self.monitoring_threads_running = False
+                        self.is_production_running = False
+                        
+                        self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], False)
+            
+                        self._update_bucket_weights_to_offline()
+                        
+                        if not (success1 and success2):
+                            self.add_fault_record("生产停止失败")
+                    else:
+                        pass
+                        
+                except Exception as e:
+                    error_msg = f"监测斗到量状态异常: {str(e)}"
+                    self.add_fault_record(error_msg)
             
             material_name = self.production_params.get('material_name', '')
             
@@ -891,19 +891,255 @@ class ProductionInterface:
             target_packages = self.production_params.get('package_quantity', 0)
             actual_completion_rate = (self.current_package_count / target_packages * 100) if target_packages > 0 else 0
             
-            messagebox.showinfo("生产完成", 
-                              f"🎉 生产任务已完成！\n\n"
-                              f"生产编号: {self.production_id}\n"
-                              f"物料名称: {material_name}\n"
-                              f"目标重量: {self.production_params.get('target_weight', 0)}g\n"
-                              f"目标包数: {target_packages}\n"
-                              f"实际包数: {self.current_package_count}\n"
-                              f"完成率: {actual_completion_rate:.2f}%\n"
-                              f"用时: {self.timer_label.cget('text')}\n\n"
-                              f"✅ 物料AI状态已更新为'已生产'")
+            self.show_production_completed_dialog(material_name, target_packages, actual_completion_rate)
 
         except Exception:
             pass
+            
+    def _update_bucket_weights_to_offline(self):
+        try:
+            def update_ui():
+                updated_count = 0
+                for bucket_id in range(1, 7):
+                    try:
+                        if bucket_id in self.bucket_weight_labels:
+                            if self.bucket_weight_labels[bucket_id].winfo_exists():
+                                self.bucket_weight_labels[bucket_id].config(text="--.--g")
+                                updated_count += 1
+                            else:
+                                pass
+                        else:
+                            pass
+                    except Exception as e:
+                        pass
+                
+                self.add_fault_record(f"料斗重量显示已更新为离线状态 ({updated_count}/6)")
+            
+            self.root.after(0, update_ui)
+            
+            def verify_update():
+                offline_count = 0
+                for bucket_id in range(1, 7):
+                    try:
+                        if (bucket_id in self.bucket_weight_labels and 
+                            self.bucket_weight_labels[bucket_id].winfo_exists()):
+                            current_text = self.bucket_weight_labels[bucket_id].cget('text')
+                            if current_text == "--.--g":
+                                offline_count += 1
+                            else:
+                                self.bucket_weight_labels[bucket_id].config(text="--.--g")
+                    except Exception:
+                        pass
+            
+            self.root.after(1000, verify_update)
+            
+        except Exception as e:
+            error_msg = f"更新料斗重量显示为离线状态异常: {str(e)}"
+            self.add_fault_record(error_msg)
+    
+    def show_production_completed_dialog(self, material_name, target_packages, actual_completion_rate):
+        try:
+            completed_window = tk.Toplevel(self.root)
+            completed_window.title("生产完成")
+            completed_window.geometry("1425x800")
+            completed_window.configure(bg='white')
+            completed_window.resizable(False, False)
+            completed_window.transient(self.root)
+            completed_window.grab_set()
+            
+            completed_window.protocol("WM_DELETE_WINDOW", lambda: None)
+            
+            self.center_dialog_relative_to_main(completed_window, 1425, 800)
+            
+            tk.Label(completed_window, text="🎉", 
+                    font=tkFont.Font(family="微软雅黑", size=36),
+                    bg='white', fg='#28a745').pack(pady=20)
+            
+            tk.Label(completed_window, text="生产任务已完成！", 
+                    font=tkFont.Font(family="微软雅黑", size=20, weight="bold"),
+                    bg='white', fg='#333333').pack(pady=10)
+            
+            info_frame = tk.Frame(completed_window, bg='#f8f9fa', relief='solid', bd=1)
+            info_frame.pack(fill=tk.X, padx=40, pady=20)
+            
+            info_text = (f"生产编号: {self.production_id}\n"
+                        f"物料名称: {material_name}\n"
+                        f"目标重量: {self.production_params.get('target_weight', 0)}g\n"
+                        f"目标包数: {target_packages}\n"
+                        f"实际包数: {self.current_package_count}\n"
+                        f"完成率: {actual_completion_rate:.2f}%\n"
+                        f"用时: {self.timer_label.cget('text')}")
+            
+            tk.Label(info_frame, text=info_text,
+                    font=tkFont.Font(family="微软雅黑", size=12),
+                    bg='#f8f9fa', fg='#333333',
+                    justify='left').pack(padx=20, pady=20)
+            
+            button_frame = tk.Frame(completed_window, bg='white')
+            button_frame.pack(pady=30)
+            
+            return_btn = tk.Button(button_frame, text="返回生产界面", 
+                                font=tkFont.Font(family="微软雅黑", size=14),
+                                bg='#6c757d', fg='white',
+                                relief='flat', bd=0,
+                                padx=30, pady=12,
+                                command=lambda: self._handle_return_to_production(completed_window))
+            return_btn.pack(side=tk.LEFT, padx=15)
+            
+            continue_btn = tk.Button(button_frame, text="继续生产", 
+                                font=tkFont.Font(family="微软雅黑", size=14),
+                                bg='#28a745', fg='white',
+                                relief='flat', bd=0,
+                                padx=30, pady=12,
+                                command=lambda: self._handle_continue_production(completed_window, material_name))
+            continue_btn.pack(side=tk.LEFT, padx=15)
+            
+        except Exception as e:
+            error_msg = f"显示生产完成对话框异常: {str(e)}"
+            self.add_fault_record(error_msg)
+
+    def _handle_return_to_production(self, completed_window):
+        try:
+            completed_window.destroy()
+            
+            self.on_closing()
+            
+        except Exception:
+            pass
+
+    def _handle_continue_production(self, completed_window, material_name):
+        try:
+            completed_window.destroy()
+            
+            self.show_continue_production_dialog(material_name)
+            
+        except Exception:
+            pass
+        
+    def show_continue_production_dialog(self, material_name):
+        try:
+            continue_window = tk.Toplevel(self.root)
+            continue_window.title("继续生产")
+            continue_window.geometry("1425x800")
+            continue_window.configure(bg='white')
+            continue_window.resizable(False, False)
+            continue_window.transient(self.root)
+            continue_window.grab_set()
+            
+            TouchScreenUtils.setup_dialog_focus_handling(continue_window)
+            
+            def set_grab():
+                try:
+                    continue_window.grab_set()
+                except Exception:
+                    pass
+            continue_window.after(300, set_grab)
+            
+            self.center_dialog_relative_to_main(continue_window, 1425, 800)
+            
+            tk.Label(continue_window, text="继续生产", 
+                    font=tkFont.Font(family="微软雅黑", size=18, weight="bold"),
+                    bg='white', fg='#333333').pack(pady=30)
+            
+            info_text = f"物料名称: {material_name}\n目标重量: {self.production_params.get('target_weight', 0)}g"
+            tk.Label(continue_window, text=info_text,
+                    font=tkFont.Font(family="微软雅黑", size=12),
+                    bg='white', fg='#666666',
+                    justify='center').pack(pady=10)
+            
+            input_frame = tk.Frame(continue_window, bg='white')
+            input_frame.pack(pady=20)
+            
+            tk.Label(input_frame, text="请输入继续生产的包装数量：",
+                    font=tkFont.Font(family="微软雅黑", size=14),
+                    bg='white', fg='#333333').pack()
+            
+            package_quantity_var = tk.StringVar()
+            package_entry = tk.Entry(input_frame, textvariable=package_quantity_var,
+                                font=tkFont.Font(family="微软雅黑", size=14),
+                                width=15, justify='center')
+            package_entry.pack(pady=10)
+            
+            TouchScreenUtils.setup_touch_entry(package_entry, "包装数量")
+            package_entry.bind('<Button-1>', lambda e: package_entry.focus_force(), add=True)
+            package_entry.focus_set()
+            
+            button_frame = tk.Frame(continue_window, bg='white')
+            button_frame.pack(pady=30)
+            
+            cancel_btn = tk.Button(button_frame, text="取消", 
+                                font=tkFont.Font(family="微软雅黑", size=14),
+                                bg='#6c757d', fg='white',
+                                relief='flat', bd=0,
+                                padx=30, pady=10,
+                                command=continue_window.destroy)
+            cancel_btn.pack(side=tk.LEFT, padx=15)
+            
+            def on_confirm():
+                try:
+                    quantity_text = package_quantity_var.get().strip()
+                    if not quantity_text:
+                        messagebox.showerror("输入错误", "请输入包装数量")
+                        return
+                    
+                    try:
+                        package_quantity = int(quantity_text)
+                        if package_quantity <= 0:
+                            messagebox.showerror("输入错误", "包装数量必须大于0")
+                            return
+                    except ValueError:
+                        messagebox.showerror("输入错误", "请输入有效的数字")
+                        return
+                    
+                    continue_window.destroy()
+                    
+                    self._start_new_production(material_name, package_quantity)
+                    
+                except Exception as e:
+                    messagebox.showerror("错误", f"处理继续生产时发生错误: {str(e)}")
+            
+            confirm_btn = tk.Button(button_frame, text="确认", 
+                                font=tkFont.Font(family="微软雅黑", size=14),
+                                bg='#28a745', fg='white',
+                                relief='flat', bd=0,
+                                padx=30, pady=10,
+                                command=on_confirm)
+            confirm_btn.pack(side=tk.LEFT, padx=15)
+            
+            continue_window.bind('<Return>', lambda e: on_confirm())
+            
+        except Exception as e:
+            error_msg = f"显示继续生产输入对话框异常: {str(e)}"
+            self.add_fault_record(error_msg)
+
+    def _start_new_production(self, material_name, package_quantity):
+        try:
+            self.monitoring_threads_running = False
+            self.is_production_running = False
+            
+            if self.monitoring_service:
+                self.monitoring_service.stop_production_monitoring()
+                self.monitoring_service.stop_all_monitoring()
+            
+            new_production_params = {
+                'material_name': material_name,
+                'target_weight': self.production_params.get('target_weight', 0),
+                'package_quantity': package_quantity
+            }
+            
+            self.root.destroy()
+            
+            if self.main_window:
+                parent = self.main_window.root if hasattr(self.main_window, 'root') else None
+                if parent:
+                    new_production_interface = create_production_interface(parent, self.main_window, new_production_params)
+                else:
+                    pass
+            else:
+                pass
+            
+        except Exception as e:
+            messagebox.showerror("错误", f"开始新生产任务时发生错误: {str(e)}")
     
     def add_fault_record(self, message: str):
         try:
@@ -1187,6 +1423,13 @@ class ProductionInterface:
                     if not success1:
                         self.add_fault_record("发送总停止=1命令失败")
                         return
+                        
+                    time.sleep(0.05)
+                    
+                    success3 = self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], False)
+                    if not success3:
+                        self.add_fault_record("发送包装机停止命令失败")
+                        return
                 
                 self.is_paused = True
                 self.is_production_running = False
@@ -1290,18 +1533,9 @@ class ProductionInterface:
                         self.root.after(0, lambda: self.add_fault_record(f"包装数量监控异常: {str(e)}"))
                         break
             
-            def avg_weight_update_thread():
-                while self.monitoring_threads_running:
-                    try:
-                        self._update_average_weight_from_database()
-                        time.sleep(2)
-                    except Exception:
-                        break
-            
             threading.Thread(target=timer_update_thread, daemon=True).start()
             threading.Thread(target=weight_monitoring_thread, daemon=True).start()
             threading.Thread(target=package_monitoring_thread, daemon=True).start()
-            threading.Thread(target=avg_weight_update_thread, daemon=True).start()
             
         except Exception as e:
             error_msg = f"重新启动监控异常: {str(e)}"
@@ -1346,7 +1580,12 @@ class ProductionInterface:
                         success2 = self.modbus_client.write_coil(
                             GLOBAL_CONTROL_ADDRESSES['GlobalStop'], True)
                         
-                        if success and success1 and success2:
+                        time.sleep(0.05)
+                        
+                        success3 = self.modbus_client.write_coil(
+                            GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], False)
+                        
+                        if success and success1 and success2 and success3:
                             self.root.after(0, lambda: self.add_fault_record("物料不足，生产已自动停止"))
                         else:
                             self.root.after(0, lambda: self.add_fault_record("物料不足总停止命令发送失败"))
@@ -1600,11 +1839,6 @@ class ProductionInterface:
             if self.modbus_client and self.modbus_client.is_connected:
                 def resume_thread():
                     try:
-                        success = self.modbus_client.write_coil(
-                            GLOBAL_CONTROL_ADDRESSES['PackagingMachineStop'], False)
-                        
-                        time.sleep(0.05)
-                        
                         success1 = self.modbus_client.write_coil(
                             GLOBAL_CONTROL_ADDRESSES['GlobalStop'], False)
                         
@@ -1613,7 +1847,7 @@ class ProductionInterface:
                         success2 = self.modbus_client.write_coil(
                             GLOBAL_CONTROL_ADDRESSES['GlobalStart'], True)
                         
-                        if success and success1 and success2:
+                        if success1 and success2:
                             self.root.after(0, lambda: self.add_fault_record("物料不足问题已解决，生产已恢复"))
                         else:
                             self.root.after(0, lambda: self.add_fault_record("恢复生产命令发送失败"))

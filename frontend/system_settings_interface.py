@@ -25,12 +25,6 @@ class SystemSettingsInterface:
         self.setup_window()
         self.setup_fonts()
         self.create_widgets()
-        
-        try:
-            from touchscreen_utils import TouchScreenUtils
-            TouchScreenUtils.optimize_window_for_touch(self.root)
-        except ImportError:
-            pass
     
     def setup_window(self):
         self.root.title("系统设置")

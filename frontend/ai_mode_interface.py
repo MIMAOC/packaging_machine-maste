@@ -13,6 +13,7 @@ import threading
 import time
 from typing import Dict, List
 from touchscreen_utils import TouchScreenUtils
+from production_interface import create_production_interface
 
 try:
     from clients.webapi_client import analyze_target_weight
@@ -78,6 +79,12 @@ try:
     INTELLIGENT_LEARNING_DAO_AVAILABLE = True
 except ImportError as e:
     INTELLIGENT_LEARNING_DAO_AVAILABLE = False
+    
+try:
+    from database.production_record_dao import ProductionRecordDAO
+    PRODUCTION_RECORD_DAO_AVAILABLE = True
+except ImportError as e:
+    PRODUCTION_RECORD_DAO_AVAILABLE = False
 
 class AIModeInterface:
     def __init__(self, parent=None, main_window=None):
@@ -272,8 +279,9 @@ class AIModeInterface:
         self.root.geometry("1920x1080")
         self.root.configure(bg='white')
         self.root.resizable(True, True)
-        
+
         TouchScreenUtils.optimize_window_for_touch(self.root)
+        TouchScreenUtils.setup_window_focus_handling(self.root)
         
         self.setup_force_exit_mechanism()
         
@@ -397,6 +405,7 @@ class AIModeInterface:
         weight_entry.pack(ipady=12)
         
         TouchScreenUtils.setup_touch_entry(weight_entry, "请输入目标重量克数")
+        weight_entry.bind('<Button-1>', lambda e: weight_entry.focus_force(), add=True)
     
     def create_quantity_section(self, parent):
         quantity_frame = tk.Frame(parent, bg='white')
@@ -418,6 +427,7 @@ class AIModeInterface:
         quantity_entry.pack(ipady=12)
         
         TouchScreenUtils.setup_touch_entry(quantity_entry, "请输入所需包装数量")
+        quantity_entry.bind('<Button-1>', lambda e: quantity_entry.focus_force(), add=True)
     
     def create_material_section(self, parent):
         material_frame = tk.Frame(parent, bg='white')
@@ -507,9 +517,6 @@ class AIModeInterface:
         except ImportError as e:
             pass
     
-    def setup_placeholder(self, entry_widget, placeholder_text):
-        TouchScreenUtils.setup_touch_entry(entry_widget, placeholder_text)
-    
     def on_ai_icon_click(self):
         messagebox.showinfo("AI功能", "AI语音助手功能正在开发中，敬请期待...")
     
@@ -583,6 +590,8 @@ class AIModeInterface:
             
             self.center_dialog_relative_to_main(name_dialog, 700, 600)
             
+            TouchScreenUtils.setup_dialog_focus_handling(name_dialog)
+            
             tk.Label(name_dialog, text="新物料名称", 
                     font=tkFont.Font(family="微软雅黑", size=16, weight="bold"),
                     bg='white', fg='#333333').pack(pady=40)
@@ -598,7 +607,8 @@ class AIModeInterface:
                                  bg='white', fg='#333333')
             name_entry.pack(ipady=8)
             
-            self.setup_placeholder(name_entry, "请输入物料名称")
+            TouchScreenUtils.setup_touch_entry(name_entry, "请输入物料名称")
+            name_entry.bind('<Button-1>', lambda e: name_entry.focus_force(), add=True)
             name_entry.focus()
             
             button_frame = tk.Frame(name_dialog, bg='white')
@@ -660,6 +670,8 @@ class AIModeInterface:
             params_dialog.transient(self.root)
             params_dialog.grab_set()
             
+            TouchScreenUtils.setup_dialog_focus_handling(params_dialog)
+            
             self.center_dialog_relative_to_main(params_dialog, 700, 600)
             
             tk.Label(params_dialog, text="新物料名称", 
@@ -705,7 +717,9 @@ class AIModeInterface:
             weight_entry.pack(ipady=8, pady=(5, 0))
             
             if not weight_var.get():
-                self.setup_placeholder(weight_entry, "请输入目标重量")
+                TouchScreenUtils.setup_touch_entry(weight_entry, "请输入目标重量克数")
+                weight_entry.bind('<Button-1>', lambda e: weight_entry.focus_force(), add=True)
+                weight_entry.focus()
             
             quantity_frame = tk.Frame(params_dialog, bg='white')
             quantity_frame.pack(pady=15)
@@ -727,7 +741,9 @@ class AIModeInterface:
             quantity_entry.pack(ipady=8, pady=(5, 0))
             
             if not quantity_var.get():
-                self.setup_placeholder(quantity_entry, "请输入目标包数")
+                TouchScreenUtils.setup_touch_entry(quantity_entry, "请输入目标包数")
+                quantity_entry.bind('<Button-1>', lambda e: quantity_entry.focus_force(), add=True)
+                quantity_entry.focus()
             
             button_frame = tk.Frame(params_dialog, bg='white')
             button_frame.pack(pady=40)
@@ -928,6 +944,8 @@ class AIModeInterface:
         completion_window.transient(self.root)
         completion_window.grab_set()
         
+        TouchScreenUtils.setup_dialog_focus_handling(completion_window)
+        
         self.center_dialog_relative_to_main(completion_window, 550, 350)
         
         tk.Label(completion_window, text="已清零", 
@@ -971,6 +989,8 @@ class AIModeInterface:
         preparation_window.resizable(False, False)
         preparation_window.transient(self.root)
         preparation_window.grab_set()
+        
+        TouchScreenUtils.setup_dialog_focus_handling(preparation_window)
         
         self.center_dialog_relative_to_main(preparation_window, 550, 350)
         
@@ -1143,6 +1163,46 @@ class AIModeInterface:
                                "请确保API配置正确")
             return
         
+        try:
+            if hasattr(db_manager, 'execute_query'):
+                from database.production_record_dao import ProductionRecordDAO
+                latest_record = ProductionRecordDAO.get_latest_production_record_by_material_weight(material, target_weight)
+                
+                if latest_record:
+                    if INTELLIGENT_LEARNING_DAO_AVAILABLE:
+                        learned_params = IntelligentLearningDAO.get_all_learning_results_by_material(material, target_weight)
+                        
+                        if learned_params and len(learned_params) > 0:
+                            confirm_msg = f"发现历史学习参数！\n\n" \
+                                        f"物料：{material}\n" \
+                                        f"目标重量：{target_weight}g\n" \
+                                        f"包装数量：{package_quantity}包\n\n" \
+                                        f"找到历史生产记录：{latest_record.production_id}\n" \
+                                        f"已有{len(learned_params)}个料斗的学习参数\n\n" \
+                                        f"是否使用历史参数直接开始生产？\n" \
+                                        f"（选择'否'将重新开始AI学习）"
+                            
+                            use_history = messagebox.askyesno("使用历史参数", confirm_msg)
+                            
+                            if use_history:
+                                success = self._start_production_with_learned_params(
+                                    learned_params, target_weight, package_quantity, material
+                                )
+                                
+                                if success:
+                                    return
+                                else:
+                                    pass
+                        else:
+                            pass
+                    else:
+                        pass
+                else:
+                    pass
+                    
+        except Exception as e:
+            pass
+        
         confirm_msg = f"AI生产参数确认：\n\n" \
                      f"目标重量：{target_weight} 克\n" \
                      f"包装数量：{package_quantity} 包\n" \
@@ -1161,6 +1221,47 @@ class AIModeInterface:
         
         production_thread = threading.Thread(target=ai_production_thread, daemon=True)
         production_thread.start()
+        
+    def _start_production_with_learned_params(self, learned_params: List, target_weight: float, 
+                                            package_quantity: int, material: str) -> bool:
+        try:            
+            if BUCKET_DISABLE_AVAILABLE:
+                enable_success, enable_message = self._enable_all_buckets()
+                if not enable_success:
+                    error_msg = f"启用料斗失败：{enable_message}"
+                    messagebox.showerror("启用失败", error_msg)
+                    return False
+            
+            learned_params_dict = {param.bucket_id: param for param in learned_params}
+            
+            write_success = self._write_product_parameters_to_plc(learned_params_dict, target_weight)
+            if not write_success:
+                error_msg = "写入历史学习参数失败"
+                messagebox.showerror("参数写入失败", error_msg)
+                return False
+            
+            production_params = {
+                'material_name': material,
+                'target_weight': target_weight,
+                'package_quantity': package_quantity
+            }
+            
+            self.root.withdraw()
+            
+            production_interface = create_production_interface(self.root, self, production_params)
+            
+            return True
+            
+        except Exception as e:
+            error_msg = f"使用历史参数启动生产异常：{str(e)}"
+            messagebox.showerror("生产启动异常", error_msg)
+            
+            try:
+                self.root.deiconify()
+            except:
+                pass
+            
+            return False
     
     def execute_ai_production_sequence(self, target_weight: float, package_quantity: int, material: str):
         try:
@@ -1523,6 +1624,62 @@ class AIModeInterface:
                 
         except Exception as e:
             return False
+        
+    def _write_product_parameters_to_plc(self, learned_params: Dict[int, IntelligentLearning], target_weight: float) -> bool:
+        try:
+            from plc_addresses import BUCKET_PARAMETER_ADDRESSES
+            
+            success_count = 0
+            total_buckets = 6
+            
+            for bucket_id in range(1, 7):
+                if bucket_id not in BUCKET_PARAMETER_ADDRESSES:
+                    continue
+                
+                addresses = BUCKET_PARAMETER_ADDRESSES[bucket_id]
+                
+                if bucket_id in learned_params:
+                    learned_result = learned_params[bucket_id]
+                    coarse_speed = learned_result.coarse_speed
+                    fine_speed = learned_result.fine_speed
+                    coarse_advance = learned_result.coarse_advance
+                    fall_value = learned_result.fall_value
+                else:
+                    coarse_speed = 72
+                    fine_speed = 44
+                    coarse_advance = 0
+                    fall_value = 0
+                
+                bucket_success = True
+                
+                target_weight_plc = int(target_weight * 10)
+                coarse_advance_plc = int(coarse_advance * 10)
+                fall_value_plc = int(fall_value * 10)
+                if not self.modbus_client.write_holding_register(addresses['TargetWeight'], target_weight_plc):
+                    bucket_success = False
+                
+                if not self.modbus_client.write_holding_register(addresses['CoarseSpeed'], coarse_speed):
+                    bucket_success = False
+                
+                if not self.modbus_client.write_holding_register(addresses['FineSpeed'], fine_speed):
+                    bucket_success = False
+                
+                if not self.modbus_client.write_holding_register(addresses['CoarseAdvance'], coarse_advance_plc):
+                    bucket_success = False
+                
+                if not self.modbus_client.write_holding_register(addresses['FallValue'], fall_value_plc):
+                    bucket_success = False
+                
+                if bucket_success:
+                    success_count += 1
+            
+            if success_count == total_buckets:
+                return True
+            else:
+                return False
+                
+        except Exception as e:
+            return False
     
     def _log(self, message: str):
         pass
@@ -1613,6 +1770,8 @@ class AIModeInterface:
             relearning_window.configure(bg='white')
             relearning_window.resizable(False, False)
             relearning_window.transient(self.root)
+            
+            TouchScreenUtils.setup_dialog_focus_handling(relearning_window)
             
             if (self.learning_status_window and 
                 self.learning_status_window.winfo_exists()):
@@ -1858,6 +2017,8 @@ class AIModeInterface:
             self.learning_status_window.transient(self.root)
             
             self.learning_status_window.protocol("WM_DELETE_WINDOW", lambda: None)
+            
+            TouchScreenUtils.setup_dialog_focus_handling(self.learning_status_window)
             
             self.center_dialog_relative_to_main(self.learning_status_window, 800, 600)
             
@@ -2222,6 +2383,8 @@ class AIModeInterface:
             training_window.transient(self.root)
             training_window.grab_set()
             
+            TouchScreenUtils.setup_dialog_focus_handling(training_window)
+            
             self.center_dialog_relative_to_main(training_window, 550, 350)
             
             tk.Label(training_window, text="训练完成", 
@@ -2264,7 +2427,6 @@ class AIModeInterface:
                     
                     self.root.withdraw()
                     
-                    from production_interface import create_production_interface
                     production_interface = create_production_interface(self.root, self, production_params)
                     
                 except Exception as e:

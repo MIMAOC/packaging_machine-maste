@@ -79,6 +79,8 @@ class ProductionRecordsInterface:
         self.create_records_list_area(main_frame)
         self.create_search_and_pagination_area(main_frame)
         self.create_footer_section(main_frame)
+        
+        TouchScreenUtils.setup_window_focus_handling(self.root)
     
     def create_title_bar(self, parent):
         title_frame = tk.Frame(parent, bg='white')
@@ -146,6 +148,7 @@ class ProductionRecordsInterface:
         search_entry.pack(side=tk.LEFT, padx=(0, 10), ipady=8)
         
         TouchScreenUtils.setup_touch_entry(search_entry, "请输入生产编号或物料名称")
+        search_entry.bind('<Button-1>', lambda e: search_entry.focus_force(), add=True)
         
         self.date_entry = tk.Entry(search_frame, textvariable=self.search_date_var,
                                   font=self.content_font, width=25,
@@ -205,6 +208,8 @@ class ProductionRecordsInterface:
             
             self.center_dialog_relative_to_main(date_window, 400, 500)
             
+            TouchScreenUtils.setup_dialog_focus_handling(date_window)
+            
             tk.Label(date_window, text="选择日期范围", 
                     font=tkFont.Font(family="微软雅黑", size=14, weight="bold"),
                     bg='white', fg='#333333').pack(pady=20)
@@ -221,7 +226,9 @@ class ProductionRecordsInterface:
                                width=15,
                                relief='solid', bd=2)
             start_date_entry.pack(side=tk.RIGHT, padx=(10, 0), ipady=6)
+            
             TouchScreenUtils.setup_touch_entry(start_date_entry, "YYYY-MM-DD")
+            start_date_entry.bind('<Button-1>', lambda e: start_date_entry.focus_force(), add=True)
             
             end_frame = tk.Frame(date_window, bg='white')
             end_frame.pack(pady=10, padx=20, fill=tk.X)
@@ -235,7 +242,9 @@ class ProductionRecordsInterface:
                              width=15,
                              relief='solid', bd=2)
             end_date_entry.pack(side=tk.RIGHT, padx=(10, 0), ipady=6)
+            
             TouchScreenUtils.setup_touch_entry(end_date_entry, "YYYY-MM-DD")
+            end_date_entry.bind('<Button-1>', lambda e: end_date_entry.focus_force(), add=True)
             
             shortcut_frame = tk.Frame(date_window, bg='white')
             shortcut_frame.pack(pady=15)
@@ -406,6 +415,8 @@ class ProductionRecordsInterface:
             pass
     
     def setup_placeholder(self, entry_widget, placeholder_text):
+        TouchScreenUtils.setup_touch_entry(entry_widget, placeholder_text)
+        entry_widget.bind('<Button-1>', lambda e: entry_widget.focus_force(), add=True)
         def on_focus_in(event):
             if entry_widget.get() == placeholder_text:
                 entry_widget.delete(0, tk.END)
@@ -615,6 +626,8 @@ class ProductionRecordsInterface:
             detail_window.grab_set()
             
             self.center_dialog_relative_to_main(detail_window, 800, 600)
+            
+            TouchScreenUtils.setup_dialog_focus_handling(detail_window)
             
             close_frame = tk.Frame(detail_window, bg='white')
             close_frame.pack(fill=tk.X, padx=10, pady=5)
