@@ -374,3 +374,45 @@ class ProductionRecordDAO:
         except Exception as e:
             print(f"[错误] 获取生产记录详情失败: {str(e)}")
             return None
+        
+    @staticmethod
+    def get_latest_production_record_by_material_weight(material_name: str, target_weight: float) -> Optional[ProductionRecord]:
+        """
+        根据物料名称和目标重量获取最新的生产记录
+        
+        Args:
+            material_name (str): 物料名称
+            target_weight (float): 目标重量
+            
+        Returns:
+            Optional[ProductionRecord]: 最新的生产记录对象，如果不存在则返回None
+        """
+        try:
+            sql = """
+            SELECT * FROM production_records 
+            WHERE material_name = ? AND target_weight = ? 
+            ORDER BY create_time DESC 
+            LIMIT 1
+            """
+            results = db_manager.execute_query(sql, (material_name, target_weight))
+            
+            if results:
+                result = results[0]
+                return ProductionRecord(
+                    id=result['id'],
+                    production_date=ProductionRecordDAO._parse_date(result['production_date']),
+                    production_id=result['production_id'],
+                    material_name=result['material_name'],
+                    target_weight=float(result['target_weight']),
+                    package_quantity=result['package_quantity'],
+                    completed_packages=result['completed_packages'],
+                    completion_rate=float(result['completion_rate']),
+                    create_time=ProductionRecordDAO._parse_datetime(result['create_time']),
+                    update_time=ProductionRecordDAO._parse_datetime(result['update_time'])
+                )
+            
+            return None
+            
+        except Exception as e:
+            print(f"[错误] 获取最新生产记录失败: {str(e)}")
+            return None

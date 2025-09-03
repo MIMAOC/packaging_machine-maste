@@ -22,7 +22,6 @@ import tkinter.font as font
 import time
 import threading
 from typing import Optional, Dict, Any
-from touchscreen_utils import TouchScreenUtils
 
 # 导入PLC相关模块
 try:
@@ -69,9 +68,6 @@ class SystemSettingInterface:
         
         # 系统参数数据存储
         self.parameter_data = {}
-        
-        # 添加触摸屏优化
-        TouchScreenUtils.optimize_window_for_touch(self.root)
 
         # 界面组件引用
         self.parameter_entries = {}  # 参数输入框
@@ -230,9 +226,7 @@ class SystemSettingInterface:
             password_entry = tk.Entry(password_dialog, font=("Arial", 14), justify='center',
                                     show='*', width=20, relief='solid', bd=2)
             password_entry.pack(pady=10)
-            
-            # 添加触摸屏支持
-            TouchScreenUtils.setup_touch_entry(password_entry)
+            password_entry.focus_set()
             
             # 按钮框架
             button_frame = tk.Frame(password_dialog, bg='white')
@@ -440,9 +434,7 @@ class SystemSettingInterface:
                                  highlightthickness=2, highlightcolor='#4a90e2', 
                                  bg='white', fg='#333333')
             param_entry.pack(side=tk.RIGHT, anchor='e', ipady=10)
-
-            # 添加触摸屏支持
-            TouchScreenUtils.setup_touch_entry(param_entry)
+            param_entry.focus_set()
             
             # 绑定参数修改事件
             param_entry.bind('<FocusOut>', 

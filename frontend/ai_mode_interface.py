@@ -29,7 +29,7 @@ import tkinter.font as tkFont
 import threading
 import time
 from typing import Dict, List
-from touchscreen_utils import TouchScreenUtils
+from production_interface import create_production_interface
 
 # 导入后端API客户端模块
 try:
@@ -125,6 +125,13 @@ try:
 except ImportError as e:
     print(f"警告：无法导入智能学习DAO模块: {e}")
     INTELLIGENT_LEARNING_DAO_AVAILABLE = False
+    
+try:
+    from database.production_record_dao import ProductionRecordDAO
+    PRODUCTION_RECORD_DAO_AVAILABLE = True
+except ImportError as e:
+    print(f"警告：无法导入生产记录DAO模块: {e}")
+    PRODUCTION_RECORD_DAO_AVAILABLE = False
 
 class AIModeInterface:
     """
@@ -242,6 +249,26 @@ class AIModeInterface:
         self.statistics_timer_id = None         # 统计更新定时器ID
         self.learning_timer_running = False     # 学习计时器运行标志
         self.statistics_timer_running = False   # 统计定时器运行标志
+        
+    def setup_placeholder(self, entry_widget, placeholder_text):
+        """设置输入框占位符功能"""
+        def on_focus_in(event):
+            if entry_widget.get() == placeholder_text:
+                entry_widget.delete(0, tk.END)
+                entry_widget.config(fg='#333333')
+        
+        def on_focus_out(event):
+            if not entry_widget.get().strip():
+                entry_widget.insert(0, placeholder_text)
+                entry_widget.config(fg='#999999')
+        
+        # 初始显示占位符
+        entry_widget.insert(0, placeholder_text)
+        entry_widget.config(fg='#999999')
+        
+        # 绑定事件
+        entry_widget.bind('<FocusIn>', on_focus_in)
+        entry_widget.bind('<FocusOut>', on_focus_out)
     
     def get_material_list_from_database(self) -> List[str]:
         """
@@ -425,9 +452,6 @@ class AIModeInterface:
         self.root.geometry("1920x1080")
         self.root.configure(bg='white')
         self.root.resizable(True, True)
-    
-        # 添加触摸屏优化
-        TouchScreenUtils.optimize_window_for_touch(self.root)
     
         # 设置强制退出机制
         self.setup_force_exit_mechanism()
@@ -747,9 +771,10 @@ class AIModeInterface:
                           relief='solid', bd=2,  # 增加边框
                           bg='white', fg='#333333')
         weight_entry.pack(ipady=12)  # 增加内边距
+        weight_entry.focus_set()
         
         # 设置输入框占位符效果
-        TouchScreenUtils.setup_touch_entry(weight_entry, "请输入目标重量克数")
+        self.setup_placeholder(weight_entry, "请输入目标重量克数")
     
     def create_quantity_section(self, parent):
         """
@@ -779,9 +804,10 @@ class AIModeInterface:
                             relief='solid', bd=2,
                             bg='white', fg='#333333')
         quantity_entry.pack(ipady=12)
+        quantity_entry.focus_set()
         
         # 设置输入框占位符效果
-        TouchScreenUtils.setup_touch_entry(quantity_entry, "请输入所需包装数量")
+        self.setup_placeholder(quantity_entry, "请输入所需包装数量")
     
     def create_material_section(self, parent):
         """
@@ -907,16 +933,6 @@ class AIModeInterface:
             print("[Main] Logo组件创建成功")
         except ImportError as e:
             print(f"[警告] 无法导入logo处理模块: {e}")
-    
-    def setup_placeholder(self, entry_widget, placeholder_text):
-        """
-        为输入框设置占位符效果
-        
-        Args:
-            entry_widget: 输入框组件
-            placeholder_text: 占位符文本
-        """
-        TouchScreenUtils.setup_touch_entry(entry_widget, placeholder_text)
     
     # 以下是按钮事件处理函数
     
@@ -1163,10 +1179,10 @@ class AIModeInterface:
                                  relief='solid', bd=1,
                                  bg='white', fg='#333333')
             name_entry.pack(ipady=8)
+            name_entry.focus_set()  # 设置焦点到输入框
             
             # 设置占位符
             self.setup_placeholder(name_entry, "请输入物料名称")
-            name_entry.focus()  # 设置焦点到输入框
             
             # 按钮区域
             button_frame = tk.Frame(name_dialog, bg='white')
@@ -1298,6 +1314,7 @@ class AIModeInterface:
                                 relief='solid', bd=1,
                                 bg='white', fg='#333333')
             weight_entry.pack(ipady=8, pady=(5, 0))
+            weight_entry.focus_set()
             
             # 只有在没有值的时候才设置占位符
             if not weight_var.get():
@@ -1323,6 +1340,7 @@ class AIModeInterface:
                                     relief='solid', bd=1,
                                     bg='white', fg='#333333')
             quantity_entry.pack(ipady=8, pady=(5, 0))
+            quantity_entry.focus_set()
             
             # 只有在没有值的时候才设置占位符
             if not quantity_var.get():
@@ -1912,7 +1930,7 @@ class AIModeInterface:
         except ValueError:
             messagebox.showerror("参数错误", "请输入有效的目标重量数值")
             return
-    
+
         # 重量范围检查
         if target_weight < 60 or target_weight > 425:
             messagebox.showerror("参数错误", 
@@ -1939,21 +1957,74 @@ class AIModeInterface:
         # 检查WebAPI可用性
         if not WEBAPI_AVAILABLE:
             messagebox.showerror("WebAPI不可用", 
-                               "WebAPI客户端模块未加载！\n\n"
-                               "AI模式需要WebAPI客户端来连接后端分析服务。\n"
-                               "请确保：\n"
-                               "1. clients/webapi_client.py文件存在\n"
-                               "2. 后端API服务正在运行\n"
-                               "3. 网络连接正常\n"
-                               "4. API配置正确")
+                            "WebAPI客户端模块未加载！\n\n"
+                            "AI模式需要WebAPI客户端来连接后端分析服务。\n"
+                            "请确保：\n"
+                            "1. clients/webapi_client.py文件存在\n"
+                            "2. 后端API服务正在运行\n"
+                            "3. 网络连接正常\n"
+                            "4. API配置正确")
             return
         
-        # 显示确认信息
+        # 新增：检查是否有历史记录和对应的智能学习参数
+        try:
+            print(f"[信息] 检查物料'{material}'重量{target_weight}g的历史记录...")
+            
+            # 查找最新的相同物料和重量的生产记录
+            if hasattr(db_manager, 'execute_query'):  # 确保数据库可用
+                from database.production_record_dao import ProductionRecordDAO
+                latest_record = ProductionRecordDAO.get_latest_production_record_by_material_weight(material, target_weight)
+                
+                if latest_record:
+                    print(f"[信息] 找到历史生产记录: {latest_record.production_id}")
+                    
+                    # 查找对应的智能学习参数
+                    if INTELLIGENT_LEARNING_DAO_AVAILABLE:
+                        learned_params = IntelligentLearningDAO.get_all_learning_results_by_material(material, target_weight)
+                        
+                        if learned_params and len(learned_params) > 0:
+                            print(f"[信息] 找到{len(learned_params)}个料斗的智能学习参数，准备直接进入生产")
+                            
+                            # 显示确认对话框
+                            confirm_msg = f"发现历史学习参数！\n\n" \
+                                        f"物料：{material}\n" \
+                                        f"目标重量：{target_weight}g\n" \
+                                        f"包装数量：{package_quantity}包\n\n" \
+                                        f"找到历史生产记录：{latest_record.production_id}\n" \
+                                        f"已有{len(learned_params)}个料斗的学习参数\n\n" \
+                                        f"是否使用历史参数直接开始生产？\n" \
+                                        f"（选择'否'将重新开始AI学习）"
+                            
+                            use_history = messagebox.askyesno("使用历史参数", confirm_msg)
+                            
+                            if use_history:
+                                # 使用历史参数直接进入生产
+                                success = self._start_production_with_learned_params(
+                                    learned_params, target_weight, package_quantity, material
+                                )
+                                
+                                if success:
+                                    return  # 成功则直接返回，不执行后续的AI学习流程
+                                else:
+                                    # 如果使用历史参数失败，则继续AI学习流程
+                                    print("[警告] 使用历史参数失败，将重新开始AI学习")
+                        else:
+                            print(f"[信息] 历史记录存在但无对应的智能学习参数，将开始AI学习")
+                    else:
+                        print("[警告] 智能学习DAO不可用，无法查询历史参数")
+                else:
+                    print(f"[信息] 未找到物料'{material}'重量{target_weight}g的历史记录，将开始AI学习")
+                    
+        except Exception as e:
+            print(f"[错误] 检查历史记录异常: {e}")
+            print("[信息] 将继续正常的AI学习流程")
+        
+        # 如果没有找到历史参数或用户选择重新学习，继续原有的AI学习流程
         confirm_msg = f"AI生产参数确认：\n\n" \
-                     f"目标重量：{target_weight} 克\n" \
-                     f"包装数量：{package_quantity} 包\n" \
-                     f"选择物料：{material}\n\n" \
-                     f"确认开始AI自适应生产？"
+                    f"目标重量：{target_weight} 克\n" \
+                    f"包装数量：{package_quantity} 包\n" \
+                    f"选择物料：{material}\n\n" \
+                    f"确认开始AI自适应生产？"
         
         result = messagebox.askyesno("确认AI生产", confirm_msg)
         if not result:
@@ -1970,6 +2041,80 @@ class AIModeInterface:
         # 启动后台线程
         production_thread = threading.Thread(target=ai_production_thread, daemon=True)
         production_thread.start()
+        
+    def _start_production_with_learned_params(self, learned_params: List, target_weight: float, 
+                                        package_quantity: int, material: str) -> bool:
+        """
+        使用历史学习参数直接开始生产
+        
+        Args:
+            learned_params: 智能学习参数列表
+            target_weight: 目标重量
+            package_quantity: 包装数量
+            material: 物料名称
+            
+        Returns:
+            bool: 是否成功
+        """
+        try:
+            print(f"[信息] 使用历史学习参数开始生产")
+            
+            # 步骤1: 启用所有料斗
+            self.show_progress_message("步骤1/3", "正在启用所有料斗...")
+            
+            if BUCKET_DISABLE_AVAILABLE:
+                enable_success, enable_message = self._enable_all_buckets()
+                if not enable_success:
+                    error_msg = f"启用料斗失败：{enable_message}"
+                    messagebox.showerror("启用失败", error_msg)
+                    return False
+            
+            # 步骤2: 将历史学习参数写入PLC
+            self.show_progress_message("步骤2/3", "正在将历史学习参数写入PLC...")
+            
+            # 转换为字典格式
+            learned_params_dict = {param.bucket_id: param for param in learned_params}
+            
+            write_success = self._write_product_parameters_to_plc(learned_params_dict, target_weight)
+            if not write_success:
+                error_msg = "写入历史学习参数失败"
+                messagebox.showerror("参数写入失败", error_msg)
+                return False
+            
+            print(f"[成功] 历史学习参数已写入PLC")
+            
+            # 步骤3: 直接进入生产界面
+            self.show_progress_message("步骤3/3", "正在启动生产界面...")
+            
+            # 准备生产参数
+            production_params = {
+                'material_name': material,
+                'target_weight': target_weight,
+                'package_quantity': package_quantity
+            }
+            
+            # 隐藏AI模式界面
+            self.root.withdraw()
+            
+            # 导入并创建生产界面
+            from production_interface import create_production_interface
+            production_interface = create_production_interface(self.root, self, production_params)
+            
+            print(f"[成功] 已使用历史参数直接进入生产模式，参数: {production_params}")
+            return True
+            
+        except Exception as e:
+            error_msg = f"使用历史参数启动生产异常：{str(e)}"
+            print(f"[错误] {error_msg}")
+            messagebox.showerror("生产启动异常", error_msg)
+            
+            # 如果出错，重新显示AI模式界面
+            try:
+                self.root.deiconify()
+            except:
+                pass
+            
+            return False
     
     def execute_ai_production_sequence(self, target_weight: float, package_quantity: int, material: str):
         """
@@ -2478,6 +2623,91 @@ class AIModeInterface:
                 
                 # 落差值
                 if not self.modbus_client.write_holding_register(addresses['FallValue'], 0):
+                    self._log(f"❌ 料斗{bucket_id}落差值写入失败")
+                    bucket_success = False
+                
+                if bucket_success:
+                    success_count += 1
+                    self._log(f"✅ 料斗{bucket_id}参数写入成功")
+            
+            if success_count == total_buckets:
+                self._log(f"✅ 所有{total_buckets}个料斗的智能学习参数写入成功")
+                return True
+            else:
+                self._log(f"⚠️ 只有{success_count}/{total_buckets}个料斗参数写入成功")
+                return False
+                
+        except Exception as e:
+            error_msg = f"写入智能学习参数到PLC异常: {str(e)}"
+            self._log(f"❌ {error_msg}")
+            return False
+        
+    def _write_product_parameters_to_plc(self, learned_params: Dict[int, IntelligentLearning], target_weight: float) -> bool:
+        """
+        将智能学习参数写入到PLC
+        
+        Args:
+            learned_params: 学习参数字典 {bucket_id: IntelligentLearning}
+            target_weight: 目标重量
+            
+        Returns:
+            bool: 是否成功
+        """
+        try:
+            from plc_addresses import BUCKET_PARAMETER_ADDRESSES
+            
+            success_count = 0
+            total_buckets = 6
+            
+            for bucket_id in range(1, 7):
+                if bucket_id not in BUCKET_PARAMETER_ADDRESSES:
+                    self._log(f"❌ 料斗{bucket_id}地址配置不存在")
+                    continue
+                
+                addresses = BUCKET_PARAMETER_ADDRESSES[bucket_id]
+                
+                # 如果有该料斗的学习参数，使用学习参数；否则使用默认值
+                if bucket_id in learned_params:
+                    learned_result = learned_params[bucket_id]
+                    coarse_speed = learned_result.coarse_speed
+                    fine_speed = learned_result.fine_speed
+                    coarse_advance = learned_result.coarse_advance
+                    fall_value = learned_result.fall_value
+                    self._log(f"📊 料斗{bucket_id}使用智能学习参数：快加速度={coarse_speed}档，慢加速度={fine_speed}档")
+                else:
+                    # 使用默认值（与API分析相同）
+                    coarse_speed = 72  # 默认快加速度
+                    fine_speed = 44    # 默认慢加速度
+                    coarse_advance = 0
+                    fall_value = 0
+                    self._log(f"📊 料斗{bucket_id}使用默认参数：快加速度={coarse_speed}档，慢加速度={fine_speed}档")
+                
+                # 写入参数到PLC
+                bucket_success = True
+                
+                # 目标重量
+                target_weight_plc = int(target_weight * 10)
+                if not self.modbus_client.write_holding_register(addresses['TargetWeight'], target_weight_plc):
+                    self._log(f"❌ 料斗{bucket_id}目标重量写入失败")
+                    bucket_success = False
+                
+                # 快加速度
+                if not self.modbus_client.write_holding_register(addresses['CoarseSpeed'], coarse_speed):
+                    self._log(f"❌ 料斗{bucket_id}快加速度写入失败")
+                    bucket_success = False
+                
+                # 慢加速度
+                if not self.modbus_client.write_holding_register(addresses['FineSpeed'], fine_speed):
+                    self._log(f"❌ 料斗{bucket_id}慢加速度写入失败")
+                    bucket_success = False
+                
+                # 快加提前量
+                if not self.modbus_client.write_holding_register(addresses['CoarseAdvance'], coarse_advance):
+                    self._log(f"❌ 料斗{bucket_id}快加提前量写入失败")
+                    bucket_success = False
+                
+                # 落差值
+                if not self.modbus_client.write_holding_register(addresses['FallValue'], fall_value):
                     self._log(f"❌ 料斗{bucket_id}落差值写入失败")
                     bucket_success = False
                 
@@ -3515,7 +3745,6 @@ class AIModeInterface:
                     self.root.withdraw()
                     
                     # 导入并创建生产界面
-                    from production_interface import create_production_interface
                     production_interface = create_production_interface(self.root, self, production_params)
                     
                     print(f"生产界面已打开，参数: {production_params}")

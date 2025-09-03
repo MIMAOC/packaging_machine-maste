@@ -24,7 +24,6 @@ import tkinter.font as font
 import time
 import threading
 from typing import Optional, Dict, Any
-from touchscreen_utils import TouchScreenUtils
 
 # 导入PLC相关模块
 try:
@@ -61,9 +60,6 @@ class WeightCalibrationInterface:
         self.weight_labels = {}          # 重量显示标签
         self.standard_weight_entry = None # 标准重量输入框
         self.calibration_buttons = {}    # 校准按钮
-        
-        # 添加触摸屏优化
-        TouchScreenUtils.optimize_window_for_touch(self.root)
 
         # 设置字体
         self.setup_fonts()
@@ -181,9 +177,7 @@ class WeightCalibrationInterface:
                                             highlightthickness=2)
         self.standard_weight_entry.pack(side='left', padx=(0, content_padding))
         self.standard_weight_entry.insert(0, "000.0")
-        
-        # 添加触摸屏支持
-        TouchScreenUtils.setup_touch_entry(self.standard_weight_entry)
+        self.standard_weight_entry.focus_set()
 
         # 绑定输入验证和保存事件
         self.standard_weight_entry.bind('<KeyRelease>', self.validate_standard_weight)

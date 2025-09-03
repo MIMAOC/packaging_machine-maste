@@ -56,16 +56,6 @@ class SystemSettingsInterface:
         
         # 创建界面组件
         self.create_widgets()
-        
-        # 居中显示窗口
-        # self.center_window()
-        
-        # 添加触摸屏优化
-        try:
-            from touchscreen_utils import TouchScreenUtils
-            TouchScreenUtils.optimize_window_for_touch(self.root)
-        except ImportError:
-            print("[警告] 无法导入touchscreen_utils模块")
     
     def setup_window(self):
         """设置窗口基本属性"""

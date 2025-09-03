@@ -22,7 +22,6 @@ import tkinter.font as font
 import time
 import threading
 from typing import Optional, Dict, Any
-from touchscreen_utils import TouchScreenUtils
 
 # 导入PLC相关模块
 try:
@@ -100,9 +99,6 @@ class SimpleTianTengInterface:
         for i in range(1, 7):
             self.bucket_started[i] = False
             self.bucket_cleaning[i] = False
-        
-        # 添加触摸屏优化
-        TouchScreenUtils.optimize_window_for_touch(self.root)
         
         # LOGO图片引用
         self.logo_image = None
@@ -516,9 +512,7 @@ class SimpleTianTengInterface:
                                relief='solid', bd=2, width=8)
         self.target_weight_entry.pack(pady=(8, 0))
         self.target_weight_entry.insert(0, "0000.0")
-
-        # 添加触摸屏支持
-        TouchScreenUtils.setup_touch_entry(self.target_weight_entry)
+        self.target_weight_entry.focus_set()
         
         # 绑定目标重量修改事件
         self.target_weight_entry.bind('<FocusOut>', self.save_target_weight)
@@ -656,9 +650,7 @@ class SimpleTianTengInterface:
             param_entry = tk.Entry(param_row, font=('Arial', 28, 'bold'), justify='center',
                                   relief='solid', bd=2, width=15, highlightthickness=2)
             param_entry.pack(side=tk.LEFT)
-
-            # 添加触摸屏支持
-            TouchScreenUtils.setup_touch_entry(param_entry)
+            param_entry.focus_set()
             
             # 绑定参数修改事件
             param_entry.bind('<FocusOut>', 

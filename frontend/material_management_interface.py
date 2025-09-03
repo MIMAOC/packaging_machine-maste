@@ -22,7 +22,6 @@ from tkinter import ttk, messagebox
 import tkinter.font as tkFont
 import threading
 from typing import List
-from touchscreen_utils import TouchScreenUtils
 
 # 导入数据库相关模块
 try:
@@ -80,14 +79,28 @@ class MaterialManagementInterface:
         # 创建界面组件
         self.create_widgets()
         
-        # 添加触摸屏优化
-        TouchScreenUtils.optimize_window_for_touch(self.root)
-        
         # 加载物料数据
         self.load_materials()
         
-        # 居中显示窗口
-        # self.center_window()
+    def setup_placeholder(self, entry_widget, placeholder_text):
+        """设置输入框占位符功能"""
+        def on_focus_in(event):
+            if entry_widget.get() == placeholder_text:
+                entry_widget.delete(0, tk.END)
+                entry_widget.config(fg='#333333')
+        
+        def on_focus_out(event):
+            if not entry_widget.get().strip():
+                entry_widget.insert(0, placeholder_text)
+                entry_widget.config(fg='#999999')
+        
+        # 初始显示占位符
+        entry_widget.insert(0, placeholder_text)
+        entry_widget.config(fg='#999999')
+        
+        # 绑定事件
+        entry_widget.bind('<FocusIn>', on_focus_in)
+        entry_widget.bind('<FocusOut>', on_focus_out)
     
     def setup_window(self):
         """设置窗口基本属性"""
@@ -657,34 +670,6 @@ class MaterialManagementInterface:
             y = (dialog_window.winfo_screenheight() - dialog_height) // 2
             dialog_window.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
     
-    def setup_placeholder(self, entry_widget, placeholder_text):
-        """
-        为输入框设置占位符效果
-        
-        Args:
-            entry_widget: 输入框组件
-            placeholder_text: 占位符文本
-        """
-        def on_focus_in(event):
-            """输入框获得焦点时的处理"""
-            if entry_widget.get() == placeholder_text:
-                entry_widget.delete(0, tk.END)
-                entry_widget.config(fg='#333333')
-        
-        def on_focus_out(event):
-            """输入框失去焦点时的处理"""
-            if entry_widget.get() == '':
-                entry_widget.insert(0, placeholder_text)
-                entry_widget.config(fg='#999999')
-        
-        # 设置初始占位符
-        entry_widget.insert(0, placeholder_text)
-        entry_widget.config(fg='#999999')
-        
-        # 绑定事件
-        entry_widget.bind('<FocusIn>', on_focus_in)
-        entry_widget.bind('<FocusOut>', on_focus_out)
-    
     def show_new_material_name_dialog(self):
         """
         显示新物料名称输入对话框（第一个弹窗）
@@ -718,10 +703,10 @@ class MaterialManagementInterface:
                          relief='solid', bd=2,
                          bg='white', fg='#333333')
             name_entry.pack(ipady=12)
+            name_entry.focus_set()  # 设置焦点到输入框
             
             # 设置占位符
-            TouchScreenUtils.setup_touch_entry(name_entry, "请输入物料名称")
-            name_entry.focus()  # 设置焦点到输入框
+            self.setup_placeholder(name_entry, "请输入物料名称")
             
             # 按钮区域
             button_frame = tk.Frame(name_dialog, bg='white')
@@ -850,6 +835,7 @@ class MaterialManagementInterface:
                                    relief='solid', bd=1,
                                    bg='white', fg='#333333')
             weight_entry.pack(ipady=8, pady=(5, 0))
+            weight_entry.focus_set()
             self.setup_placeholder(weight_entry, "请输入目标重量")
             
             # 包装数量输入
@@ -867,6 +853,7 @@ class MaterialManagementInterface:
                                      relief='solid', bd=1,
                                      bg='white', fg='#333333')
             quantity_entry.pack(ipady=8, pady=(5, 0))
+            quantity_entry.focus_set()
             self.setup_placeholder(quantity_entry, "请输入目标包数")
             
             # 按钮区域

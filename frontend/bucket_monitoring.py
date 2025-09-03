@@ -925,6 +925,22 @@ class BucketMonitoringService:
             bucket_id: 料斗ID
         """
         try:
+            # 等待重量数据准备完成，最多等待1秒
+            max_wait_time = 1.0
+            wait_interval = 0.1
+            waited_time = 0.0
+            
+            with self.lock:
+                state = self.production_states[bucket_id]
+                
+            
+            # 等待重量数据更新（temp_real_weight不为0说明已读取）
+            while state.temp_real_weight == 0.0 and waited_time < max_wait_time:
+                time.sleep(wait_interval)
+                waited_time += wait_interval
+                with self.lock:
+                    state = self.production_states[bucket_id]
+                    
             with self.lock:
                 state = self.production_states[bucket_id]
                 real_weight = state.temp_real_weight

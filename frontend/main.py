@@ -28,7 +28,6 @@ import time
 import requests
 import functools
 from typing import Optional, Callable, Any
-from touchscreen_utils import TouchScreenUtils
 
 # 导入重试库
 try:
@@ -220,9 +219,6 @@ class PackagingMachineGUI:
             self.test_backend_api_connection()
         else:
             self.show_api_error()
-        
-        # 添加触摸屏优化
-        TouchScreenUtils.optimize_window_for_touch(self.root)
     
     def setup_window(self):
         """设置主窗口属性"""

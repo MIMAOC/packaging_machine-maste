@@ -24,7 +24,6 @@ import tkinter.font as font
 import time
 import threading
 from typing import Optional, Dict, Any
-from touchscreen_utils import TouchScreenUtils
 
 # 导入PLC相关模块
 try:
@@ -61,10 +60,6 @@ class ParameterSettingInterface:
         
         # 数据刷新定时器
         self.refresh_timer = None
-
-        # 添加触摸屏优化
-        TouchScreenUtils.optimize_window_for_touch(self.root)
-
         
         # 参数数据存储
         self.parameter_data = {
@@ -311,9 +306,7 @@ class ParameterSettingInterface:
                               width=12, 
                               highlightthickness=2, highlightcolor='#4a90e2')
         param_entry.grid(row=0, column=1, sticky='w', padx=0, pady=8, ipady=8)  # 增加内部padding
-
-        # 添加触摸屏支持
-        TouchScreenUtils.setup_touch_entry(param_entry)
+        param_entry.focus_set()
         
         # 绑定输入验证和保存事件
         param_entry.bind('<KeyRelease>', lambda e, key=param_key: self.validate_input(key, e.widget.get()))

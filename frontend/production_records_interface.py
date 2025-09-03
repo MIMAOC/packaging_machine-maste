@@ -20,7 +20,6 @@ from tkinter import ttk, messagebox
 import tkinter.font as tkFont
 from datetime import datetime, date
 from typing import List, Optional
-from touchscreen_utils import TouchScreenUtils
 
 # 导入数据库相关模块
 try:
@@ -87,14 +86,28 @@ class ProductionRecordsInterface:
         # 创建界面组件
         self.create_widgets()
         
-        # 添加触摸屏优化
-        TouchScreenUtils.optimize_window_for_touch(self.root)
-        
         # 加载生产记录数据
         self.load_production_records()
         
-        # 居中显示窗口
-        # self.center_window()
+    def setup_placeholder(self, entry_widget, placeholder_text):
+        """设置输入框占位符功能"""
+        def on_focus_in(event):
+            if entry_widget.get() == placeholder_text:
+                entry_widget.delete(0, tk.END)
+                entry_widget.config(fg='#333333')
+        
+        def on_focus_out(event):
+            if not entry_widget.get().strip():
+                entry_widget.insert(0, placeholder_text)
+                entry_widget.config(fg='#999999')
+        
+        # 初始显示占位符
+        entry_widget.insert(0, placeholder_text)
+        entry_widget.config(fg='#999999')
+        
+        # 绑定事件
+        entry_widget.bind('<FocusIn>', on_focus_in)
+        entry_widget.bind('<FocusOut>', on_focus_out)
     
     def setup_window(self):
         """设置窗口基本属性"""
@@ -244,9 +257,10 @@ class ProductionRecordsInterface:
                            width=25,
                            relief='solid', bd=2)  # 增加边框
         search_entry.pack(side=tk.LEFT, padx=(0, 10), ipady=8)  # 增加内边距
+        search_entry.focus_set()
 
         # 设置占位符
-        TouchScreenUtils.setup_touch_entry(search_entry, "请输入生产编号或物料名称")
+        self.setup_placeholder(search_entry, "请输入生产编号或物料名称")
 
         # 日期选择输入框
         self.date_entry = tk.Entry(search_frame, textvariable=self.search_date_var,
@@ -336,7 +350,8 @@ class ProductionRecordsInterface:
                                width=15,
                                relief='solid', bd=2)  # 增加边框
             start_date_entry.pack(side=tk.RIGHT, padx=(10, 0), ipady=6)
-            TouchScreenUtils.setup_touch_entry(start_date_entry, "YYYY-MM-DD")
+            start_date_entry.focus_set()
+            self.setup_placeholder(start_date_entry, "YYYY-MM-DD")
 
             # 结束日期选择
             end_frame = tk.Frame(date_window, bg='white')
@@ -351,7 +366,8 @@ class ProductionRecordsInterface:
                              width=15,
                              relief='solid', bd=2)
             end_date_entry.pack(side=tk.RIGHT, padx=(10, 0), ipady=6)
-            TouchScreenUtils.setup_touch_entry(end_date_entry, "YYYY-MM-DD")
+            end_date_entry.focus_set()
+            self.setup_placeholder(end_date_entry, "YYYY-MM-DD")
 
             # 快捷选择按钮
             shortcut_frame = tk.Frame(date_window, bg='white')
@@ -559,34 +575,6 @@ class ProductionRecordsInterface:
             print("[ProductionRecords] Logo组件创建成功")
         except ImportError as e:
             print(f"[警告] 无法导入logo处理模块: {e}")
-    
-    def setup_placeholder(self, entry_widget, placeholder_text):
-        """
-        为输入框设置占位符效果
-        
-        Args:
-            entry_widget: 输入框组件
-            placeholder_text: 占位符文本
-        """
-        def on_focus_in(event):
-            """输入框获得焦点时的处理"""
-            if entry_widget.get() == placeholder_text:
-                entry_widget.delete(0, tk.END)
-                entry_widget.config(fg='#333333')
-        
-        def on_focus_out(event):
-            """输入框失去焦点时的处理"""
-            if entry_widget.get() == '':
-                entry_widget.insert(0, placeholder_text)
-                entry_widget.config(fg='#999999')
-        
-        # 设置初始占位符
-        entry_widget.insert(0, placeholder_text)
-        entry_widget.config(fg='#999999')
-        
-        # 绑定事件
-        entry_widget.bind('<FocusIn>', on_focus_in)
-        entry_widget.bind('<FocusOut>', on_focus_out)
     
     def load_production_records(self):
         """从数据库加载生产记录数据"""

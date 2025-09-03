@@ -20,14 +20,6 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import tkinter.font as tkFont
 
-# 导入触摸屏工具模块
-try:
-    from touchscreen_utils import TouchScreenUtils
-    TOUCHSCREEN_UTILS_AVAILABLE = True
-except ImportError as e:
-    print(f"警告：无法导入触摸屏工具模块: {e}")
-    TOUCHSCREEN_UTILS_AVAILABLE = False
-
 class ErrorThresholdConfig:
     """误差阈值配置类"""
     _instance = None
@@ -97,6 +89,26 @@ class FactorySettingsInterface:
         # 显示密码验证窗口
         self.show_password_verification()
         
+    def setup_placeholder(self, entry_widget, placeholder_text):
+        """设置输入框占位符功能"""
+        def on_focus_in(event):
+            if entry_widget.get() == placeholder_text:
+                entry_widget.delete(0, tk.END)
+                entry_widget.config(fg='#333333')
+        
+        def on_focus_out(event):
+            if not entry_widget.get().strip():
+                entry_widget.insert(0, placeholder_text)
+                entry_widget.config(fg='#999999')
+        
+        # 初始显示占位符
+        entry_widget.insert(0, placeholder_text)
+        entry_widget.config(fg='#999999')
+        
+        # 绑定事件
+        entry_widget.bind('<FocusIn>', on_focus_in)
+        entry_widget.bind('<FocusOut>', on_focus_out)
+        
     def _load_from_config_file(self):
         """从配置文件加载设置"""
         try:
@@ -142,10 +154,6 @@ class FactorySettingsInterface:
         self.password_window.resizable(True, True)
         self.password_window.transient()
         self.password_window.grab_set()
-    
-        # 添加触摸屏优化
-        if TOUCHSCREEN_UTILS_AVAILABLE:
-            TouchScreenUtils.optimize_window_for_touch(self.password_window)
         
         # 绑定窗口关闭事件
         self.password_window.protocol("WM_DELETE_WINDOW", self.on_password_window_closing)
@@ -258,14 +266,11 @@ class FactorySettingsInterface:
                                  relief='solid', bd=1,
                                  bg='white', fg='#333333')
         password_entry.pack(ipady=12, pady=(0, 80))
+        password_entry.focus_set()
     
         # 使用触摸屏工具设置输入框
-        if TOUCHSCREEN_UTILS_AVAILABLE:
-            TouchScreenUtils.setup_touch_entry(password_entry, "请输入密码")
+        self.setup_placeholder(password_entry, "请输入密码")
         
-        # 设置焦点并绑定回车键
-        password_entry.focus()
-        password_entry.bind('<Return>', lambda e: self.verify_password())
         
         # 确认按钮
         confirm_btn = tk.Button(center_frame, text="确认", 
@@ -275,31 +280,6 @@ class FactorySettingsInterface:
                                padx=60, pady=18,
                                command=self.verify_password)
         confirm_btn.pack()
-    
-    def setup_placeholder(self, entry_widget, placeholder_text):
-        """为输入框设置占位符效果"""
-        if TOUCHSCREEN_UTILS_AVAILABLE:
-            # 使用触摸屏工具
-            TouchScreenUtils.setup_touch_entry(entry_widget, placeholder_text)
-        else:
-            # 原有的占位符实现
-            def on_focus_in(event):
-                if entry_widget.get() == placeholder_text:
-                    entry_widget.delete(0, tk.END)
-                    entry_widget.config(fg='#333333', show='*')
-            
-            def on_focus_out(event):
-                if entry_widget.get() == '':
-                    entry_widget.insert(0, placeholder_text)
-                    entry_widget.config(fg='#999999', show='')
-            
-            # 设置初始占位符
-            entry_widget.insert(0, placeholder_text)
-            entry_widget.config(fg='#999999', show='')
-            
-            # 绑定事件
-            entry_widget.bind('<FocusIn>', on_focus_in)
-            entry_widget.bind('<FocusOut>', on_focus_out)
     
     def verify_password(self):
         """验证管理员密码"""
@@ -331,10 +311,6 @@ class FactorySettingsInterface:
         self.settings_window.resizable(True, True)
         self.settings_window.transient()
         self.settings_window.grab_set()
-    
-        # 添加触摸屏优化
-        if TOUCHSCREEN_UTILS_AVAILABLE:
-            TouchScreenUtils.optimize_window_for_touch(self.settings_window)
         
         # 绑定窗口关闭事件
         self.settings_window.protocol("WM_DELETE_WINDOW", self.on_settings_window_closing)
