@@ -157,9 +157,9 @@ class ProductionRecordsInterface:
                            width=25,
                            relief='solid', bd=2)
         search_entry.pack(side=tk.LEFT, padx=(0, 10), ipady=8)
+        search_entry.focus_set()
         
         self.setup_placeholder(search_entry, "请输入生产编号或物料名称")
-        search_entry.bind('<Button-1>', lambda e: search_entry.focus_force(), add=True)
         
         self.date_entry = tk.Entry(search_frame, textvariable=self.search_date_var,
                                   font=self.content_font, width=25,
@@ -235,9 +235,9 @@ class ProductionRecordsInterface:
                                width=15,
                                relief='solid', bd=2)
             start_date_entry.pack(side=tk.RIGHT, padx=(10, 0), ipady=6)
+            start_date_entry.focus_set()
             
             self.setup_placeholder(start_date_entry, "YYYY-MM-DD")
-            start_date_entry.bind('<Button-1>', lambda e: start_date_entry.focus_force(), add=True)
             
             end_frame = tk.Frame(date_window, bg='white')
             end_frame.pack(pady=10, padx=20, fill=tk.X)
@@ -251,9 +251,9 @@ class ProductionRecordsInterface:
                              width=15,
                              relief='solid', bd=2)
             end_date_entry.pack(side=tk.RIGHT, padx=(10, 0), ipady=6)
+            end_date_entry.focus_set()
             
             self.setup_placeholder(end_date_entry, "YYYY-MM-DD")
-            end_date_entry.bind('<Button-1>', lambda e: end_date_entry.focus_force(), add=True)
             
             shortcut_frame = tk.Frame(date_window, bg='white')
             shortcut_frame.pack(pady=15)

@@ -1087,9 +1087,9 @@ class ProductionInterface:
                                 font=tkFont.Font(family="微软雅黑", size=14),
                                 width=15, justify='center')
             package_entry.pack(pady=10)
+            package_entry.focus_set()
             
             self.setup_placeholder(package_entry, "包装数量")
-            package_entry.bind('<Button-1>', lambda e: package_entry.focus_force(), add=True)
             
             button_frame = tk.Frame(continue_window, bg='white')
             button_frame.pack(pady=30)

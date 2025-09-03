@@ -488,9 +488,9 @@ class MaterialManagementInterface:
                          relief='solid', bd=2,
                          bg='white', fg='#333333')
             name_entry.pack(ipady=12)
+            name_entry.focus_set()
             
             self.setup_placeholder(name_entry, "请输入物料名称")
-            name_entry.bind('<Button-1>', lambda e: name_entry.focus_force(), add=True)
             
             button_frame = tk.Frame(name_dialog, bg='white')
             button_frame.pack(pady=40)
@@ -592,9 +592,9 @@ class MaterialManagementInterface:
                                    relief='solid', bd=1,
                                    bg='white', fg='#333333')
             weight_entry.pack(ipady=8, pady=(5, 0))
+            weight_entry.focus_set()
             
             self.setup_placeholder(weight_entry, "请输入目标重量")
-            weight_entry.bind('<Button-1>', lambda e: weight_entry.focus_force(), add=True)
             
             quantity_frame = tk.Frame(params_dialog, bg='white')
             quantity_frame.pack(pady=15)
@@ -610,9 +610,9 @@ class MaterialManagementInterface:
                                      relief='solid', bd=1,
                                      bg='white', fg='#333333')
             quantity_entry.pack(ipady=8, pady=(5, 0))
+            quantity_entry.focus_set()
             
             self.setup_placeholder(quantity_entry, "请输入目标包数")
-            quantity_entry.bind('<Button-1>', lambda e: quantity_entry.focus_force(), add=True)
             
             button_frame = tk.Frame(params_dialog, bg='white')
             button_frame.pack(pady=40)

@@ -123,8 +123,7 @@ class WeightCalibrationInterface:
                                             highlightthickness=2)
         self.standard_weight_entry.pack(side='left', padx=(0, content_padding))
         self.standard_weight_entry.insert(0, "000.0")
-        
-        self.standard_weight_entry.bind('<Button-1>', lambda e: self.standard_weight_entry.focus_force(), add=True)
+        self.standard_weight_entry.focus_set()
 
         self.standard_weight_entry.bind('<KeyRelease>', self.validate_standard_weight)
         self.standard_weight_entry.bind('<FocusOut>', self.save_standard_weight)

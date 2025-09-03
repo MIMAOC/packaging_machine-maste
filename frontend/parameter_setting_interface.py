@@ -241,8 +241,7 @@ class ParameterSettingInterface:
                               width=12, 
                               highlightthickness=2, highlightcolor='#4a90e2')
         param_entry.grid(row=0, column=1, sticky='w', padx=0, pady=8, ipady=8)
-
-        param_entry.bind('<Button-1>', lambda e: param_entry.focus_force(), add=True)
+        param_entry.focus_set()
         
         param_entry.bind('<KeyRelease>', lambda e, key=param_key: self.validate_input(key, e.widget.get()))
         param_entry.bind('<FocusOut>', lambda e, key=param_key: self.format_parameter_value(key))

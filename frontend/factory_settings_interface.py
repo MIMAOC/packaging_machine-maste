@@ -187,9 +187,9 @@ class FactorySettingsInterface:
                                  relief='solid', bd=1,
                                  bg='white', fg='#333333')
         password_entry.pack(ipady=12, pady=(0, 80))
+        password_entry.focus_set()
         
         self.setup_placeholder(password_entry, "请输入密码")
-        password_entry.bind('<Button-1>', lambda e: password_entry.focus_force(), add=True)
         
         password_entry.focus()
         password_entry.bind('<Return>', lambda e: self.verify_password())

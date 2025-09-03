@@ -151,8 +151,7 @@ class SystemSettingInterface:
             password_entry = tk.Entry(password_dialog, font=("Arial", 14), justify='center',
                                     show='*', width=20, relief='solid', bd=2)
             password_entry.pack(pady=10)
-            
-            password_entry.bind('<Button-1>', lambda e: password_entry.focus_force(), add=True)
+            password_entry.focus_set()
             
             button_frame = tk.Frame(password_dialog, bg='white')
             button_frame.pack(pady=20)
@@ -302,8 +301,7 @@ class SystemSettingInterface:
                                  highlightthickness=2, highlightcolor='#4a90e2', 
                                  bg='white', fg='#333333')
             param_entry.pack(side=tk.RIGHT, anchor='e', ipady=10)
-
-            param_entry.bind('<Button-1>', lambda e: param_entry.focus_force(), add=True)
+            param_entry.focus_set()
             
             param_entry.bind('<FocusOut>', 
                            lambda e, pk=param_key: self.on_parameter_changed(pk, e.widget.get()))
