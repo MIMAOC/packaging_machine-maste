@@ -3,7 +3,7 @@
 
 作者：L
 创建日期：2025-08-05
-修复日期：2025-08-06
+修改日期：2025-08-06
 """
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -70,6 +70,7 @@ class SimpleTianTengInterface:
         self.bucket_number_labels = {}
         self.target_weight_entry = None
         
+        # 从PLC读取的真实状态，而不是本地跟踪的状态
         self.global_started = False
         
         self.bucket_started = {}
@@ -155,6 +156,7 @@ class SimpleTianTengInterface:
         self.clear_main_content()
         self.current_interface = "monitoring"
         self.create_monitoring_interface()
+        self.load_global_start_state()  # 加载全局启动状态
         self.start_data_refresh()
     
     def show_manual_interface(self):
@@ -213,6 +215,7 @@ class SimpleTianTengInterface:
         self.current_interface = "bucket_detail"
         self.current_bucket_id = bucket_id
         self.create_bucket_detail_interface(bucket_id)
+        self.load_bucket_start_state(bucket_id)  # 加载料斗启动状态
         self.start_data_refresh()
 
     def create_menu_interface(self):
@@ -425,6 +428,13 @@ class SimpleTianTengInterface:
                                relief='solid', bd=1, height=2,
                                command=lambda: self.toggle_global_start())
                 self.control_buttons['global_start'] = btn
+            elif action in ["GlobalDischarge", "GlobalClear"]:
+                # 为总放料和总清零添加点击效果
+                btn = tk.Button(buttons_frame, text=text, font=('Microsoft YaHei', 18, 'bold'),
+                               bg=color, fg='white' if color != "#e0e0e0" else '#333333',
+                               relief='solid', bd=1, height=2,
+                               command=lambda a=action, b=None: self.on_control_button_click_with_effect(a, b))
+                self.control_buttons[action.lower()] = btn
             else:
                 btn = tk.Button(buttons_frame, text=text, font=('Microsoft YaHei', 18, 'bold'),
                                bg=color, fg='white' if color != "#e0e0e0" else '#333333',
@@ -555,6 +565,12 @@ class SimpleTianTengInterface:
                                relief='solid', bd=1, height=2,
                                command=lambda: self.toggle_bucket_start())
                 self.control_buttons[f'bucket_{self.current_bucket_id}_start'] = btn
+            elif action in ["Discharge", "Clear"]:
+                # 为放料和清零按钮添加点击效果
+                btn = tk.Button(buttons_frame, text=text, font=('Microsoft YaHei', 20, 'bold'),
+                               bg=color, fg='white' if color != "#e0e0e0" else '#333333',
+                               relief='solid', bd=1, height=2,
+                               command=lambda a=action: self.on_detail_control_click_with_effect(a))
             else:
                 btn = tk.Button(buttons_frame, text=text, font=('Microsoft YaHei', 20, 'bold'),
                                bg=color, fg='white' if color != "#e0e0e0" else '#333333',
@@ -587,6 +603,123 @@ class SimpleTianTengInterface:
                            width=4, height=2, relief='solid', bd=2,
                            command=lambda bid=bucket_id: self.switch_bucket(bid))
             btn.pack(side=tk.LEFT, padx=15)
+
+    # 新增：带视觉效果的按钮点击处理
+    def on_control_button_click_with_effect(self, action: str, button: tk.Button = None):
+        """处理带点击效果的控制按钮"""
+        if button is None:
+            # 根据action找到对应的按钮
+            if action == "GlobalDischarge":
+                button = self.control_buttons.get('globaldischarge')
+            elif action == "GlobalClear":
+                button = self.control_buttons.get('globalclear')
+        
+        # 执行点击效果
+        if button:
+            self.add_button_click_effect(button)
+        
+        # 执行原有功能
+        if action == "Home":
+            self.show_menu_interface()
+        elif action == "GlobalDischarge":
+            self.send_global_pulse_command("GlobalDischarge")
+        elif action == "GlobalClear":
+            self.send_global_pulse_command("GlobalClear")
+
+    def on_detail_control_click_with_effect(self, action: str):
+        """处理详情页面带点击效果的控制按钮"""
+        # 查找对应的按钮并添加效果
+        buttons_frame = None
+        for widget in self.main_content_frame.winfo_children():
+            if isinstance(widget, tk.Frame):
+                for child in widget.winfo_children():
+                    if isinstance(child, tk.Frame) and child.winfo_width() == 250:  # 右侧控制面板
+                        for panel_child in child.winfo_children():
+                            if isinstance(panel_child, tk.Frame):
+                                for btn in panel_child.winfo_children():
+                                    if isinstance(btn, tk.Button) and btn.cget('text') in ["放料", "清零"]:
+                                        if (action == "Discharge" and btn.cget('text') == "放料") or \
+                                           (action == "Clear" and btn.cget('text') == "清零"):
+                                            self.add_button_click_effect(btn)
+                                            break
+        
+        # 执行原有功能
+        if action == "Back":
+            self.show_monitoring_interface()
+        elif action == "Discharge":
+            self.send_bucket_pulse_command(self.current_bucket_id, "Discharge")
+        elif action == "Clear":
+            self.send_bucket_pulse_command(self.current_bucket_id, "Clear")
+    
+    def add_button_click_effect(self, button: tk.Button):
+        """为按钮添加点击视觉效果"""
+        try:
+            # 保存原始颜色
+            original_bg = button.cget('bg')
+            original_fg = button.cget('fg')
+            
+            # 改变颜色显示点击效果
+            if original_bg != "#e0e0e0":  # 不是灰色按钮
+                button.configure(bg='#2d5aa0', fg='white')  # 深蓝色
+            else:
+                button.configure(bg='#c0c0c0', fg='#222222')  # 深灰色
+            
+            # 150毫秒后恢复原始颜色
+            self.root.after(150, lambda: button.configure(bg=original_bg, fg=original_fg))
+            
+        except Exception as e:
+            pass
+
+    # 新增：加载全局启动状态
+    def load_global_start_state(self):
+        """从PLC读取全局启动状态并更新按钮显示"""
+        if not self.modbus_client or not self.modbus_client.is_connected:
+            return
+        
+        try:
+            # 读取全局启动状态
+            global_start_addr = get_traditional_global_address('GlobalStart')
+            start_data = self.modbus_client.read_coils(global_start_addr, 1)
+            
+            if start_data and 'global_start' in self.control_buttons:
+                is_started = start_data[0]
+                self.global_started = is_started
+                
+                btn = self.control_buttons['global_start']
+                if is_started:
+                    btn.configure(text="总停止", bg="#ff0000", fg="white")
+                else:
+                    btn.configure(text="总启动", bg="#4a90e2", fg="white")
+                    
+        except Exception as e:
+            # 如果读取失败，保持默认状态
+            pass
+        
+    # 新增：加载料斗启动状态
+    def load_bucket_start_state(self, bucket_id: int):
+        """从PLC读取料斗启动状态并更新按钮显示"""
+        if not self.modbus_client or not self.modbus_client.is_connected:
+            return
+        
+        try:
+            # 读取料斗启动状态
+            bucket_start_addr = get_traditional_control_address(bucket_id, 'Start')
+            start_data = self.modbus_client.read_coils(bucket_start_addr, 1)
+            
+            btn_key = f'bucket_{bucket_id}_start'
+            if start_data and btn_key in self.control_buttons:
+                is_started = start_data[0]
+                self.bucket_started[bucket_id] = is_started
+                
+                btn = self.control_buttons[btn_key]
+                if is_started:
+                    btn.configure(text="停止", bg="#ff0000", fg="white")
+                else:
+                    btn.configure(text="启动", bg="#4a90e2", fg="white")
+                    
+        except Exception as e:
+            # 如果读取失败，保持默认状态
+            pass
     
     def save_target_weight(self, event=None):
         if not self.modbus_client or not self.modbus_client.is_connected:
@@ -787,18 +920,25 @@ class SimpleTianTengInterface:
             btn = self.control_buttons['global_start']
             
             try:
+                # 先从PLC读取当前状态，确保状态同步
+                self.load_global_start_state()
+                
                 if self.global_started:
                     success = self.execute_global_stop_with_mutex()
                     if success:
-                        btn.configure(text="总启动", bg="#4a90e2")
+                        btn.configure(text="总启动", bg="#4a90e2", fg="white")
                         self.global_started = False
+                        # 添加点击效果
+                        self.add_button_click_effect(btn)
                     else:
                         messagebox.showerror("错误", "全局停止操作失败")
                 else:
                     success = self.execute_global_start_with_mutex()
                     if success:
-                        btn.configure(text="总停止", bg="#ff0000")
+                        btn.configure(text="总停止", bg="#ff0000", fg="white")
                         self.global_started = True
+                        # 添加点击效果
+                        self.add_button_click_effect(btn)
                     else:
                         messagebox.showerror("错误", "全局启动操作失败")
                         
@@ -815,21 +955,27 @@ class SimpleTianTengInterface:
             btn = self.control_buttons[btn_key]
             
             try:
-                current_text = btn.cget('text')
-                if current_text == "启动":
-                    success = self.execute_bucket_start(self.current_bucket_id)
-                    if success:
-                        btn.configure(text="停止", bg="#ff0000")
-                        self.bucket_started[self.current_bucket_id] = True
-                    else:
-                        messagebox.showerror("错误", f"料斗{self.current_bucket_id}启动操作失败")
-                else:
+                # 先从PLC读取当前状态，确保状态同步
+                self.load_bucket_start_state(self.current_bucket_id)
+                
+                if self.bucket_started[self.current_bucket_id]:
                     success = self.execute_bucket_stop(self.current_bucket_id)
                     if success:
-                        btn.configure(text="启动", bg="#4a90e2")
+                        btn.configure(text="启动", bg="#4a90e2", fg="white")
                         self.bucket_started[self.current_bucket_id] = False
+                        # 添加点击效果
+                        self.add_button_click_effect(btn)
                     else:
                         messagebox.showerror("错误", f"料斗{self.current_bucket_id}停止操作失败")
+                else:
+                    success = self.execute_bucket_start(self.current_bucket_id)
+                    if success:
+                        btn.configure(text="停止", bg="#ff0000", fg="white")
+                        self.bucket_started[self.current_bucket_id] = True
+                        # 添加点击效果
+                        self.add_button_click_effect(btn)
+                    else:
+                        messagebox.showerror("错误", f"料斗{self.current_bucket_id}启动操作失败")
                         
             except Exception as e:
                 messagebox.showerror("错误", f"料斗{self.current_bucket_id}启动/停止操作异常: {e}")
@@ -1026,6 +1172,8 @@ class SimpleTianTengInterface:
         try:
             if self.current_interface == "monitoring":
                 self.update_monitoring_data()
+                # 在监控界面也定期更新全局启动按钮状态
+                self.update_global_start_button_state()
             elif self.current_interface == "bucket_detail":
                 self.update_detail_data()
             elif self.current_interface in ["manual", "calibration"] and hasattr(self, '_external_update_callback'):
@@ -1037,6 +1185,57 @@ class SimpleTianTengInterface:
         finally:
             if self.current_interface in ["monitoring", "bucket_detail", "manual", "calibration"]:
                 self.refresh_timer = self.root.after(100, self.update_realtime_data)
+
+    def update_global_start_button_state(self):
+        """定期更新全局启动按钮的状态显示"""
+        if not self.modbus_client or not self.modbus_client.is_connected:
+            return
+            
+        try:
+            global_start_addr = get_traditional_global_address('GlobalStart')
+            start_data = self.modbus_client.read_coils(global_start_addr, 1)
+            
+            if start_data and 'global_start' in self.control_buttons:
+                is_started = start_data[0]
+                
+                # 如果状态发生了变化，更新按钮显示
+                if is_started != self.global_started:
+                    self.global_started = is_started
+                    
+                    btn = self.control_buttons['global_start']
+                    if is_started:
+                        btn.configure(text="总停止", bg="#ff0000", fg="white")
+                    else:
+                        btn.configure(text="总启动", bg="#4a90e2", fg="white")
+                        
+        except Exception as e:
+            pass
+        
+    def update_bucket_start_button_state(self, bucket_id: int):
+        """定期更新料斗启动按钮的状态显示"""
+        if not self.modbus_client or not self.modbus_client.is_connected:
+            return
+            
+        try:
+            bucket_start_addr = get_traditional_control_address(bucket_id, 'Start')
+            start_data = self.modbus_client.read_coils(bucket_start_addr, 1)
+            
+            btn_key = f'bucket_{bucket_id}_start'
+            if start_data and btn_key in self.control_buttons:
+                is_started = start_data[0]
+                
+                # 如果状态发生了变化，更新按钮显示
+                if is_started != self.bucket_started[bucket_id]:
+                    self.bucket_started[bucket_id] = is_started
+                    
+                    btn = self.control_buttons[btn_key]
+                    if is_started:
+                        btn.configure(text="停止", bg="#ff0000", fg="white")
+                    else:
+                        btn.configure(text="启动", bg="#4a90e2", fg="white")
+                        
+        except Exception as e:
+            pass
     
     def update_monitoring_data(self):
         if not self.modbus_client or not self.modbus_client.is_connected:
@@ -1105,6 +1304,8 @@ class SimpleTianTengInterface:
                 pass
             
             self.update_status_indicators_detail(bucket_id)
+            # 添加料斗启动按钮状态更新
+            self.update_bucket_start_button_state(bucket_id)
             
         except Exception as e:
             pass

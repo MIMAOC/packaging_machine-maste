@@ -458,26 +458,22 @@ class PackagingMachineGUI:
             "是否确认进入传统模式？"
         )
         
-        if result:
-            pass
-        
-        if self.modbus_client and self.connection_status:
-            try:
-                from plc_addresses import GLOBAL_CONTROL_ADDRESSES
-                
-                if not self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['AIMode'], False):
-                    messagebox.showerror("PLC通信失败", "发送AI模式关闭命令失败")
-                    return
-                
-                messagebox.showinfo("模式切换成功", "PLC已切换至传统模式")
-                
-            except ImportError as e:
-                messagebox.showwarning("模块错误", "无法导入PLC地址配置")
-            except Exception as e:
-                error_msg = f"PLC模式切换异常: {str(e)}"
-                messagebox.showerror("PLC操作失败", error_msg)
-        else:
-            messagebox.showwarning("PLC未连接", "PLC未连接，无法发送模式切换命令")
+        if result:        
+            if self.modbus_client and self.connection_status:
+                try:
+                    from plc_addresses import GLOBAL_CONTROL_ADDRESSES
+                    
+                    if not self.modbus_client.write_coil(GLOBAL_CONTROL_ADDRESSES['AIMode'], False):
+                        messagebox.showerror("PLC通信失败", "发送AI模式关闭命令失败")
+                        return
+                    
+                except ImportError as e:
+                    messagebox.showwarning("模块错误", "无法导入PLC地址配置")
+                except Exception as e:
+                    error_msg = f"PLC模式切换异常: {str(e)}"
+                    messagebox.showerror("PLC操作失败", error_msg)
+            else:
+                messagebox.showwarning("PLC未连接", "PLC未连接，无法发送模式切换命令")
         
         if TRADITIONAL_MODE_AVAILABLE:
             try:
