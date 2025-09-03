@@ -11,7 +11,6 @@ from tkinter import ttk, messagebox
 import tkinter.font as tkFont
 import threading
 from typing import List
-from touchscreen_utils import TouchScreenUtils
 
 try:
     from database.material_dao import MaterialDAO, Material
@@ -44,11 +43,24 @@ class MaterialManagementInterface:
         
         self.create_widgets()
         
-        TouchScreenUtils.optimize_window_for_touch(self.root)
-        
         self.load_materials()
         
-        # self.center_window()
+    def setup_placeholder(self, entry_widget, placeholder_text):
+        def on_focus_in(event):
+            if entry_widget.get() == placeholder_text:
+                entry_widget.delete(0, tk.END)
+                entry_widget.config(fg='#333333')
+        
+        def on_focus_out(event):
+            if not entry_widget.get().strip():
+                entry_widget.insert(0, placeholder_text)
+                entry_widget.config(fg='#999999')
+        
+        entry_widget.insert(0, placeholder_text)
+        entry_widget.config(fg='#999999')
+        
+        entry_widget.bind('<FocusIn>', on_focus_in)
+        entry_widget.bind('<FocusOut>', on_focus_out)
     
     def setup_window(self):
         self.root.title("物料管理")
@@ -86,8 +98,6 @@ class MaterialManagementInterface:
         self.create_bottom_controls(main_frame)
         
         self.create_footer_section(main_frame)
-        
-        TouchScreenUtils.setup_window_focus_handling(self.root)
     
     def create_title_bar(self, parent):
         title_frame = tk.Frame(parent, bg='white')
@@ -464,8 +474,6 @@ class MaterialManagementInterface:
             
             self.center_dialog_relative_to_main(name_dialog, 700, 600)
             
-            TouchScreenUtils.setup_dialog_focus_handling(name_dialog)
-            
             tk.Label(name_dialog, text="新物料名称", 
                     font=tkFont.Font(family="微软雅黑", size=16, weight="bold"),
                     bg='white', fg='#333333').pack(pady=40)
@@ -481,7 +489,7 @@ class MaterialManagementInterface:
                          bg='white', fg='#333333')
             name_entry.pack(ipady=12)
             
-            TouchScreenUtils.setup_touch_entry(name_entry, "请输入物料名称")
+            self.setup_placeholder(name_entry, "请输入物料名称")
             name_entry.bind('<Button-1>', lambda e: name_entry.focus_force(), add=True)
             
             button_frame = tk.Frame(name_dialog, bg='white')
@@ -544,8 +552,6 @@ class MaterialManagementInterface:
             params_dialog.transient(self.root)
             params_dialog.grab_set()
             
-            TouchScreenUtils.setup_dialog_focus_handling(params_dialog)
-            
             self.center_dialog_relative_to_main(params_dialog, 700, 600)
             
             title_text = "再学习物料" if is_relearning else "新物料名称"
@@ -587,7 +593,7 @@ class MaterialManagementInterface:
                                    bg='white', fg='#333333')
             weight_entry.pack(ipady=8, pady=(5, 0))
             
-            TouchScreenUtils.setup_touch_entry(weight_entry, "请输入目标重量")
+            self.setup_placeholder(weight_entry, "请输入目标重量")
             weight_entry.bind('<Button-1>', lambda e: weight_entry.focus_force(), add=True)
             
             quantity_frame = tk.Frame(params_dialog, bg='white')
@@ -605,7 +611,7 @@ class MaterialManagementInterface:
                                      bg='white', fg='#333333')
             quantity_entry.pack(ipady=8, pady=(5, 0))
             
-            TouchScreenUtils.setup_touch_entry(quantity_entry, "请输入目标包数")
+            self.setup_placeholder(quantity_entry, "请输入目标包数")
             quantity_entry.bind('<Button-1>', lambda e: quantity_entry.focus_force(), add=True)
             
             button_frame = tk.Frame(params_dialog, bg='white')

@@ -10,7 +10,6 @@ import tkinter.font as font
 import time
 import threading
 from typing import Optional, Dict, Any
-from touchscreen_utils import TouchScreenUtils
 
 try:
     from traditional_plc_addresses import (
@@ -38,8 +37,6 @@ class SystemSettingInterface:
         self.font_scale = 1.0
         
         self.parameter_data = {}
-        
-        TouchScreenUtils.optimize_window_for_touch(self.root)
 
         self.parameter_entries = {}
         self.control_buttons = {}
@@ -155,7 +152,7 @@ class SystemSettingInterface:
                                     show='*', width=20, relief='solid', bd=2)
             password_entry.pack(pady=10)
             
-            TouchScreenUtils.setup_touch_entry(password_entry)
+            password_entry.bind('<Button-1>', lambda e: password_entry.focus_force(), add=True)
             
             button_frame = tk.Frame(password_dialog, bg='white')
             button_frame.pack(pady=20)
@@ -306,7 +303,7 @@ class SystemSettingInterface:
                                  bg='white', fg='#333333')
             param_entry.pack(side=tk.RIGHT, anchor='e', ipady=10)
 
-            TouchScreenUtils.setup_touch_entry(param_entry)
+            param_entry.bind('<Button-1>', lambda e: param_entry.focus_force(), add=True)
             
             param_entry.bind('<FocusOut>', 
                            lambda e, pk=param_key: self.on_parameter_changed(pk, e.widget.get()))

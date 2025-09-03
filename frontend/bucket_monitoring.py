@@ -611,6 +611,19 @@ class BucketMonitoringService:
             
     def _handle_data_record_on_discharge(self, bucket_id: int):
         try:
+            max_wait_time = 1.0
+            wait_interval = 0.1
+            waited_time = 0.0
+            
+            with self.lock:
+                state = self.production_states[bucket_id]
+                
+            while state.temp_real_weight == 0.0 and waited_time < max_wait_time:
+                time.sleep(wait_interval)
+                waited_time += wait_interval
+                with self.lock:
+                    state = self.production_states[bucket_id]
+            
             with self.lock:
                 state = self.production_states[bucket_id]
                 real_weight = state.temp_real_weight

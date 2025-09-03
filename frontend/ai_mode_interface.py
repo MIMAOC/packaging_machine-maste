@@ -12,7 +12,6 @@ import tkinter.font as tkFont
 import threading
 import time
 from typing import Dict, List
-from touchscreen_utils import TouchScreenUtils
 from production_interface import create_production_interface
 
 try:
@@ -151,6 +150,24 @@ class AIModeInterface:
         self.statistics_timer_id = None
         self.learning_timer_running = False
         self.statistics_timer_running = False
+        
+    def setup_placeholder(self, entry_widget, placeholder_text):
+        def on_focus_in(event):
+            if entry_widget.get() == placeholder_text:
+                entry_widget.delete(0, tk.END)
+                entry_widget.config(fg='#333333')
+        
+        def on_focus_out(event):
+            if not entry_widget.get().strip():
+                entry_widget.insert(0, placeholder_text)
+                entry_widget.config(fg='#999999')
+        
+        entry_widget.insert(0, placeholder_text)
+        entry_widget.config(fg='#999999')
+        
+        entry_widget.bind('<FocusIn>', on_focus_in)
+        entry_widget.bind('<FocusOut>', on_focus_out)
+
     def get_material_list_from_database(self) -> List[str]:
         material_list = ["请选择已记录物料"]
         
@@ -279,9 +296,6 @@ class AIModeInterface:
         self.root.geometry("1920x1080")
         self.root.configure(bg='white')
         self.root.resizable(True, True)
-
-        TouchScreenUtils.optimize_window_for_touch(self.root)
-        TouchScreenUtils.setup_window_focus_handling(self.root)
         
         self.setup_force_exit_mechanism()
         
@@ -404,7 +418,7 @@ class AIModeInterface:
                           bg='white', fg='#333333')
         weight_entry.pack(ipady=12)
         
-        TouchScreenUtils.setup_touch_entry(weight_entry, "请输入目标重量克数")
+        self.setup_placeholder(weight_entry, "请输入目标重量克数")
         weight_entry.bind('<Button-1>', lambda e: weight_entry.focus_force(), add=True)
     
     def create_quantity_section(self, parent):
@@ -426,7 +440,7 @@ class AIModeInterface:
                             bg='white', fg='#333333')
         quantity_entry.pack(ipady=12)
         
-        TouchScreenUtils.setup_touch_entry(quantity_entry, "请输入所需包装数量")
+        self.setup_placeholder(quantity_entry, "请输入所需包装数量")
         quantity_entry.bind('<Button-1>', lambda e: quantity_entry.focus_force(), add=True)
     
     def create_material_section(self, parent):
@@ -590,8 +604,6 @@ class AIModeInterface:
             
             self.center_dialog_relative_to_main(name_dialog, 700, 600)
             
-            TouchScreenUtils.setup_dialog_focus_handling(name_dialog)
-            
             tk.Label(name_dialog, text="新物料名称", 
                     font=tkFont.Font(family="微软雅黑", size=16, weight="bold"),
                     bg='white', fg='#333333').pack(pady=40)
@@ -607,9 +619,8 @@ class AIModeInterface:
                                  bg='white', fg='#333333')
             name_entry.pack(ipady=8)
             
-            TouchScreenUtils.setup_touch_entry(name_entry, "请输入物料名称")
+            self.setup_placeholder(name_entry, "请输入物料名称")
             name_entry.bind('<Button-1>', lambda e: name_entry.focus_force(), add=True)
-            name_entry.focus()
             
             button_frame = tk.Frame(name_dialog, bg='white')
             button_frame.pack(pady=40)
@@ -670,8 +681,6 @@ class AIModeInterface:
             params_dialog.transient(self.root)
             params_dialog.grab_set()
             
-            TouchScreenUtils.setup_dialog_focus_handling(params_dialog)
-            
             self.center_dialog_relative_to_main(params_dialog, 700, 600)
             
             tk.Label(params_dialog, text="新物料名称", 
@@ -717,9 +726,8 @@ class AIModeInterface:
             weight_entry.pack(ipady=8, pady=(5, 0))
             
             if not weight_var.get():
-                TouchScreenUtils.setup_touch_entry(weight_entry, "请输入目标重量克数")
+                self.setup_placeholder(weight_entry, "请输入目标重量克数")
                 weight_entry.bind('<Button-1>', lambda e: weight_entry.focus_force(), add=True)
-                weight_entry.focus()
             
             quantity_frame = tk.Frame(params_dialog, bg='white')
             quantity_frame.pack(pady=15)
@@ -741,9 +749,8 @@ class AIModeInterface:
             quantity_entry.pack(ipady=8, pady=(5, 0))
             
             if not quantity_var.get():
-                TouchScreenUtils.setup_touch_entry(quantity_entry, "请输入目标包数")
+                self.setup_placeholder(quantity_entry, "请输入目标包数")
                 quantity_entry.bind('<Button-1>', lambda e: quantity_entry.focus_force(), add=True)
-                quantity_entry.focus()
             
             button_frame = tk.Frame(params_dialog, bg='white')
             button_frame.pack(pady=40)
@@ -944,8 +951,6 @@ class AIModeInterface:
         completion_window.transient(self.root)
         completion_window.grab_set()
         
-        TouchScreenUtils.setup_dialog_focus_handling(completion_window)
-        
         self.center_dialog_relative_to_main(completion_window, 550, 350)
         
         tk.Label(completion_window, text="已清零", 
@@ -989,8 +994,6 @@ class AIModeInterface:
         preparation_window.resizable(False, False)
         preparation_window.transient(self.root)
         preparation_window.grab_set()
-        
-        TouchScreenUtils.setup_dialog_focus_handling(preparation_window)
         
         self.center_dialog_relative_to_main(preparation_window, 550, 350)
         
@@ -1771,8 +1774,6 @@ class AIModeInterface:
             relearning_window.resizable(False, False)
             relearning_window.transient(self.root)
             
-            TouchScreenUtils.setup_dialog_focus_handling(relearning_window)
-            
             if (self.learning_status_window and 
                 self.learning_status_window.winfo_exists()):
                 pass  
@@ -2017,8 +2018,6 @@ class AIModeInterface:
             self.learning_status_window.transient(self.root)
             
             self.learning_status_window.protocol("WM_DELETE_WINDOW", lambda: None)
-            
-            TouchScreenUtils.setup_dialog_focus_handling(self.learning_status_window)
             
             self.center_dialog_relative_to_main(self.learning_status_window, 800, 600)
             
@@ -2382,8 +2381,6 @@ class AIModeInterface:
             training_window.resizable(False, False)
             training_window.transient(self.root)
             training_window.grab_set()
-            
-            TouchScreenUtils.setup_dialog_focus_handling(training_window)
             
             self.center_dialog_relative_to_main(training_window, 550, 350)
             

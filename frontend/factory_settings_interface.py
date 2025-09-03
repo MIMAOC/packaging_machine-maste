@@ -11,12 +11,6 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import tkinter.font as tkFont
 
-try:
-    from touchscreen_utils import TouchScreenUtils
-    TOUCHSCREEN_UTILS_AVAILABLE = True
-except ImportError as e:
-    TOUCHSCREEN_UTILS_AVAILABLE = False
-
 class ErrorThresholdConfig:
     _instance = None
     _lock = threading.Lock()
@@ -62,6 +56,23 @@ class FactorySettingsInterface:
         
         self.show_password_verification()
         
+    def setup_placeholder(self, entry_widget, placeholder_text):
+        def on_focus_in(event):
+            if entry_widget.get() == placeholder_text:
+                entry_widget.delete(0, tk.END)
+                entry_widget.config(fg='#333333')
+        
+        def on_focus_out(event):
+            if not entry_widget.get().strip():
+                entry_widget.insert(0, placeholder_text)
+                entry_widget.config(fg='#999999')
+        
+        entry_widget.insert(0, placeholder_text)
+        entry_widget.config(fg='#999999')
+        
+        entry_widget.bind('<FocusIn>', on_focus_in)
+        entry_widget.bind('<FocusOut>', on_focus_out)
+        
     def _load_from_config_file(self):
         try:
             import json
@@ -97,10 +108,6 @@ class FactorySettingsInterface:
         self.password_window.resizable(True, True)
         self.password_window.transient()
         self.password_window.grab_set()
-        
-        if TOUCHSCREEN_UTILS_AVAILABLE:
-            TouchScreenUtils.optimize_window_for_touch(self.password_window)
-            TouchScreenUtils.setup_window_focus_handling(self.password_window)
         
         self.password_window.protocol("WM_DELETE_WINDOW", self.on_password_window_closing)
         
@@ -181,8 +188,7 @@ class FactorySettingsInterface:
                                  bg='white', fg='#333333')
         password_entry.pack(ipady=12, pady=(0, 80))
         
-        if TOUCHSCREEN_UTILS_AVAILABLE:
-            TouchScreenUtils.setup_touch_entry(password_entry, "请输入密码")
+        self.setup_placeholder(password_entry, "请输入密码")
         password_entry.bind('<Button-1>', lambda e: password_entry.focus_force(), add=True)
         
         password_entry.focus()
@@ -195,29 +201,6 @@ class FactorySettingsInterface:
                                padx=60, pady=18,
                                command=self.verify_password)
         confirm_btn.pack()
-    
-    def setup_placeholder(self, entry_widget, placeholder_text):
-        if TOUCHSCREEN_UTILS_AVAILABLE:
-            TouchScreenUtils.setup_touch_entry(entry_widget, placeholder_text)
-            entry_widget.bind('<Button-1>', lambda e: entry_widget.focus_force(), add=True)
-        else:
-            def on_focus_in(event):
-                entry_widget.focus_set()
-                if entry_widget.get() == placeholder_text:
-                    entry_widget.delete(0, tk.END)
-                    entry_widget.config(fg='#333333', show='*')
-            
-            def on_focus_out(event):
-                if entry_widget.get() == '':
-                    entry_widget.insert(0, placeholder_text)
-                    entry_widget.config(fg='#999999', show='')
-            
-            entry_widget.insert(0, placeholder_text)
-            entry_widget.config(fg='#999999', show='')
-            
-            entry_widget.bind('<FocusIn>', on_focus_in)
-            entry_widget.bind('<FocusOut>', on_focus_out)
-            entry_widget.bind('<Button-1>', lambda e: entry_widget.focus_force(), add=True)
     
     def verify_password(self):
         entered_password = self.password_var.get()
@@ -243,10 +226,6 @@ class FactorySettingsInterface:
         self.settings_window.resizable(True, True)
         self.settings_window.transient()
         self.settings_window.grab_set()
-        
-        if TOUCHSCREEN_UTILS_AVAILABLE:
-            TouchScreenUtils.optimize_window_for_touch(self.settings_window)
-            TouchScreenUtils.setup_window_focus_handling(self.settings_window)
         
         self.settings_window.protocol("WM_DELETE_WINDOW", self.on_settings_window_closing)
         

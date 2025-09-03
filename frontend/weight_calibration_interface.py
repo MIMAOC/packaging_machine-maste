@@ -10,7 +10,6 @@ import tkinter.font as font
 import time
 import threading
 from typing import Optional, Dict, Any
-from touchscreen_utils import TouchScreenUtils
 
 try:
     from traditional_plc_addresses import (
@@ -37,8 +36,6 @@ class WeightCalibrationInterface:
         self.weight_labels = {}
         self.standard_weight_entry = None
         self.calibration_buttons = {}
-        
-        TouchScreenUtils.optimize_window_for_touch(self.root)
 
         self.setup_fonts()
         
@@ -127,7 +124,7 @@ class WeightCalibrationInterface:
         self.standard_weight_entry.pack(side='left', padx=(0, content_padding))
         self.standard_weight_entry.insert(0, "000.0")
         
-        TouchScreenUtils.setup_touch_entry(self.standard_weight_entry)
+        self.standard_weight_entry.bind('<Button-1>', lambda e: self.standard_weight_entry.focus_force(), add=True)
 
         self.standard_weight_entry.bind('<KeyRelease>', self.validate_standard_weight)
         self.standard_weight_entry.bind('<FocusOut>', self.save_standard_weight)

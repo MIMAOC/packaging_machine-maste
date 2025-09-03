@@ -12,8 +12,7 @@ import threading
 import time
 from datetime import datetime, timedelta
 from typing import Optional, Dict
-from touchscreen_utils import TouchScreenUtils
-from plc_addresses import get_all_bucket_target_reached_addresses
+from plc_addresses import BUCKET_PRODUCTION_DISABLE_ADDRESSES, get_all_bucket_target_reached_addresses
 
 try:
     from plc_addresses import BUCKET_MONITORING_ADDRESSES, GLOBAL_CONTROL_ADDRESSES, get_production_address
@@ -96,6 +95,23 @@ class ProductionInterface:
         self.create_widgets()
         self.center_window()
         self.start_production()
+        
+    def setup_placeholder(self, entry_widget, placeholder_text):
+        def on_focus_in(event):
+            if entry_widget.get() == placeholder_text:
+                entry_widget.delete(0, tk.END)
+                entry_widget.config(fg='#333333')
+        
+        def on_focus_out(event):
+            if not entry_widget.get().strip():
+                entry_widget.insert(0, placeholder_text)
+                entry_widget.config(fg='#999999')
+        
+        entry_widget.insert(0, placeholder_text)
+        entry_widget.config(fg='#999999')
+        
+        entry_widget.bind('<FocusIn>', on_focus_in)
+        entry_widget.bind('<FocusOut>', on_focus_out)
     
     def setup_window(self):
         self.root.title("AI模式 - 正在生产")
@@ -104,9 +120,6 @@ class ProductionInterface:
         self.root.geometry("1920x1080")
         self.root.configure(bg='white')
         self.root.resizable(True, True)
-        
-        TouchScreenUtils.optimize_window_for_touch(self.root)
-        TouchScreenUtils.setup_window_focus_handling(self.root)
         
         self.setup_force_exit_mechanism()
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -807,6 +820,16 @@ class ProductionInterface:
                 try:                    
                     target_reached_addresses = get_all_bucket_target_reached_addresses()
                     
+                    disable_addresses = [BUCKET_PRODUCTION_DISABLE_ADDRESSES[i] for i in range(1, 7)]
+                    disabled_count = 0
+                    
+                    for addr in disable_addresses:
+                        disable_state = self.modbus_client.read_coils(addr, 1)
+                        if disable_state is not None and len(disable_state) > 0 and disable_state[0]:
+                            disabled_count += 1
+                            
+                    active_bucket_count = 6 - disabled_count
+                    
                     max_wait_time = 120.0
                     check_interval = 0.5
                     start_wait_time = time.time()
@@ -816,8 +839,16 @@ class ProductionInterface:
                         coil_states = self.modbus_client.read_coils(
                             target_reached_addresses[0], len(target_reached_addresses))
                         
-                        if coil_states is not None and len(coil_states) >= 6:
-                            all_buckets_reached = all(coil_states[i] for i in range(6))
+                        if coil_states is not None and len(coil_states) >= active_bucket_count:
+                            active_buckets_reached = 0
+                            for i in range(6):
+                                disable_state = self.modbus_client.read_coils(BUCKET_PRODUCTION_DISABLE_ADDRESSES[i+1], 1)
+                                is_disabled = (disable_state is not None and len(disable_state) > 0 and disable_state[0])
+                                
+                                if not is_disabled and i < len(coil_states) and coil_states[i]:
+                                    active_buckets_reached += 1
+                            
+                            all_buckets_reached = (active_buckets_reached == active_bucket_count)
                             
                             if all_buckets_reached:
                                 break
@@ -965,13 +996,12 @@ class ProductionInterface:
             info_text = (f"生产编号: {self.production_id}\n"
                         f"物料名称: {material_name}\n"
                         f"目标重量: {self.production_params.get('target_weight', 0)}g\n"
-                        f"目标包数: {target_packages}\n"
-                        f"实际包数: {self.current_package_count}\n"
-                        f"完成率: {actual_completion_rate:.2f}%\n"
+                        f"目标包数: {target_packages}\n\n"
+                        f"请取走料斗内剩余物料！\n"
                         f"用时: {self.timer_label.cget('text')}")
             
             tk.Label(info_frame, text=info_text,
-                    font=tkFont.Font(family="微软雅黑", size=12),
+                    font=tkFont.Font(family="微软雅黑", size=20),
                     bg='#f8f9fa', fg='#333333',
                     justify='left').pack(padx=20, pady=20)
             
@@ -1026,8 +1056,6 @@ class ProductionInterface:
             continue_window.transient(self.root)
             continue_window.grab_set()
             
-            TouchScreenUtils.setup_dialog_focus_handling(continue_window)
-            
             def set_grab():
                 try:
                     continue_window.grab_set()
@@ -1060,9 +1088,8 @@ class ProductionInterface:
                                 width=15, justify='center')
             package_entry.pack(pady=10)
             
-            TouchScreenUtils.setup_touch_entry(package_entry, "包装数量")
+            self.setup_placeholder(package_entry, "包装数量")
             package_entry.bind('<Button-1>', lambda e: package_entry.focus_force(), add=True)
-            package_entry.focus_set()
             
             button_frame = tk.Frame(continue_window, bg='white')
             button_frame.pack(pady=30)

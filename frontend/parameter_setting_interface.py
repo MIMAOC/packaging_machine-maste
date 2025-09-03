@@ -10,7 +10,6 @@ import tkinter.font as font
 import time
 import threading
 from typing import Optional, Dict, Any
-from touchscreen_utils import TouchScreenUtils
 
 try:
     from traditional_plc_addresses import get_traditional_system_address
@@ -33,8 +32,6 @@ class ParameterSettingInterface:
         self.control_buttons = {}
         
         self.refresh_timer = None
-
-        TouchScreenUtils.optimize_window_for_touch(self.root)
         
         self.parameter_data = {
             'CleanSpeed': 0,
@@ -245,7 +242,7 @@ class ParameterSettingInterface:
                               highlightthickness=2, highlightcolor='#4a90e2')
         param_entry.grid(row=0, column=1, sticky='w', padx=0, pady=8, ipady=8)
 
-        TouchScreenUtils.setup_touch_entry(param_entry)
+        param_entry.bind('<Button-1>', lambda e: param_entry.focus_force(), add=True)
         
         param_entry.bind('<KeyRelease>', lambda e, key=param_key: self.validate_input(key, e.widget.get()))
         param_entry.bind('<FocusOut>', lambda e, key=param_key: self.format_parameter_value(key))

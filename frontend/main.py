@@ -12,7 +12,6 @@ import time
 import requests
 import functools
 from typing import Optional, Callable, Any
-from touchscreen_utils import TouchScreenUtils
 
 try:
     from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
@@ -129,8 +128,6 @@ class PackagingMachineGUI:
             self.test_backend_api_connection()
         else:
             self.show_api_error()
-        
-        TouchScreenUtils.optimize_window_for_touch(self.root)
     
     def setup_window(self):
         self.root.title("多斗颗粒称重包装机 - MHWPM v1.5.2 (前端)")
