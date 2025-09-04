@@ -457,6 +457,9 @@ class PackagingMachineGUI:
             "• 适合经验丰富的操作员\n\n"
             "是否确认进入传统模式？"
         )
+    
+        if not result:
+            return
         
         if result:        
             if self.modbus_client and self.connection_status:

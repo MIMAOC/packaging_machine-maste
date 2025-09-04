@@ -216,6 +216,9 @@ class SimpleTianTengInterface:
         self.current_bucket_id = bucket_id
         self.create_bucket_detail_interface(bucket_id)
         self.load_bucket_start_state(bucket_id)  # 加载料斗启动状态
+    
+        # 立即更新一次状态显示，确保界面创建完成后状态可见
+        self.root.after(100, lambda: self.update_status_indicators_detail(bucket_id))
         self.start_data_refresh()
 
     def create_menu_interface(self):
@@ -466,32 +469,50 @@ class SimpleTianTengInterface:
         self.load_detail_target_weight(bucket_id)
         
     def create_detail_top_area(self, parent, bucket_id: int):
-        top_frame = tk.Frame(parent, bg='#ffffff', height=180)
+        top_frame = tk.Frame(parent, bg='#ffffff', height=250)
         top_frame.pack(side=tk.TOP, fill=tk.X, pady=(0, 5))
         top_frame.pack_propagate(False)
         
-        content_frame = tk.Frame(top_frame, bg='#ffffff')
-        content_frame.pack(expand=True)
+        # 重量显示容器 - 固定高度
+        weight_container = tk.Frame(top_frame, bg='#ffffff', height=150)
+        weight_container.pack(side=tk.TOP, fill=tk.X, pady=(10, 0))
+        weight_container.pack_propagate(False)
         
-        weight_label = tk.Label(content_frame, text="-0000.0",
+        # 重量显示 - 居中
+        weight_content_frame = tk.Frame(weight_container, bg='#ffffff')
+        weight_content_frame.pack(expand=True)
+        
+        weight_label = tk.Label(weight_content_frame, text="-0000.0",
                             font=('Arial', 100, 'bold'), bg='#ffffff', fg='#333333')
-        weight_label.pack(pady=(5, 15))
+        weight_label.pack()
         self.weight_labels[f'detail_{bucket_id}'] = weight_label
         
-        status_frame = tk.Frame(content_frame, bg='#ffffff')
-        status_frame.pack(pady=(0, 5), fill=tk.X)  # 添加 fill=tk.X
+        # 状态指示器容器 - 固定高度，独立布局
+        status_container = tk.Frame(top_frame, bg='#ffffff', height=60)
+        status_container.pack(side=tk.TOP, fill=tk.X, pady=(10, 5))
+        status_container.pack_propagate(False)
         
+        # 状态指示器框架 - 居中显示
+        status_frame = tk.Frame(status_container, bg='#ffffff')
+        status_frame.pack(expand=True)
+        
+        # 4个状态指示灯 - 平均分布
         status_types = ['CoarseAdd', 'FineAdd', 'Jog', 'TargetReached']
-        status_texts = ['快加', '慢加', '点动', '到量']
+        status_texts = ['快加', '慢加', '点动', '到重']
         
         if f'detail_{bucket_id}' not in self.status_labels:
             self.status_labels[f'detail_{bucket_id}'] = {}
         
+        # 计算每个状态指示器的宽度，确保平均分布
+        indicator_width = 8  # 固定宽度
+        
         for i, (status_type, status_text) in enumerate(zip(status_types, status_texts)):
             status_label = tk.Label(status_frame, text=status_text,
-                                font=('Microsoft YaHei', 17), bg='#cccccc', fg='#333333',
-                                relief='solid', bd=1, padx=14, pady=8, width=7)
-            status_label.pack(side=tk.LEFT, padx=8, expand=True)  # 添加 expand=True
+                                font=('Microsoft YaHei', 16), bg='#cccccc', fg='#333333',
+                                relief='solid', bd=1, padx=12, pady=6, 
+                                width=indicator_width, height=1)
+            # 使用固定间距，确保4个指示器平均分布
+            status_label.pack(side=tk.LEFT, padx=10, pady=5)
             self.status_labels[f'detail_{bucket_id}'][status_type] = status_label
     
     def create_detail_main_area(self, parent, bucket_id: int):
