@@ -470,7 +470,7 @@ class SimpleTianTengInterface:
 
         # 4个状态指示灯
         status_types = ['CoarseAdd', 'FineAdd', 'Jog', 'TargetReached']
-        status_texts = ['快加', '慢加', '点动', '到重']
+        status_texts = ['快加', '慢加', '点动', '到量']
         
         if bucket_id not in self.status_labels:
             self.status_labels[bucket_id] = {}
@@ -580,37 +580,50 @@ class SimpleTianTengInterface:
         self.load_detail_target_weight(bucket_id)
         
     def create_detail_top_area(self, parent, bucket_id: int):
-        """创建顶部重量显示区域（Pack版本）"""
-        top_frame = tk.Frame(parent, bg='#ffffff', height=180)
+        top_frame = tk.Frame(parent, bg='#ffffff', height=250)
         top_frame.pack(side=tk.TOP, fill=tk.X, pady=(0, 5))
-        top_frame.pack_propagate(False)  # 保持固定高度
+        top_frame.pack_propagate(False)
         
-        # 重量显示容器
-        content_frame = tk.Frame(top_frame, bg='#ffffff')
-        content_frame.pack(expand=True)  # 居中显示
+        # 重量显示容器 - 固定高度
+        weight_container = tk.Frame(top_frame, bg='#ffffff', height=150)
+        weight_container.pack(side=tk.TOP, fill=tk.X, pady=(10, 0))
+        weight_container.pack_propagate(False)
         
-        # 重量显示
-        weight_label = tk.Label(content_frame, text="-0000.0",
-                               font=('Arial', 100, 'bold'), bg='#ffffff', fg='#333333')
-        weight_label.pack(pady=(5, 15))
+        # 重量显示 - 居中
+        weight_content_frame = tk.Frame(weight_container, bg='#ffffff')
+        weight_content_frame.pack(expand=True)
+        
+        weight_label = tk.Label(weight_content_frame, text="-0000.0",
+                            font=('Arial', 100, 'bold'), bg='#ffffff', fg='#333333')
+        weight_label.pack()
         self.weight_labels[f'detail_{bucket_id}'] = weight_label
         
-        # 状态指示区域
-        status_frame = tk.Frame(content_frame, bg='#ffffff')
-        status_frame.pack(pady=(0, 5))
+        # 状态指示器容器 - 固定高度，独立布局
+        status_container = tk.Frame(top_frame, bg='#ffffff', height=60)
+        status_container.pack(side=tk.TOP, fill=tk.X, pady=(10, 5))
+        status_container.pack_propagate(False)
         
-        # 4个状态指示灯
+        # 状态指示器框架 - 居中显示
+        status_frame = tk.Frame(status_container, bg='#ffffff')
+        status_frame.pack(expand=True)
+        
+        # 4个状态指示灯 - 平均分布
         status_types = ['CoarseAdd', 'FineAdd', 'Jog', 'TargetReached']
         status_texts = ['快加', '慢加', '点动', '到重']
         
         if f'detail_{bucket_id}' not in self.status_labels:
             self.status_labels[f'detail_{bucket_id}'] = {}
         
+        # 计算每个状态指示器的宽度，确保平均分布
+        indicator_width = 8  # 固定宽度
+        
         for i, (status_type, status_text) in enumerate(zip(status_types, status_texts)):
             status_label = tk.Label(status_frame, text=status_text,
-                                   font=('Microsoft YaHei', 17), bg='#cccccc', fg='#333333',
-                                   relief='solid', bd=1, padx=14, pady=8, width=7)
-            status_label.pack(side=tk.LEFT, padx=8)
+                                font=('Microsoft YaHei', 16), bg='#cccccc', fg='#333333',
+                                relief='solid', bd=1, padx=12, pady=6, 
+                                width=indicator_width, height=1)
+            # 使用固定间距，确保4个指示器平均分布
+            status_label.pack(side=tk.LEFT, padx=10, pady=5)
             self.status_labels[f'detail_{bucket_id}'][status_type] = status_label
     
     def create_detail_main_area(self, parent, bucket_id: int):
@@ -627,8 +640,8 @@ class SimpleTianTengInterface:
         param_configs = [
             ("快加料速度", "CoarseSpeed", 0),
             ("慢加料速度", "FineSpeed", 0),
-            ("快加料提前量", "CoarseAdvance", 1),
-            ("慢加料提前量", "FineAdvance", 1)
+            ("快加提前量", "CoarseAdvance", 1),
+            ("慢加提前量", "FineAdvance", 1)
         ]
         
         if bucket_id not in self.parameter_entries:
@@ -643,7 +656,7 @@ class SimpleTianTengInterface:
             # 参数标签
             param_label = tk.Label(param_row, text=param_text,
                       font=('Microsoft YaHei', 24, 'normal'), bg='#ffffff', fg='#333333',
-                      width=8, anchor='e')  # ←← 添加这行：设置宽度为8个字符，右对齐
+                      width=10, anchor='e')  # ←← 添加这行：设置宽度为8个字符，右对齐
             param_label.pack(side=tk.LEFT, padx=(0, 40))
             
             # 参数输入框
@@ -827,31 +840,31 @@ class SimpleTianTengInterface:
             print(f"加载料斗{bucket_id}参数失败: {e}")
     
     def save_parameter(self, bucket_id: int, param_type: str, value_str: str):
-        """保存参数到PLC"""
         if not self.modbus_client or not self.modbus_client.is_connected:
             messagebox.showerror("错误", "PLC未连接，无法保存参数")
             return
         
         try:
-            # 验证数值
             value = float(value_str)
             
-            # 根据参数类型转换数值
             if param_type in ['CoarseAdvance', 'FineAdvance']:
-                # 提前量参数，PLC存储为整数(乘以10)
                 plc_value = int(value * 10)
             else:
-                # 速度参数，直接存储为整数
                 plc_value = int(value)
             
-            # 获取PLC地址
             address = get_traditional_parameter_address(bucket_id, param_type)
             
-            # 写入PLC
             success = self.modbus_client.write_holding_register(address, plc_value)
             
             if success:
-                print(f"成功保存料斗{bucket_id}参数{param_type}: {value} (PLC值: {plc_value})")
+                # 保存成功后立即更新输入框显示格式
+                if bucket_id in self.parameter_entries and param_type in self.parameter_entries[bucket_id]:
+                    entry = self.parameter_entries[bucket_id][param_type]
+                    if param_type in ['CoarseAdvance', 'FineAdvance']:
+                        # 格式化为1位小数
+                        formatted_value = f"{value:.1f}"
+                        entry.delete(0, tk.END)
+                        entry.insert(0, formatted_value)
             else:
                 messagebox.showerror("错误", f"保存参数失败: {param_type}")
                 
@@ -1411,7 +1424,7 @@ class SimpleTianTengInterface:
                     
                     # 逐个读取各种状态
                     try:
-                        # 到重状态
+                        # 到量状态
                         target_addr = get_traditional_monitoring_address(bucket_id, 'TargetReached')
                         target_data = self.modbus_client.read_coils(target_addr, 1)
                         if target_data:
@@ -1461,7 +1474,7 @@ class SimpleTianTengInterface:
             
             # 逐个读取各种状态
             try:
-                # 到重状态
+                # 到量状态
                 target_addr = get_traditional_monitoring_address(bucket_id, 'TargetReached')
                 target_data = self.modbus_client.read_coils(target_addr, 1)
                 if target_data:

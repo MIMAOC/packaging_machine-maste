@@ -416,7 +416,7 @@ class PackagingMachineGUI:
         footer_frame.pack(side=tk.BOTTOM, fill=tk.X)
         
         # 版本信息
-        version_text = "MHWPM v1.5.2 ©杭州公武人工智能科技有限公司 温州天腾机械有限公司"
+        version_text = "MHWPM v1.5.2 ©杭州公式人工智能科技有限公司 温州天腾机械有限公司"
         version_label = tk.Label(footer_frame, text=version_text, 
                                font=self.footer_font, bg='white', fg='#888888')
         version_label.pack(pady=(0, 10))
@@ -816,9 +816,9 @@ class PackagingMachineGUI:
             "• 适合经验丰富的操作员\n\n"
             "是否确认进入传统模式？"
         )
-        
-        if result:
-            print("进入传统模式")
+    
+        if not result:
+            return
         
         # 发送PLC模式切换命令
         if self.modbus_client and self.connection_status:
