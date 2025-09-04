@@ -457,7 +457,7 @@ class AdaptiveLearningController:
                 self._handle_adaptive_learning_not_compliant(bucket_id, new_params, analysis_msg)
             
         except Exception as e:
-            self._handle_bucket_failure(bucket_id, f"处理料斗{bucket_id}自适应学习到重流程异常: {str(e)}")
+            self._handle_bucket_failure(bucket_id, f"处理料斗{bucket_id}自适应学习到量流程异常: {str(e)}")
     
     def _handle_adaptive_learning_not_compliant(self, bucket_id: int, new_params: dict, reason: str):
         try:

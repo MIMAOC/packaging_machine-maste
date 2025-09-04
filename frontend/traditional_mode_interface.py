@@ -474,12 +474,12 @@ class SimpleTianTengInterface:
         content_frame.pack(expand=True)
         
         weight_label = tk.Label(content_frame, text="-0000.0",
-                               font=('Arial', 100, 'bold'), bg='#ffffff', fg='#333333')
+                            font=('Arial', 100, 'bold'), bg='#ffffff', fg='#333333')
         weight_label.pack(pady=(5, 15))
         self.weight_labels[f'detail_{bucket_id}'] = weight_label
         
         status_frame = tk.Frame(content_frame, bg='#ffffff')
-        status_frame.pack(pady=(0, 5))
+        status_frame.pack(pady=(0, 5), fill=tk.X)  # 添加 fill=tk.X
         
         status_types = ['CoarseAdd', 'FineAdd', 'Jog', 'TargetReached']
         status_texts = ['快加', '慢加', '点动', '到量']
@@ -489,9 +489,9 @@ class SimpleTianTengInterface:
         
         for i, (status_type, status_text) in enumerate(zip(status_types, status_texts)):
             status_label = tk.Label(status_frame, text=status_text,
-                                   font=('Microsoft YaHei', 17), bg='#cccccc', fg='#333333',
-                                   relief='solid', bd=1, padx=14, pady=8, width=7)
-            status_label.pack(side=tk.LEFT, padx=8)
+                                font=('Microsoft YaHei', 17), bg='#cccccc', fg='#333333',
+                                relief='solid', bd=1, padx=14, pady=8, width=7)
+            status_label.pack(side=tk.LEFT, padx=8, expand=True)  # 添加 expand=True
             self.status_labels[f'detail_{bucket_id}'][status_type] = status_label
     
     def create_detail_main_area(self, parent, bucket_id: int):
@@ -505,8 +505,8 @@ class SimpleTianTengInterface:
         param_configs = [
             ("快加料速度", "CoarseSpeed", 0),
             ("慢加料速度", "FineSpeed", 0),
-            ("快加料提前量", "CoarseAdvance", 1),
-            ("慢加料提前量", "FineAdvance", 1)
+            ("快加提前量", "CoarseAdvance", 1),
+            ("慢加提前量", "FineAdvance", 1)
         ]
         
         if bucket_id not in self.parameter_entries:
@@ -518,7 +518,7 @@ class SimpleTianTengInterface:
             
             param_label = tk.Label(param_row, text=param_text,
                       font=('Microsoft YaHei', 24, 'normal'), bg='#ffffff', fg='#333333',
-                      width=8, anchor='e')
+                      width=10, anchor='e')
             param_label.pack(side=tk.LEFT, padx=(0, 40))
             
             param_entry = tk.Entry(param_row, font=('Arial', 28, 'bold'), justify='center',
@@ -806,7 +806,16 @@ class SimpleTianTengInterface:
             
             success = self.modbus_client.write_holding_register(address, plc_value)
             
-            if not success:
+            if success:
+                # 保存成功后立即更新输入框显示格式
+                if bucket_id in self.parameter_entries and param_type in self.parameter_entries[bucket_id]:
+                    entry = self.parameter_entries[bucket_id][param_type]
+                    if param_type in ['CoarseAdvance', 'FineAdvance']:
+                        # 格式化为1位小数
+                        formatted_value = f"{value:.1f}"
+                        entry.delete(0, tk.END)
+                        entry.insert(0, formatted_value)
+            else:
                 messagebox.showerror("错误", f"保存参数失败: {param_type}")
                 
         except ValueError:

@@ -496,7 +496,7 @@ class FactorySettingsInterface:
         footer_frame = tk.Frame(parent, bg='white')
         footer_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=(20, 0))
         
-        version_text = "MHWPM v1.5.1 ©杭州公武人工智能科技有限公司 温州天腾机械有限公司"
+        version_text = "MHWPM v1.5.1 ©杭州公式人工智能科技有限公司 温州天腾机械有限公司"
         version_label = tk.Label(footer_frame, text=version_text, 
                                font=self.footer_font, bg='white', fg='#888888')
         version_label.pack(pady=(0, 5))

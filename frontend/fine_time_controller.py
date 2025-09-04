@@ -317,7 +317,7 @@ class FineTimeTestController:
                     self._handle_bucket_retry(bucket_id, new_fine_speed, analysis_msg)
         
         except Exception as e:
-            self._handle_bucket_failure(bucket_id, f"处理料斗{bucket_id}慢加到重流程异常: {str(e)}")
+            self._handle_bucket_failure(bucket_id, f"处理料斗{bucket_id}慢加到量流程异常: {str(e)}")
     
     def _extract_flow_rate_from_message(self, analysis_msg: str) -> Optional[float]:
         try:

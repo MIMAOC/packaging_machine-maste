@@ -253,7 +253,7 @@ class FlightMaterialTestController:
                     self._start_single_attempt(bucket_id)
             
         except Exception as e:
-            self._handle_bucket_failure(bucket_id, f"处理料斗{bucket_id}飞料到重流程异常: {str(e)}")
+            self._handle_bucket_failure(bucket_id, f"处理料斗{bucket_id}飞料到量流程异常: {str(e)}")
     
     def _stop_bucket_with_mutex_protection(self, bucket_id: int) -> bool:
         try:
