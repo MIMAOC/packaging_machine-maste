@@ -70,7 +70,7 @@ except ImportError as e:
     def create_material_cleaning_controller(client):
         return None
 
-# 导入Modbus客户端
+# 导入客户端
 try:
     from modbus_client import ModbusClient
     MODBUS_CLIENT_AVAILABLE = True
@@ -2201,8 +2201,26 @@ class AIModeInterface:
             else:
                 print("用户取消AI生产")
 
-        self.message_box.ask_yesno("确认AI生产", confirm_msg, on_user_confirm)
         
+        confirm_msg = f"AI生产参数确认：\n\n目标重量：{target_weight} 克\n包装数量：{package_quantity} 包\n选择物料：{material}\n\n确认开始AI自适应生产？"
+        
+        # 使用标准messagebox而不是未定义的self.message_box
+        result = messagebox.askyesno("确认AI生产", confirm_msg)
+        if not result:
+            print("用户取消AI生产")
+            return
+        
+        # 继续执行AI生产流程
+        def ai_production_thread():
+            try:
+                self.execute_ai_production_sequence(target_weight, package_quantity, material)
+            except Exception as e:
+                self.safe_gui_update(
+                    lambda: messagebox.showerror("AI生产错误", f"AI生产过程中发生异常：\n{str(e)}")
+                )
+        
+        threading.Thread(target=ai_production_thread, daemon=True).start()
+    
         # 在后台线程执行AI生产流程，避免阻塞界面
         def ai_production_thread():
             try:
@@ -2570,15 +2588,20 @@ class AIModeInterface:
 
     def _handle_api_analysis_result(self, analysis_success, coarse_speed, analysis_message, target_weight, package_quantity, material, use_learned_params):
         """处理API分析结果"""
+        if getattr(self, '_is_disposed', False):
+            print("[警告] 窗口已销毁，跳过API分析结果处理")
+            return
+            
         if not analysis_success:
             error_msg = f"后端API分析失败：{analysis_message}"
-            messagebox.showerror("分析失败", error_msg)
+            self.safe_gui_update(lambda: messagebox.showerror("分析失败", error_msg))
             return
         
         print(f"[成功] API分析完成，快加速度: {coarse_speed}")
         
         # 步骤3: 写入参数到所有料斗
-        self.show_progress_message("步骤3/4", "正在写入参数到所有料斗...")
+        self.safe_gui_update(lambda: self.show_progress_message("步骤3/4", "正在写入参数到所有料斗..."))
+        
         
         write_success, write_message = self.plc_operations.write_bucket_parameters_all(
             target_weight=target_weight,
@@ -2754,27 +2777,34 @@ class AIModeInterface:
             elif action == "stop":
                 self._stop_statistics_timer()
     
+    def _stop_all_timers(self):
+        """统一停止所有计时器"""
+        self._stop_learning_timer()
+        self._stop_statistics_timer()
+    
     def _stop_learning_timer(self):
-        """停止学习计时器"""
-        if hasattr(self, 'learning_timer_running'):
-            self.learning_timer_running = False
+        """改进的学习计时器停止"""
+        self.learning_timer_running = False
         if hasattr(self, 'learning_timer_id') and self.learning_timer_id:
             try:
-                self.root.after_cancel(self.learning_timer_id)
-            except:
-                pass  # 忽略取消失败的情况
-            self.learning_timer_id = None
+                if hasattr(self, 'root') and self.root:
+                    self.root.after_cancel(self.learning_timer_id)
+            except (tk.TclError, AttributeError):
+                pass  # 窗口已销毁或其他异常
+            finally:
+                self.learning_timer_id = None
     
     def _stop_statistics_timer(self):
-        """停止统计计时器"""
-        if hasattr(self, 'statistics_timer_running'):
-            self.statistics_timer_running = False
+        """改进的统计计时器停止"""
+        self.statistics_timer_running = False
         if hasattr(self, 'statistics_timer_id') and self.statistics_timer_id:
             try:
-                self.root.after_cancel(self.statistics_timer_id)
-            except:
-                pass  # 忽略取消失败的情况
-            self.statistics_timer_id = None
+                if hasattr(self, 'root') and self.root:
+                    self.root.after_cancel(self.statistics_timer_id)
+            except (tk.TclError, AttributeError):
+                pass
+            finally:
+                self.statistics_timer_id = None
     
     def _start_learning_timer(self):
         """启动学习计时器"""
@@ -2844,22 +2874,28 @@ class AIModeInterface:
             print(f"[错误] 更新统计显示异常: {e}")
     
     def show_progress_message(self, step, message):
-        """显示进度消息"""
+        """改进的进度消息显示"""
         try:
             progress_text = f"{step}: {message}"
             print(f"[进度] {progress_text}")
             
-            # 如果有进度标签，更新显示
-            if hasattr(self, 'progress_label') and self.progress_label:
-                self.progress_label.config(text=progress_text)
-                
-            # 如果有学习状态窗口，在其中显示进度
-            if hasattr(self, 'learning_status_window') and self.learning_status_window:
+            # 安全更新GUI
+            def update_gui():
                 try:
-                    if hasattr(self, 'progress_display_label'):
+                    # 如果有进度标签，更新显示
+                    if hasattr(self, 'progress_label') and self.progress_label:
+                        self.progress_label.config(text=progress_text)
+                        
+                    # 如果有学习状态窗口，在其中显示进度
+                    if (hasattr(self, 'learning_status_window') and 
+                        self.learning_status_window and
+                        hasattr(self, 'progress_display_label') and
+                        self.progress_display_label):
                         self.progress_display_label.config(text=progress_text)
-                except:
-                    pass
+                except Exception as e:
+                    print(f"更新进度显示时发生错误: {e}")
+            
+            self.safe_gui_update(update_gui)
                     
         except Exception as e:
             print(f"[错误] 显示进度消息异常: {e}")
@@ -3151,43 +3187,87 @@ class AIModeInterface:
             print(f"[错误] 处理学习完成事件异常: {e}")
     
     def safe_gui_update(self, func, *args, **kwargs):
-        """线程安全的GUI更新"""
+        """改进的线程安全GUI更新"""
         try:
-            if not hasattr(self, '_is_disposed') or not self._is_disposed:
+            # 检查窗口是否仍然存在
+            if (hasattr(self, 'root') and self.root and 
+                hasattr(self.root, 'winfo_exists') and 
+                self.root.winfo_exists() and 
+                not getattr(self, '_is_disposed', False)):
                 self.root.after(0, func, *args, **kwargs)
         except Exception as e:
             print(f"[错误] 安全GUI更新异常: {e}")
     
     def on_closing(self):
-        """窗口关闭事件处理"""
+        """改进的窗口关闭事件处理"""
         try:
             print("[AI模式] 正在关闭AI模式界面...")
             
+            # 设置销毁标志
+            self._is_disposed = True
+            
             # 停止所有计时器
-            self._stop_learning_timer()
-            self._stop_statistics_timer()
+            self._stop_all_timers()
+            
+            # 清理控制器资源
+            if hasattr(self, 'coarse_time_controller') and self.coarse_time_controller:
+                try:
+                    if hasattr(self.coarse_time_controller, 'stop_all_coarse_time_test'):
+                        self.coarse_time_controller.stop_all_coarse_time_test()
+                    if hasattr(self.coarse_time_controller, 'dispose'):
+                        self.coarse_time_controller.dispose()
+                    self.coarse_time_controller = None
+                    print("快加时间测定控制器已停止")
+                except Exception as e:
+                    print(f"停止快加时间测定控制器时发生错误: {e}")
+            
+            if hasattr(self, 'cleaning_controller') and self.cleaning_controller:
+                try:
+                    if hasattr(self.cleaning_controller, 'dispose'):
+                        self.cleaning_controller.dispose()
+                    self.cleaning_controller = None
+                    print("清料控制器已停止")
+                except Exception as e:
+                    print(f"停止清料控制器时发生错误: {e}")
             
             # 关闭所有子窗口
-            if hasattr(self, 'learning_status_window') and self.learning_status_window:
-                try:
-                    self.learning_status_window.destroy()
-                except:
-                    pass
+            self._close_all_child_windows()
             
-            # 清理资源
+            # 清理学习状态管理器
             if hasattr(self, 'learning_state_manager') and self.learning_state_manager:
                 try:
                     self.learning_state_manager.reset_all_states()
-                except:
-                    pass
+                    print("学习状态管理器已重置")
+                except Exception as e:
+                    print(f"重置学习状态管理器时发生错误: {e}")
             
             # 销毁主窗口
-            self.root.destroy()
+            if hasattr(self, 'root') and self.root:
+                self.root.destroy()
             
         except Exception as e:
             print(f"[错误] 关闭AI模式界面异常: {e}")
             # 强制销毁
             try:
-                self.root.destroy()
+                if hasattr(self, 'root') and self.root:
+                    self.root.destroy()
             except:
                 pass
+    
+    def _close_all_child_windows(self):
+        """关闭所有子窗口"""
+        child_windows = [
+            'learning_status_window',
+            'cleaning_progress_window'
+        ]
+        
+        for window_attr in child_windows:
+            if hasattr(self, window_attr):
+                window = getattr(self, window_attr)
+                if window:
+                    try:
+                        window.destroy()
+                        setattr(self, window_attr, None)
+                    except Exception as e:
+                        print(f"关闭{window_attr}时发生错误: {e}")
+    
