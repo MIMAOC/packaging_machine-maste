@@ -22,6 +22,7 @@ import tkinter.font as font
 import time
 import threading
 from typing import Optional, Dict, Any
+from modbus_client import ModbusClient
 
 # 导入PLC相关模块
 try:
