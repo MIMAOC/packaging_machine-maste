@@ -49,7 +49,7 @@ def basic_build():
     cmd = [
         sys.executable, '-m', 'PyInstaller',  # 使用当前Python环境
         '--onefile',
-        '--windowed',
+        '--console',  # 改为 --console 显示控制台
         '--name=包装机控制系统',
         '--distpath=dist',
         '--workpath=build',
@@ -66,7 +66,7 @@ def full_build(subdirs):
     cmd = [
         sys.executable, '-m', 'PyInstaller',  # 使用当前Python环境
         '--onefile',
-        '--windowed', 
+        '--console',  # 改为 --console 显示控制台
         '--name=包装机控制系统',
         '--distpath=dist',
         '--workpath=build',

@@ -19,7 +19,105 @@ pip install -r requirements.txt
 创建日期：2025-07-22
 更新日期：2025-07-30（增加API重试机制）
 """
+import sys
+import os
 
+def diagnose_pymodbus():
+    """全面诊断pymodbus问题"""
+    print("=" * 60)
+    print("PyModbus 诊断报告")
+    print("=" * 60)
+    
+    # 1. 检查Python环境
+    print(f"Python版本: {sys.version}")
+    print(f"Python路径: {sys.executable}")
+    print(f"是否为打包环境: {hasattr(sys, 'frozen')}")
+    
+    if hasattr(sys, 'frozen'):
+        print(f"打包工具: {getattr(sys, '_MEIPASS', 'Unknown')}")
+    
+    # 2. 检查模块搜索路径
+    print(f"\nPython模块搜索路径:")
+    for i, path in enumerate(sys.path):
+        print(f"  {i}: {path}")
+    
+    # 3. 尝试不同的导入方式
+    print(f"\n测试pymodbus导入:")
+    
+    # 测试基础pymodbus包
+    try:
+        import pymodbus
+        print(f"✓ 基础pymodbus包导入成功")
+        print(f"  版本: {getattr(pymodbus, '__version__', '未知')}")
+        print(f"  位置: {getattr(pymodbus, '__file__', '未知')}")
+    except ImportError as e:
+        print(f"✗ 基础pymodbus包导入失败: {e}")
+        return False
+    
+    # 测试client子模块
+    try:
+        import pymodbus.client
+        print(f"✓ pymodbus.client导入成功")
+        print(f"  位置: {getattr(pymodbus.client, '__file__', '未知')}")
+    except ImportError as e:
+        print(f"✗ pymodbus.client导入失败: {e}")
+    
+    # 测试具体的客户端类
+    client_import_methods = [
+        ("from pymodbus.client import ModbusTcpClient", "pymodbus.client", "ModbusTcpClient"),
+        ("from pymodbus.client.sync import ModbusTcpClient", "pymodbus.client.sync", "ModbusTcpClient"),
+        ("from pymodbus.client.tcp import ModbusTcpClient", "pymodbus.client.tcp", "ModbusTcpClient"),
+        ("from pymodbus import ModbusTcpClient", "pymodbus", "ModbusTcpClient"),
+    ]
+    
+    for desc, module_name, class_name in client_import_methods:
+        try:
+            module = __import__(module_name, fromlist=[class_name])
+            client_class = getattr(module, class_name)
+            print(f"✓ {desc} 成功")
+        except (ImportError, AttributeError) as e:
+            print(f"✗ {desc} 失败: {e}")
+    
+    # 4. 检查相关依赖
+    print(f"\n检查相关依赖:")
+    dependencies = ['serial', 'pyserial', 'twisted', 'tornado']
+    for dep in dependencies:
+        try:
+            __import__(dep)
+            print(f"✓ {dep} 可用")
+        except ImportError:
+            print(f"✗ {dep} 不可用")
+    
+    # 5. 检查文件系统中的模块
+    if hasattr(sys, 'frozen'):
+        print(f"\n检查打包后的文件结构:")
+        try:
+            meipass = sys._MEIPASS
+            print(f"临时解压目录: {meipass}")
+            
+            # 查找pymodbus相关文件
+            for root, dirs, files in os.walk(meipass):
+                for file in files:
+                    if 'pymodbus' in file.lower():
+                        print(f"  发现: {os.path.join(root, file)}")
+                        
+            # 查找.pyd/.dll文件
+            for root, dirs, files in os.walk(meipass):
+                for file in files:
+                    if file.endswith(('.pyd', '.dll', '.so')):
+                        if 'modbus' in file.lower() or 'serial' in file.lower():
+                            print(f"  二进制文件: {os.path.join(root, file)}")
+        except Exception as e:
+            print(f"无法检查打包文件结构: {e}")
+    
+    print("=" * 60)
+    return True
+
+# 在main.py开头调用
+if __name__ == "__main__":
+    diagnose_pymodbus()
+    input("\n按回车键继续程序...")
+    
 import tkinter as tk
 from tkinter import ttk, messagebox
 import tkinter.font as tkFont
