@@ -132,7 +132,7 @@ class FineTimeTestController:
     def _initialize_bucket_states(self):
         """初始化料斗状态"""
         with self.lock:
-            for bucket_id in range(1, 7):
+            for bucket_id in range(1,4):
                 self.bucket_states[bucket_id] = BucketFineTimeState(bucket_id)
     
     def set_material_name(self, material_name: str):

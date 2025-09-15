@@ -143,7 +143,7 @@ class CoarseTimeTestController:
     def _initialize_bucket_states(self):
         """初始化料斗状态"""
         with self.lock:
-            for bucket_id in range(1, 7):
+            for bucket_id in range(1, 4):
                 self.bucket_states[bucket_id] = BucketCoarseTimeState(bucket_id)
     
     def set_material_name(self, material_name: str):
@@ -208,7 +208,7 @@ class CoarseTimeTestController:
             
             # 步骤1: 重置所有料斗状态
             with self.lock:
-                for bucket_id in range(1, 7):
+                for bucket_id in range(1, 4):
                     state = self.bucket_states[bucket_id]
                     state.reset_for_new_test(target_weight, coarse_speed)
             
@@ -230,7 +230,7 @@ class CoarseTimeTestController:
             
             # 步骤3: 标记所有料斗开始尝试并启动监测
             with self.lock:
-                for bucket_id in range(1, 7):
+                for bucket_id in range(1, 4):
                     state = self.bucket_states[bucket_id]
                     state.start_attempt()
             
@@ -240,7 +240,7 @@ class CoarseTimeTestController:
             self.monitoring_service.start_monitoring(bucket_ids, "coarse_time")
             
             # 步骤5: 更新进度
-            for bucket_id in range(1, 7):
+            for bucket_id in range(1, 4):
                 self._update_progress(bucket_id, 1, 15, "正在进行快加时间测定...")
             
             success_msg = "✅ 快加时间测定流程已启动，正在监测6个料斗的到量状态"

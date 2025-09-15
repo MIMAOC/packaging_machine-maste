@@ -798,7 +798,7 @@ class AIModeInterface:
             # 创建模拟的学习状态管理器
             class MockLearningStateManager:
                 def get_completed_count(self):
-                    return 2, 1, 6  # 成功2个，失败1个，总共6个
+                    return 2, 1, 3  # 成功2个，失败1个，总共6个
 
                 def is_all_completed(self):
                     return False
@@ -825,7 +825,7 @@ class AIModeInterface:
                     ("未开始", "#888888")
                 ]
 
-                for bucket_id in range(1, 7):
+                for bucket_id in range(1, 4):
                     if bucket_id in self.bucket_status_labels:
                         # 随机选择状态
                         text, color = random.choice(states_info)
@@ -2380,7 +2380,7 @@ class AIModeInterface:
             failed_buckets = []
             
             # 向每个料斗的禁用地址发送0命令
-            for bucket_id in range(1, 7):
+            for bucket_id in range(1, 4):
                 try:
                     disable_address = get_bucket_disable_address(bucket_id)
                     success = self.modbus_client.write_coil(disable_address, False)  # False = 0 = 启用
@@ -2396,7 +2396,7 @@ class AIModeInterface:
                     failed_buckets.append(bucket_id)
                     print(f"[错误] 料斗{bucket_id}启用异常: {e}")
             
-            if success_count == 6:
+            if success_count == 3:
                 return True, f"所有{success_count}个料斗已成功启用"
             elif success_count > 0:
                 return False, f"只有{success_count}/6个料斗启用成功，失败料斗: {failed_buckets}"
@@ -2738,7 +2738,7 @@ class AIModeInterface:
             
             # 初始化学习状态管理器中各料斗的快加时间测定状态
             if self.learning_state_manager and test_success:
-                for bucket_id in range(1, 7):
+                for bucket_id in range(1, 4):
                     self.learning_state_manager.start_bucket_stage(bucket_id, LearningStage.COARSE_TIME)
                 print("[信息] 已初始化所有料斗的快加时间测定状态")
             
@@ -2955,11 +2955,26 @@ class AIModeInterface:
         try:
             # 如果已经有窗口存在，先关闭
             if hasattr(self, 'learning_status_window') and self.learning_status_window:
+                self._stop_learning_timer()
+                self._stop_statistics_timer()
                 try:
                     self.learning_status_window.destroy()
                 except:
                     pass
+                self.learning_status_window = None
+                if hasattr(self, 'bucket_status_labels'):
+                    self.bucket_status_labels.clear()
+        
+            # 初始化属性（如果不存在）
+            if not hasattr(self, 'bucket_status_labels'):
+                self.bucket_status_labels = {}
+            if not hasattr(self, 'all_learning_completed_notified'):
+                self.all_learning_completed_notified = False
             
+            # 重置学习完成通知标志
+            self.all_learning_completed_notified = False
+
+
             # 创建学习状态弹窗
             self.learning_status_window = tk.Toplevel(self.root)
             self.learning_status_window.title("多斗学习状态")
@@ -2967,22 +2982,40 @@ class AIModeInterface:
             self.learning_status_window.configure(bg='white')
             self.learning_status_window.resizable(False, False)
             self.learning_status_window.transient(self.root)
+
+            # 禁止用户关闭弹窗（除非点击确认按钮）
+            self.learning_status_window.protocol("WM_DELETE_WINDOW", lambda: None)
+
+            # 立即更新窗口显示，避免空白
+            self.learning_status_window.update_idletasks()
             
             # 居中显示
             self.center_dialog_relative_to_main(self.learning_status_window, 600, 400)
             
             # 标题
-            tk.Label(self.learning_status_window, text="料斗学习状态监控", 
+            title_label =tk.Label(self.learning_status_window, text="料斗学习状态监控", 
                     font=tkFont.Font(family="微软雅黑", size=16, weight="bold"),
                     bg='white', fg='#333333').pack(pady=20)
+            title_label.pack(pady=20)
+
+            
+            # 计时器显示
+            self.learning_timer_label = tk.Label(self.learning_status_window, text="00:00:00", 
+                                           font=tkFont.Font(family="Arial", size=20, weight="bold"),
+                                           bg='white', fg='#007bff')
+            self.learning_timer_label.pack(pady=(0, 10))
+            
+            # 立即更新显示
+            self.learning_status_window.update()
             
             # 状态显示区域
             status_frame = tk.Frame(self.learning_status_window, bg='white')
             status_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
             
+            
             # 创建料斗状态标签
             self.bucket_status_labels = {}
-            for bucket_id in range(1, 7):
+            for bucket_id in range(1, 4):
                 bucket_frame = tk.Frame(status_frame, bg='white')
                 bucket_frame.pack(fill=tk.X, pady=5)
                 

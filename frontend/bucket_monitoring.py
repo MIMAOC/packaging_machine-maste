@@ -190,13 +190,13 @@ class BucketMonitoringService:
     def _initialize_production_states(self):
         """初始化料斗生产状态"""
         with self.lock:
-            for bucket_id in range(1, 7):
+            for bucket_id in range(1, 4):
                 self.production_states[bucket_id] = BucketProductionState(bucket_id)
     
     def _initialize_bucket_states(self):
         """初始化料斗监测状态"""
         with self.lock:
-            for bucket_id in range(1, 7):
+            for bucket_id in range(1, 4):
                 self.monitoring_states[bucket_id] = BucketMonitoringState(bucket_id)
     
     def set_material_check_enabled(self, enabled: bool):

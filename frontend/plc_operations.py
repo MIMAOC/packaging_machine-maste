@@ -53,7 +53,7 @@ class PLCOperations:
             self.logger.info("开始读取所有料斗的实时重量")
             
             # 逐个读取每个料斗的重量
-            for bucket_id in range(1, 7):
+            for bucket_id in range(1, 4):
                 weight_address = BUCKET_MONITORING_ADDRESSES[bucket_id]['Weight']
                 
                 # 读取原始重量值
@@ -250,7 +250,7 @@ class PLCOperations:
             write_results = []
             
             # 遍历所有料斗
-            for bucket_id in range(1, 7):
+            for bucket_id in range(1, 4):
                 bucket_addresses = BUCKET_PARAMETER_ADDRESSES[bucket_id]
                 
                 self.logger.info(f"正在写入料斗{bucket_id}参数...")

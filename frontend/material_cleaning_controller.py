@@ -206,7 +206,7 @@ class MaterialCleaningController:
             bucket_weights = {}
             
             # 读取6个料斗的实时重量
-            for bucket_id in range(1, 7):
+            for bucket_id in range(1, 4):
                 weight_address = BUCKET_MONITORING_ADDRESSES[bucket_id]['Weight']
                 
                 # 读取原始重量值
@@ -253,7 +253,7 @@ class MaterialCleaningController:
             self._log(f"   第3次重量: {weight3}")
             
             # 检查所有料斗的条件
-            for bucket_id in range(1, 7):
+            for bucket_id in range(1, 4):
                 w1 = weight1[bucket_id]
                 w2 = weight2[bucket_id]
                 w3 = weight3[bucket_id]

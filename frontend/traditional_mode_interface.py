@@ -735,7 +735,7 @@ class SimpleTianTengInterface:
         buckets_container.pack(expand=True)  # 居中显示
         
         # 创建6个圆形料斗选择按钮
-        for bucket_id in range(1, 7):
+        for bucket_id in range(1, 4):
             if bucket_id == current_bucket_id:
                 # 当前选中的料斗显示为绿色
                 bg_color = '#00aa00'
@@ -1337,7 +1337,7 @@ class SimpleTianTengInterface:
         
         try:
             # 逐个读取所有料斗重量（地址不连续，无法批量读取）
-            for bucket_id in range(1, 7):
+            for bucket_id in range(1, 4):
                 if bucket_id in self.weight_labels:
                     try:
                         weight_addr = get_traditional_weight_address(bucket_id)
@@ -1418,7 +1418,7 @@ class SimpleTianTengInterface:
         """更新监控界面状态指示灯"""
         try:
             # 逐个读取每个料斗的状态
-            for bucket_id in range(1, 7):
+            for bucket_id in range(1, 4):
                 if bucket_id in self.status_labels:
                     status_data = {}
                     

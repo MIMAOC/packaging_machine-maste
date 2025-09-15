@@ -314,7 +314,7 @@ class ProductionInterface:
             parent: 父容器
         """
         # 料斗监控容器
-        for bucket_id in range(1, 7):
+        for bucket_id in range(1, 4):
             bucket_frame = tk.Frame(parent, bg='#f8f9fa', relief='raised', bd=1)
             bucket_frame.pack(fill=tk.X, pady=8)
             bucket_frame.configure(width=280, height=70)
@@ -692,7 +692,7 @@ class ProductionInterface:
                 return
             
             # 读取每个料斗的重量
-            for bucket_id in range(1, 7):
+            for bucket_id in range(1, 4):
                 weight_address = BUCKET_MONITORING_ADDRESSES[bucket_id]['Weight']
                 
                 # 读取重量数据
@@ -1291,7 +1291,7 @@ class ProductionInterface:
             def update_ui():
                 """在主线程中更新UI"""
                 updated_count = 0
-                for bucket_id in range(1, 7):
+                for bucket_id in range(1, 4):
                     try:
                         if bucket_id in self.bucket_weight_labels:
                             # 确保标签存在且可访问
@@ -1316,7 +1316,7 @@ class ProductionInterface:
             def verify_update():
                 """验证更新结果"""
                 offline_count = 0
-                for bucket_id in range(1, 7):
+                for bucket_id in range(1, 4):
                     try:
                         if (bucket_id in self.bucket_weight_labels and 
                             self.bucket_weight_labels[bucket_id].winfo_exists()):

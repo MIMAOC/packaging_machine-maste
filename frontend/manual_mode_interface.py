@@ -167,7 +167,7 @@ class ManualModeInterface:
         buttons_frame.grid_rowconfigure(0, weight=1)
         
         # 创建6个禁用按钮（稍微小一点）
-        for bucket_id in range(1, 7):
+        for bucket_id in range(1, 4):
             btn = tk.Button(buttons_frame, text=str(bucket_id),
                            font=self.bucket_button_font,
                            bg='#1e90ff', fg='white',
@@ -197,7 +197,7 @@ class ManualModeInterface:
         buttons_frame.grid_rowconfigure(0, weight=1)
         
         # 创建6个清料按钮（稍微小一点）
-        for bucket_id in range(1, 7):
+        for bucket_id in range(1, 4):
             btn = tk.Button(buttons_frame, text=str(bucket_id),
                            font=self.bucket_button_font,
                            bg='#1e90ff', fg='white',
@@ -227,7 +227,7 @@ class ManualModeInterface:
         buttons_frame.grid_rowconfigure(0, weight=1)
         
         # 创建6个放料按钮（稍微小一点）
-        for bucket_id in range(1, 7):
+        for bucket_id in range(1, 4):
             btn = tk.Button(buttons_frame, text=str(bucket_id),
                            font=self.bucket_button_font,
                            bg='#1e90ff', fg='white',
@@ -459,7 +459,7 @@ class ManualModeInterface:
     def update_disable_states(self):
         """更新所有料斗的禁用状态"""
         try:
-            for bucket_id in range(1, 7):
+            for bucket_id in range(1, 4):
                 # 读取PLC中的禁用状态
                 disable_addr = get_traditional_disable_address(bucket_id)
                 state_data = self.modbus_client.read_coils(disable_addr, 1)
@@ -478,7 +478,7 @@ class ManualModeInterface:
     def update_clean_states(self):
         """更新所有料斗的清料状态"""
         try:
-            for bucket_id in range(1, 7):
+            for bucket_id in range(1, 4):
                 # 读取PLC中的清料状态
                 clean_addr = get_traditional_control_address(bucket_id, 'Clean')
                 state_data = self.modbus_client.read_coils(clean_addr, 1)
@@ -505,7 +505,7 @@ class ManualModeInterface:
             self.update_global_clean_state()
 
             # 更新所有按钮显示
-            for bucket_id in range(1, 7):
+            for bucket_id in range(1, 4):
                 self.update_disable_button_display(bucket_id)
                 self.update_clean_button_display(bucket_id)
             # 更新全局清料按钮显示
