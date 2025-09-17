@@ -590,6 +590,11 @@ class AIModeInterface:
             else:
                 import os
                 os._exit(0)
+
+    def _delayed_start_timers(self):
+        """延迟启动学习和统计计时器"""
+        self._manage_timer("learning", "start")
+        self._manage_timer("statistics", "start")
     
     def center_window(self):
         """将AI模式界面窗口居中显示"""
@@ -3180,9 +3185,9 @@ class AIModeInterface:
             self.learning_status_window.configure(bg='white')
             self.learning_status_window.resizable(False, False)
             self.learning_status_window.transient(self.root)
-
-            # 禁止用户关闭弹窗（除非点击确认按钮）
-            self.learning_status_window.protocol("WM_DELETE_WINDOW", lambda: None)
+            self.learning_status_window.grab_set()
+            
+            self.learning_status_window.protocol("WM_DELETE_WINDOW", self.learning_status_window.destroy)
 
             # 立即更新窗口显示，避免空白
             self.learning_status_window.update_idletasks()
@@ -3193,7 +3198,7 @@ class AIModeInterface:
             # 标题
             title_label =tk.Label(self.learning_status_window, text="料斗学习状态监控", 
                     font=tkFont.Font(family="微软雅黑", size=16, weight="bold"),
-                    bg='white', fg='#333333').pack(pady=20)
+                    bg='white', fg='#333333')
             title_label.pack(pady=20)
 
             
