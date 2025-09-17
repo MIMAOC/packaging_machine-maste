@@ -63,7 +63,10 @@ class BucketFineTimeState:
     def record_target_reached(self, reached_time: datetime):
         """记录到量时间"""
         self.target_reached_time = reached_time
-        self.fine_time_ms = int((reached_time - self.start_time).total_seconds() * 1000)
+        if self.start_time is not None:
+            self.fine_time_ms = int((reached_time - self.start_time).total_seconds() * 1000)
+        else:
+            self.fine_time_ms = 0
         self.is_testing = False
     
     def complete_successfully(self, fine_flow_rate: Optional[float] = None):
@@ -102,6 +105,9 @@ class FineTimeTestController:
         self.bucket_original_weights: Dict[int, float] = {}  # 存储每个料斗的原始目标重量
         self.lock = threading.RLock()
         self.material_name = "未知物料"  # 存储物料名称
+
+        # 新增：用于跨线程UI操作的root引用
+        self.root_reference = None
         
         # 创建服务实例
         self.monitoring_service = create_bucket_monitoring_service(modbus_client)
@@ -477,13 +483,17 @@ class FineTimeTestController:
                 # 调试：检查API返回值
                 self._log(f"🔍 API返回值调试 - 料斗{bucket_id}: {api_result}")
                 
-                if len(api_result) >= 6:
+                if isinstance(api_result, (list, tuple)) and len(api_result) >= 6:
                     analysis_success, is_compliant, new_fine_speed, coarse_advance, fine_flow_rate, analysis_msg = api_result
-                else:
+                elif isinstance(api_result, (list, tuple)):
                     # 处理返回值数量不足的情况
                     self._log(f"⚠️ API返回值数量不足，期待6个，实际{len(api_result)}个")
                     analysis_success, is_compliant, new_fine_speed, coarse_advance, fine_flow_rate, analysis_msg = (
-                        api_result + [None] * (6 - len(api_result)))[:6]
+                        list(api_result) + [None] * (6 - len(api_result)))[:6]
+                else:
+                    # 返回值不可迭代，全部赋值为None并记录错误
+                    self._log(f"❌ API返回值不可迭代，实际类型: {type(api_result)}，内容: {api_result}")
+                    analysis_success, is_compliant, new_fine_speed, coarse_advance, fine_flow_rate, analysis_msg = (None, None, None, None, None, "API返回值不可迭代")
                     
             except Exception as e:
                 self._handle_bucket_failure(bucket_id, f"慢加时间API调用异常: {str(e)}")
@@ -782,8 +792,12 @@ class FineTimeTestController:
                 self._log(f"🔍 即将传递给自适应学习的fine_flow_rate: {fine_flow_rate}, 类型: {type(fine_flow_rate)}")
                 
                 # 启动自适应学习测定（关键修复：传递存储的慢加流速）
-                adaptive_success = self.adaptive_learning_controller.start_adaptive_learning_test(
-                    bucket_id, original_target_weight, fine_flow_rate)  # 传递存储的慢加流速
+                adaptive_success = False
+                if self.adaptive_learning_controller is not None and hasattr(self.adaptive_learning_controller, "start_adaptive_learning_test"):
+                    adaptive_success = self.adaptive_learning_controller.start_adaptive_learning_test(
+                        bucket_id, original_target_weight, fine_flow_rate)  # 传递存储的慢加流速
+                else:
+                    self._log("❌ 自适应学习控制器未正确初始化或缺少 start_adaptive_learning_test 方法")
                 
                 if adaptive_success:
                     # 修复：安全处理fine_flow_rate可能为None的情况
@@ -1068,7 +1082,7 @@ class FineTimeTestController:
             self.monitoring_service.dispose()
             
             # 释放自适应学习控制器资源（如果存在）
-            if hasattr(self, 'adaptive_learning_controller'):
+            if hasattr(self, 'adaptive_learning_controller') and self.adaptive_learning_controller is not None:
                 self.adaptive_learning_controller.dispose()
                 self.adaptive_learning_controller = None
             
