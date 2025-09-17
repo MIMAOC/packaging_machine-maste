@@ -40,13 +40,13 @@ class BucketProductionState:
         self.bucket_id = bucket_id
         self.is_monitoring_target = False    # 是否正在监测到量状态
         self.is_monitoring_discharge = False # 是否正在监测放料状态
-        self.target_reached_time = None      # 到量时间
-        self.discharge_time = None           # 放料时间
+        self.target_reached_time: Optional[float] = None      # 到量时间（时间戳，float 或 None）
+        self.discharge_time: Optional[float] = None           # 放料时间（时间戳，float 或 None）
         self.last_target_reached = False    # 上次到量状态
         self.last_discharge_state = False   # 上次放料状态
         self.consecutive_unqualified = 0    # 连续不合格次数
         self.waiting_for_restart = False    # 是否等待重新开始监测
-        self.restart_time = None             # 重新开始时间
+        self.restart_time: Optional[float] = None             # 重新开始时间
         
         # 新增：暂存到量时的数据
         self.temp_real_weight = 0.0         # 暂存的实时重量
@@ -75,19 +75,19 @@ class BucketMonitoringState:
     def __init__(self, bucket_id: int):
         self.bucket_id = bucket_id
         self.is_monitoring = False          # 是否正在监测
-        self.start_time = None             # 开始时间
-        self.target_reached_time = None    # 到量时间
+        self.start_time: Optional[datetime] = None             # 开始时间
+        self.target_reached_time: Optional[datetime] = None    # 到量时间
         self.coarse_time_ms = 0           # 快加时间（毫秒）
         self.last_target_reached = False  # 上次到量状态
-        self.last_coarse_active = None    # 初始值改为None，表示未知状态
+        self.last_coarse_active: Optional[bool] = None    # 初始值改为None，表示未知状态
         self.monitoring_type = "coarse_time"  # 监测类型：coarse_time 或 flight_material 或 adaptive_learning
         self.coarse_active_initialized = False  # 标记快加状态是否已初始化
         
         self.weight_history: Deque[tuple] = deque(maxlen=150)  # 重量历史记录(时间戳, 重量)，保存15秒数据
-        self.last_start_active = None      # 上次启动状态
+        self.last_start_active: Optional[bool] = None      # 上次启动状态
         self.start_active_initialized = False  # 启动状态是否已初始化
         self.material_shortage_detected = False  # 是否检测到物料不足
-        self.material_shortage_time = None  # 物料不足检测时间
+        self.material_shortage_time: Optional[datetime] = None  # 物料不足检测时间
     
     def reset(self):
         """重置状态"""
@@ -96,7 +96,7 @@ class BucketMonitoringState:
         self.target_reached_time = None
         self.coarse_time_ms = 0
         self.last_target_reached = False
-        self.last_coarse_active = None  # 重置为None
+        self.last_coarse_active: Optional[bool] = None  # 重置为None
         self.monitoring_type = "coarse_time"
         self.coarse_active_initialized = False  # 重置初始化标记
         
@@ -430,7 +430,10 @@ class BucketMonitoringService:
                     if current_target_reached and not state.last_target_reached:
                         # 第一次到量
                         state.target_reached_time = current_time
-                        state.coarse_time_ms = int((current_time - state.start_time).total_seconds() * 1000)
+                        if state.start_time is not None:
+                            state.coarse_time_ms = int((current_time - state.start_time).total_seconds() * 1000)
+                        else:
+                            state.coarse_time_ms = 0
                         state.is_monitoring = False  # 停止该料斗的监测
                         
                         self._log(f"料斗{bucket_id}到量，时间: {state.coarse_time_ms}ms，类型: {state.monitoring_type}")
