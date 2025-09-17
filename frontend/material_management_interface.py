@@ -21,7 +21,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import tkinter.font as tkFont
 import threading
-from typing import List
+from typing import List, Optional
 
 # 导入数据库相关模块
 try:
@@ -578,6 +578,10 @@ class MaterialManagementInterface:
                 return
             
             # 更新数据库
+            if material.id is None:
+                messagebox.showerror("操作失败", "物料ID无效，无法修改物料状态。")
+                return
+
             if new_status == 1:
                 success, message = MaterialDAO.enable_material(material.id)
             else:
@@ -611,7 +615,7 @@ class MaterialManagementInterface:
 
             print(f"[信息] 开始再学习物料: {material.material_name}")
             # 直接显示参数输入对话框（再学习模式）
-            self.show_new_material_params_dialog(material.material_name, is_relearning=True, material_id=material.id)
+            self.show_new_material_params_dialog(material.material_name, material_id=material.id, is_relearning=True)
 
         except Exception as e:
             error_msg = f"再学习操作异常: {str(e)}"
@@ -772,7 +776,7 @@ class MaterialManagementInterface:
             print(f"[错误] {error_msg}")
             messagebox.showerror("系统错误", error_msg)
     
-    def show_new_material_params_dialog(self, material_name: str, is_relearning: bool = False, material_id: int = None):
+    def show_new_material_params_dialog(self, material_name: str, material_id: Optional[int] = None, is_relearning: bool = False):
         """
         显示新物料参数输入对话框（第二个弹窗）
         
@@ -877,6 +881,7 @@ class MaterialManagementInterface:
                 weight_str = weight_var.get().strip()
                 quantity_str = quantity_var.get().strip()
                 
+
                 if not weight_str or weight_str == "请输入目标重量":
                     messagebox.showwarning("参数缺失", "请输入每包重量")
                     return
@@ -915,8 +920,9 @@ class MaterialManagementInterface:
                 if is_relearning:
                     print(f"[信息] 再学习物料: {material_name}, 重量: {target_weight}g, 数量: {package_quantity}")
                     
+                    
                     # 更新物料AI状态为"未学习"
-                    if DATABASE_AVAILABLE and material_id:
+                    if DATABASE_AVAILABLE and material_id is not None:
                         try:
                             success, message = MaterialDAO.update_material_ai_status(material_id, "未学习")
                             if success:
@@ -947,14 +953,14 @@ class MaterialManagementInterface:
                     # 在数据库中创建新物料
                     if DATABASE_AVAILABLE:
                         try:
-                            success, message, material_id = MaterialDAO.create_material(
+                            success, message, new_material_id = MaterialDAO.create_material(
                                 material_name=material_name,
                                 ai_status="未学习",
                                 is_enabled=1
                             )
                             
                             if success:
-                                print(f"[成功] {message}, 物料ID: {material_id}")
+                                print(f"[成功] {message}, 物料ID: {new_material_id}")
                                 
                                 # 刷新物料列表
                                 self.load_materials()
