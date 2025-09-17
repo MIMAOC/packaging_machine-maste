@@ -432,11 +432,14 @@ class FactorySettingsInterface:
             import os
             os._exit(0)  # 强制终止进程
     
-    def create_error_setting(self, parent, title, initial_value, change_callback, side=tk.LEFT, padx=0):
+    def create_error_setting(self, parent, title, initial_value, change_callback, side=tk.LEFT, padx=(0, 0)):
         """创建误差设置组件"""
         # 设置容器
         setting_frame = tk.Frame(parent, bg='white')
-        setting_frame.pack(side=side, padx=padx)
+        # 确保side参数为合法值
+        allowed_sides = ('left', 'right', 'top', 'bottom')
+        pack_side = side if side in allowed_sides else tk.LEFT
+        setting_frame.pack(side=pack_side, padx=padx)
         
         # 标题
         title_label = tk.Label(setting_frame, text=title, 
