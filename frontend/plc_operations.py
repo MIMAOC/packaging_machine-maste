@@ -383,25 +383,3 @@ def create_plc_operations(modbus_client: ModbusClient) -> PLCOperations:
     """
     return PLCOperations(modbus_client)
 
-# 示例使用
-if __name__ == "__main__":
-    from modbus_client import create_modbus_client
-    
-    # 创建Modbus客户端并连接
-    client = create_modbus_client()
-    success, message = client.connect()
-    print(f"连接状态: {success} - {message}")
-    
-    if success:
-        # 创建PLC操作实例
-        plc_ops = create_plc_operations(client)
-        
-        # 测试读取料斗重量
-        weight_success, weights, weight_msg = plc_ops.read_all_bucket_weights()
-        print(f"读取重量: {weight_success} - {weight_msg}")
-        if weight_success:
-            for bucket_id, weight in weights.items():
-                print(f"  料斗{bucket_id}: {weight}g")
-        
-        # 断开连接
-        client.disconnect()

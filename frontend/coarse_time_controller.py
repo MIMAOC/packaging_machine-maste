@@ -67,7 +67,7 @@ class BucketCoarseTimeState:
         self.is_completed = True
         self.failed_stage = None
     
-    def fail_with_error(self, error_message: str, failed_stage: str = None):
+    def fail_with_error(self, error_message: str, failed_stage: Optional[str] = None):
         """测定失败"""
         self.is_testing = False
         self.is_completed = True
@@ -720,17 +720,12 @@ class CoarseTimeTestController:
             failure_msg = f"❌ 料斗{bucket_id}{self._get_stage_name(failed_stage)}失败: {error_message}（共{state.attempt_count}次尝试）"
             self._log(failure_msg)
         
-            # 修复：使用root.after确保在主线程中执行UI操作
-            def trigger_failure_callback():
-                if self.on_bucket_failed:
-                    try:
-                        self.on_bucket_failed(bucket_id, error_message, failed_stage)
-                    except Exception as e:
-                        self.logger.error(f"失败事件回调异常: {e}")
-            
-            # 延迟100ms执行，避免同时触发多个弹窗
-            if hasattr(self, 'root_reference') and self.root_reference:
-                self.root_reference.after(100, trigger_failure_callback)
+            # 直接调用失败回调，不使用UI线程延迟
+            if self.on_bucket_failed:
+                try:
+                    self.on_bucket_failed(bucket_id, error_message, failed_stage)
+                except Exception as e:
+                    self.logger.error(f"失败事件回调异常: {e}")
             
         except Exception as e:
             error_msg = f"处理料斗{bucket_id}失败状态异常: {str(e)}"
