@@ -150,8 +150,11 @@ def execute_build(cmd):
         )
         
         # 实时显示输出
-        for line in process.stdout:
-            print(line.rstrip())
+        if process.stdout is not None:
+            for line in process.stdout:
+                print(line.rstrip())
+        else:
+            print("无法获取子进程输出流。")
         
         process.wait()
         
