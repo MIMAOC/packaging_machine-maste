@@ -38,7 +38,7 @@ class BucketLearningState:
         self.completion_time = None
         
         # 记录各阶段的完成情况
-        self.stage_results = {
+        self.stage_results: Dict[LearningStage, Optional[bool]] = {
             LearningStage.COARSE_TIME: None,        # None/True/False
             LearningStage.FLIGHT_MATERIAL: None,
             LearningStage.FINE_TIME: None,
