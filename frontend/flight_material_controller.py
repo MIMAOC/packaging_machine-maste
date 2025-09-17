@@ -92,6 +92,7 @@ class FlightMaterialTestController:
         self.bucket_states: Dict[int, BucketFlightMaterialState] = {}
         self.lock = threading.RLock()
         self.material_name = "未知物料"  # 存储物料名称
+        self.root_reference = None  # 新增：用于跨线程UI操作的root引用
         
         # 创建服务实例
         self.monitoring_service = create_bucket_monitoring_service(modbus_client)

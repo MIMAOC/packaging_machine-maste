@@ -119,7 +119,10 @@ def simple_retry(max_attempts=3, delay=1.0, backoff=2.0, exceptions=(Exception,)
                     raise e
             
             # 如果所有尝试都失败了，抛出最后的异常
-            raise last_exception
+            if last_exception is not None:
+                raise last_exception
+            else:
+                raise Exception("所有重试都失败，但未捕获到异常")
         
         return wrapper
     return decorator
@@ -580,9 +583,11 @@ class PackagingMachineGUI:
         self.connection_status = success
         
         if success:
-            self.status_label.config(text="已连接", fg='#00aa00')
+            if self.status_label is not None:
+                self.status_label.config(text="已连接", fg='#00aa00')
         else:
-            self.status_label.config(text="未连接", fg='#ff0000')
+            if self.status_label is not None:
+                self.status_label.config(text="未连接", fg='#ff0000')
     
     def test_backend_api_connection_basic(self):
         """
@@ -605,7 +610,7 @@ class PackagingMachineGUI:
             force_retry: 是否强制重试
             max_attempts: 最大重试次数
         """
-        def test_thread():
+        def test_api_thread():
             try:
                 if force_retry:
                     self.api_retry_count += 1
@@ -629,10 +634,11 @@ class PackagingMachineGUI:
         
         # 更新状态为检测中
         status_text = "重试中..." if force_retry else "检测中..."
-        self.api_status_label.config(text=status_text, fg='#ff6600')
+        if self.api_status_label is not None:
+            self.api_status_label.config(text=status_text, fg='#ff6600')
         
         # 启动测试线程
-        test_thread = threading.Thread(target=test_thread, daemon=True)
+        test_thread = threading.Thread(target=test_api_thread, daemon=True)
         test_thread.start()
     
     def handle_api_connection_result(self, success, message, was_retry=False):
@@ -647,11 +653,13 @@ class PackagingMachineGUI:
         self.api_connection_status = success
         
         if success:
-            self.api_status_label.config(text="已连接", fg='#00aa00')
+            if self.api_status_label is not None:
+                self.api_status_label.config(text="已连接", fg='#00aa00')
             if was_retry:
                 messagebox.showinfo("连接成功", f"API连接重试成功！\n{message}")
         else:
-            self.api_status_label.config(text="未连接", fg='#ff0000')
+            if self.api_status_label is not None:
+                self.api_status_label.config(text="未连接", fg='#ff0000')
             if was_retry:
                 messagebox.showerror("连接失败", f"API连接重试失败！\n{message}")
         
@@ -781,7 +789,8 @@ class PackagingMachineGUI:
         
     def reconnect_modbus(self):
         """重新连接Modbus"""
-        self.status_label.config(text="正在重连...", fg='#ff6600')
+        if self.status_label is not None:
+            self.status_label.config(text="正在重连...", fg='#ff6600')
         self.start_modbus_connection()
     
     def scan_modbus_devices(self):
@@ -796,11 +805,13 @@ class PackagingMachineGUI:
     
     def show_modbus_error(self):
         """显示Modbus模块不可用的错误信息"""
-        self.status_label.config(text="模块不可用", fg='#ff0000')
+        if self.status_label is not None:
+            self.status_label.config(text="模块不可用", fg='#ff0000')
     
     def show_api_error(self):
         """显示API模块不可用的错误信息"""
-        self.api_status_label.config(text="模块不可用", fg='#ff0000')
+        if self.api_status_label is not None:
+            self.api_status_label.config(text="模块不可用", fg='#ff0000')
     
     def on_traditional_click(self):
         """传统模式按钮点击事件"""

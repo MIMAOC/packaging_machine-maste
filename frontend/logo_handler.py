@@ -26,7 +26,9 @@ def get_resource_path(relative_path):
     """获取资源文件的绝对路径（兼容打包后的exe）"""
     try:
         # PyInstaller创建临时文件夹，将路径存储在_MEIPASS中
-        base_path = sys._MEIPASS
+        base_path = getattr(sys, "_MEIPASS", None)
+        if base_path is None:
+            base_path = os.path.abspath(".")
     except Exception:
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
