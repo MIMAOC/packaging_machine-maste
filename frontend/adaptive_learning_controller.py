@@ -119,12 +119,18 @@ class BucketAdaptiveLearningState:
     def record_coarse_end(self, coarse_end_time: datetime):
         """记录快加结束时间"""
         self.coarse_end_time = coarse_end_time
-        self.actual_coarse_time_ms = int((coarse_end_time - self.start_time).total_seconds() * 1000)
+        if self.start_time is not None:
+            self.actual_coarse_time_ms = int((coarse_end_time - self.start_time).total_seconds() * 1000)
+        else:
+            self.actual_coarse_time_ms = 0
     
     def record_target_reached(self, reached_time: datetime):
         """记录到量时间"""
         self.target_reached_time = reached_time
-        self.actual_total_cycle_ms = int((reached_time - self.start_time).total_seconds() * 1000)
+        if self.start_time is not None:
+            self.actual_total_cycle_ms = int((reached_time - self.start_time).total_seconds() * 1000)
+        else:
+            self.actual_total_cycle_ms = 0
         self.is_testing = False
     
     def record_error_value(self, error_value: float):
@@ -290,7 +296,7 @@ class AdaptiveLearningController:
             self._log(f"❌ {error_msg}")
     
     def start_adaptive_learning_test(self, bucket_id: int, original_target_weight: float, 
-                                    fine_flow_rate: float = None) -> bool:
+                                    fine_flow_rate: Optional[float] = None) -> bool:
         """
         启动指定料斗的自适应学习阶段测定
         
@@ -760,7 +766,7 @@ class AdaptiveLearningController:
             self.logger.exception("🔍 完整异常堆栈:")
             self._handle_bucket_failure(bucket_id, error_msg)
     
-    def _handle_adaptive_learning_not_compliant(self, bucket_id: int, new_params: dict, reason: str):
+    def _handle_adaptive_learning_not_compliant(self, bucket_id: int, new_params: Optional[dict], reason: str):
         """
         处理自适应学习不符合条件的情况
         
