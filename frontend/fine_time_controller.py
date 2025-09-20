@@ -20,6 +20,8 @@ from bucket_monitoring import BucketMonitoringService, create_bucket_monitoring_
 from clients.fine_time_webapi import analyze_fine_time
 from plc_addresses import BUCKET_PARAMETER_ADDRESSES, get_bucket_control_address
 
+from typing import Optional, Union
+import tkinter as tk
 class BucketFineTimeState:
     """料斗慢加时间测定状态"""
     
@@ -100,6 +102,7 @@ class FineTimeTestController:
         Args:
             modbus_client (ModbusClient): Modbus客户端实例
         """
+        root_reference: Optional[Union[tk.Tk, tk.Toplevel]] = None
         self.modbus_client = modbus_client
         self.bucket_states: Dict[int, BucketFineTimeState] = {}
         self.bucket_original_weights: Dict[int, float] = {}  # 存储每个料斗的原始目标重量
