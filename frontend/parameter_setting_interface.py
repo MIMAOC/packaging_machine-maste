@@ -26,15 +26,10 @@ import threading
 from typing import Optional, Dict, Any
 
 # 导入PLC相关模块
-try:
-    from traditional_plc_addresses import get_traditional_system_address
-    from modbus_client import ModbusClient
-except ImportError as e:
-    print(f"导入PLC模块失败: {e}")
-    print("请确保traditional_plc_addresses.py和modbus_client.py在同一目录下")
-    # 为了避免运行时错误，定义空类
-    class ModbusClient:
-        pass
+
+from traditional_plc_addresses import get_traditional_system_address
+from modbus_client import ModbusClient
+
 
 
 class ParameterSettingInterface:
@@ -366,7 +361,10 @@ class ParameterSettingInterface:
             address = get_traditional_system_address(param_key)
             
             # 从PLC读取数据
-            data = self.modbus_client.read_holding_registers(address, 1)
+            if self.modbus_client is not None:
+                data = self.modbus_client.read_holding_registers(address, 1)
+            else:
+                print("self.modbus_client is None")
             if data:
                 config = self.parameter_configs[param_key]
                 
@@ -512,6 +510,11 @@ class ParameterSettingInterface:
                 plc_value = int(value * 10) if value < 100 else int(value)
             else:
                 plc_value = int(value)
+
+            # 添加安全检查
+            if self.modbus_client is None:
+                print("警告：modbus_client尚未初始化")
+                return False
             
             # 写入PLC
             success = self.modbus_client.write_holding_register(address, plc_value)

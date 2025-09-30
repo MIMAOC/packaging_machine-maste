@@ -53,8 +53,13 @@ class WeightCalibrationInterface:
         """
         self.modbus_client = modbus_client           # 共享PLC客户端
         self.parent = parent_interface               # 主界面引用
-        self.root = parent_interface.get_main_root() # 共享主窗口
-        self.main_content_frame = parent_interface.get_main_content_frame()
+        if parent_interface is not None:
+            self.root = parent_interface.get_main_root() # 共享主窗口
+            self.main_content_frame = parent_interface.get_main_content_frame()
+        else:
+            self.root = tk.Tk()
+            self.main_content_frame = tk.Frame(self.root)
+            self.main_content_frame.pack(fill='both', expand=True)
         
         # 界面元素引用
         self.weight_labels = {}          # 重量显示标签
@@ -116,7 +121,7 @@ class WeightCalibrationInterface:
     def show_interface(self):
         """显示重量校准界面"""
         # 清空当前界面内容
-        if hasattr(self.parent, 'shared_clear_main_content'):
+        if self.parent is not None and hasattr(self.parent, 'shared_clear_main_content'):
             self.parent.shared_clear_main_content()
         
         # 创建校准界面
@@ -319,7 +324,7 @@ class WeightCalibrationInterface:
         Args:
             hopper_id: 料斗ID (1-6)
         """
-        if not self.modbus_client or not self.modbus_client.is_connected:
+        if self.modbus_client is None or  self.modbus_client.is_connected is  None:
             messagebox.showerror("错误", "PLC未连接，无法执行零点标定")
             return
         
@@ -358,7 +363,12 @@ class WeightCalibrationInterface:
         Args:
             hopper_id: 料斗ID (1-6)
         """
-        if not self.modbus_client or not self.modbus_client.is_connected:
+        # 检查输入框是否存在
+        if self.standard_weight_entry is None:
+            print("警告：标准重量输入框未初始化，跳过保存")
+            return
+        
+        if self.modbus_client is None or self.modbus_client.is_connected is None:
             messagebox.showerror("错误", "PLC未连接，无法执行重量校准")
             return
         
@@ -420,7 +430,7 @@ class WeightCalibrationInterface:
             coil_address = get_traditional_calibration_address(hopper_id, command_type)
             
             # 发送100ms脉冲
-            if hasattr(self.parent, 'shared_send_pulse_command'):
+            if self.parent is not None and hasattr(self.parent, 'shared_send_pulse_command'):
                 return self.parent.shared_send_pulse_command(coil_address, 1000)
             else:
                 # 直接使用modbus客户端发送脉冲
@@ -442,10 +452,15 @@ class WeightCalibrationInterface:
         """
         try:
             # 发送脉冲开启
-            success = self.modbus_client.write_coil(address, True)
+            if self.modbus_client is not None:
+                success = self.modbus_client.write_coil(address, True)
             if success:
                 # 延时后关闭脉冲
-                self.root.after(pulse_duration, lambda: self.modbus_client.write_coil(address, False))
+                def close_pulse():
+                    if self.modbus_client is not None:
+                        self.modbus_client.write_coil(address, False)
+
+                self.root.after(pulse_duration, close_pulse)
                 return True
             else:
                 print(f"脉冲命令发送失败，地址: {address}")
@@ -498,7 +513,14 @@ class WeightCalibrationInterface:
     def validate_standard_weight(self, event=None):
         """验证标准重量输入"""
         try:
+            # 空值检查
+            if event is None or not hasattr(event, 'widget'):
+                return
+            
             entry = event.widget
+            if entry is None:
+                return
+            
             value = entry.get()
             
             # 基本格式检查
@@ -518,17 +540,17 @@ class WeightCalibrationInterface:
     
     def start_data_refresh(self):
         """启动数据刷新"""
-        if hasattr(self.parent, 'shared_start_data_refresh'):
+        if  self.parent is not None and hasattr(self.parent, 'shared_start_data_refresh'):
             self.parent.shared_start_data_refresh(self.update_calibration_data)
     
     def stop_data_refresh(self):
         """停止数据刷新"""
-        if hasattr(self.parent, 'shared_stop_data_refresh'):
+        if self.parent is not None and hasattr(self.parent, 'shared_stop_data_refresh'):
             self.parent.shared_stop_data_refresh()
     
     def update_calibration_data(self):
         """更新校准界面数据"""
-        if not self.modbus_client or not self.modbus_client.is_connected:
+        if self.modbus_client is None or self.modbus_client.is_connected is  None:
             return
         
         try:
@@ -582,7 +604,7 @@ class WeightCalibrationInterface:
             self.cleanup()
             
             # 返回主菜单
-            if hasattr(self.parent, 'show_menu_interface'):
+            if self.parent is not None and hasattr(self.parent, 'show_menu_interface'):
                 self.parent.show_menu_interface()
             else:
                 print("无法返回主菜单：找不到主界面引用")
@@ -593,7 +615,7 @@ class WeightCalibrationInterface:
 
     def load_standard_weight(self):
         """从PLC加载标准重量"""
-        if not self.modbus_client or not self.modbus_client.is_connected:
+        if self.modbus_client is None or self.modbus_client.is_connected is  None:
             return
         
         try:
@@ -601,7 +623,7 @@ class WeightCalibrationInterface:
             address = get_traditional_system_address('StandardWeight')
             data = self.modbus_client.read_holding_registers(address, 1)
             
-            if data:
+            if data and self.standard_weight_entry is not None:
                 # 标准重量需要除以10显示
                 standard_weight = data[0] / 10.0
                 self.standard_weight_entry.delete(0, tk.END)
@@ -615,11 +637,15 @@ class WeightCalibrationInterface:
 
     def save_standard_weight(self, event=None):
         """保存标准重量到PLC"""
-        if not self.modbus_client or not self.modbus_client.is_connected:
+        if self.modbus_client is None or  self.modbus_client.is_connected is  None:
             messagebox.showerror("错误", "PLC未连接，无法保存标准重量")
             return
         
         try:
+            if self.standard_weight_entry is None:
+                messagebox.showerror("错误", "标准重量输入框未初始化")
+                return
+
             standard_weight_str = self.standard_weight_entry.get().strip()
             standard_weight = float(standard_weight_str)
             

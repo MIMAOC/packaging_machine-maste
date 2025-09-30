@@ -324,10 +324,10 @@ class ModbusClient:
                 return False
             
             try:
-                # 使用slave参数
+                # 修复：使用 address 参数而不是 start_address
                 result = self.client.write_registers(
-                    start_address=start_address, values=values, slave=self.slave_id
-                    )
+                    address=start_address, values=values, slave=self.slave_id
+                )
                 if not result.isError():
                     self.logger.info(f"成功批量写入寄存器，起始地址: {start_address}，数量: {len(values)}")
                     return True
@@ -541,16 +541,24 @@ class ModbusClient:
                     
                     # 检查地址是否连续
                     if max_addr - min_addr + 1 == len(target_reached_addresses):
-                        # 地址连续，使用批量读取，添加slave参数
-                        result = self.client.read_coils(min_addr, len(target_reached_addresses), slave=self.slave_id)
+                        # 地址连续，使用批量读取，修复：使用关键字参数
+                        result = self.client.read_coils(
+                            address=min_addr, 
+                            count=len(target_reached_addresses), 
+                            slave=self.slave_id
+                        )
                         if not result.isError():
                             return result.bits[:len(target_reached_addresses)]
                 
                 # 地址不连续或只有一个地址，逐个读取
                 states = []
                 for addr in target_reached_addresses:
-                    # 使用slave参数
-                    result = self.client.read_coils(addr, 1, slave=self.slave_id)
+                    # 修复：使用关键字参数
+                    result = self.client.read_coils(
+                        address=addr, 
+                        count=1, 
+                        slave=self.slave_id
+                    )
                     if not result.isError():
                         states.append(result.bits[0])
                     else:

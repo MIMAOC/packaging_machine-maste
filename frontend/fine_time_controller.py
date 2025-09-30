@@ -63,7 +63,16 @@ class BucketFineTimeState:
     def record_target_reached(self, reached_time: datetime):
         """记录到量时间"""
         self.target_reached_time = reached_time
-        self.fine_time_ms = int((reached_time - self.start_time).total_seconds() * 1000)
+        
+        # 修复：检查start_time是否为None
+        if self.start_time is not None:
+            self.fine_time_ms = int((reached_time - self.start_time).total_seconds() * 1000)
+        else:
+            # 如果start_time为None，记录警告并设置默认值
+            self.fine_time_ms = 0
+            # 可以在这里记录日志警告
+            print(f"警告：料斗{self.bucket_id}的start_time为None，无法计算准确的时间差")
+        
         self.is_testing = False
     
     def complete_successfully(self, fine_flow_rate: Optional[float] = None):
@@ -96,12 +105,19 @@ class FineTimeTestController:
         
         Args:
             modbus_client (ModbusClient): Modbus客户端实例
+
+
         """
+
+        # 新增：用于跨线程UI操作的root引用
+        self.root_reference = None
+
         self.modbus_client = modbus_client
         self.bucket_states: Dict[int, BucketFineTimeState] = {}
         self.bucket_original_weights: Dict[int, float] = {}  # 存储每个料斗的原始目标重量
         self.lock = threading.RLock()
         self.material_name = "未知物料"  # 存储物料名称
+        
         
         # 创建服务实例
         self.monitoring_service = create_bucket_monitoring_service(modbus_client)
@@ -128,6 +144,22 @@ class FineTimeTestController:
         
         # 设置物料不足回调
         self.monitoring_service.on_material_shortage_detected = self._on_material_shortage_detected
+
+
+    
+    
+    def set_root_reference(self, root):
+        """
+        设置root引用，用于跨线程UI操作
+        
+        Args:
+            root: Tkinter root对象
+        """
+        self.root_reference = root
+        # 同时设置到所有料斗状态中
+        with self.lock:
+            for state in self.bucket_states.values():
+                state.root_reference = root
     
     def _initialize_bucket_states(self):
         """初始化料斗状态"""
@@ -475,15 +507,30 @@ class FineTimeTestController:
                     6.0, fine_time_ms, current_fine_speed, original_target_weight, flight_material_value)  # 目标重量固定为6g
                 
                 # 调试：检查API返回值
-                self._log(f"🔍 API返回值调试 - 料斗{bucket_id}: {api_result}")
+                self._log(f"🔍 API返回值调试 - 料斗{bucket_id}: {api_result}, 类型: {type(api_result)}")
                 
+                # 检查API返回值类型
+                if not isinstance(api_result, (list, tuple)):
+                    # 如果返回值不是列表或元组，说明API调用失败
+                    error_msg = f"API返回值格式错误，期待列表/元组，实际得到: {type(api_result).__name__} - {api_result}"
+                    self._log(f"❌ {error_msg}")
+                    self._handle_bucket_failure(bucket_id, f"慢加时间API调用异常: {error_msg}")
+                    return
+                
+                # 检查返回值数量
                 if len(api_result) >= 6:
                     analysis_success, is_compliant, new_fine_speed, coarse_advance, fine_flow_rate, analysis_msg = api_result
-                else:
-                    # 处理返回值数量不足的情况
+                elif len(api_result) > 0:
+                    # 处理返回值数量不足的情况，用None填充
                     self._log(f"⚠️ API返回值数量不足，期待6个，实际{len(api_result)}个")
-                    analysis_success, is_compliant, new_fine_speed, coarse_advance, fine_flow_rate, analysis_msg = (
-                        api_result + [None] * (6 - len(api_result)))[:6]
+                    padded_result = list(api_result) + [None] * (6 - len(api_result))
+                    analysis_success, is_compliant, new_fine_speed, coarse_advance, fine_flow_rate, analysis_msg = padded_result[:6]
+                else:
+                    # 返回值为空
+                    error_msg = "API返回值为空"
+                    self._log(f"❌ {error_msg}")
+                    self._handle_bucket_failure(bucket_id, f"慢加时间API调用异常: {error_msg}")
+                    return
                     
             except Exception as e:
                 self._handle_bucket_failure(bucket_id, f"慢加时间API调用异常: {str(e)}")
@@ -732,13 +779,22 @@ class FineTimeTestController:
                 from adaptive_learning_controller import create_adaptive_learning_controller
                 
                 # 创建自适应学习控制器（如果尚未创建）
-                if not hasattr(self, 'adaptive_learning_controller'):
+                if not hasattr(self, 'adaptive_learning_controller') or self.adaptive_learning_controller is None:
+                    self._log("🔧 正在创建自适应学习控制器...")
                     self.adaptive_learning_controller = create_adaptive_learning_controller(self.modbus_client)
+                    
+                    # 检查控制器是否创建成功
+                    if self.adaptive_learning_controller is None:
+                        error_msg = "自适应学习控制器创建失败，返回None"
+                        self._log(f"❌ {error_msg}")
+                        # 控制器创建失败，弹窗显示慢加时间成功信息
+                        self._trigger_bucket_completed(bucket_id, True, success_msg)
+                        return
                 
                     # 🔥 修复：立即设置物料名称到自适应学习控制器
                     if hasattr(self.adaptive_learning_controller, 'set_material_name'):
                         self.adaptive_learning_controller.set_material_name(self.material_name)
-                        self._log(f"📝 已将物料名称'{self.material_name}'传递给自适应学习控制器")
+                        self._log(f"🔧 已将物料名称'{self.material_name}'传递给自适应学习控制器")
                     else:
                         self._log(f"⚠️ 自适应学习控制器不支持设置物料名称方法")
                     
@@ -778,6 +834,20 @@ class FineTimeTestController:
                     self.adaptive_learning_controller.on_progress_update = on_adaptive_progress
                     self.adaptive_learning_controller.on_log_message = on_adaptive_log
                 
+                # 验证控制器是否有效
+                if self.adaptive_learning_controller is None:
+                    error_msg = "自适应学习控制器仍为None，无法启动"
+                    self._log(f"❌ {error_msg}")
+                    self._trigger_bucket_completed(bucket_id, True, success_msg)
+                    return
+                
+                # 检查控制器是否有start_adaptive_learning_test方法
+                if not hasattr(self.adaptive_learning_controller, 'start_adaptive_learning_test'):
+                    error_msg = "自适应学习控制器缺少start_adaptive_learning_test方法"
+                    self._log(f"❌ {error_msg}")
+                    self._trigger_bucket_completed(bucket_id, True, success_msg)
+                    return
+                
                 # 调试：在传递之前再次检查流速值
                 self._log(f"🔍 即将传递给自适应学习的fine_flow_rate: {fine_flow_rate}, 类型: {type(fine_flow_rate)}")
                 
@@ -795,7 +865,7 @@ class FineTimeTestController:
                     # 自适应学习启动失败，弹窗显示慢加时间成功信息
                     self._log(f"❌ 料斗{bucket_id}自适应学习启动失败，显示慢加时间结果")
                     self._trigger_bucket_completed(bucket_id, True, success_msg)
-                
+
             except ImportError as e:
                 error_msg = f"无法导入自适应学习控制器模块：{str(e)}"
                 self._log(f"❌ {error_msg}")
@@ -1065,16 +1135,35 @@ class FineTimeTestController:
         """释放资源"""
         try:
             self.stop_all_fine_time_test()
-            self.monitoring_service.dispose()
             
-            # 释放自适应学习控制器资源（如果存在）
-            if hasattr(self, 'adaptive_learning_controller'):
-                self.adaptive_learning_controller.dispose()
-                self.adaptive_learning_controller = None
+            # 安全释放监测服务
+            if hasattr(self, 'monitoring_service') and self.monitoring_service is not None:
+                self.monitoring_service.dispose()
+            
+            # 安全释放自适应学习控制器资源（如果存在）
+            if hasattr(self, 'adaptive_learning_controller') and self.adaptive_learning_controller is not None:
+                try:
+                    self.adaptive_learning_controller.dispose()
+                except Exception as e:
+                    self.logger.error(f"释放自适应学习控制器资源异常: {e}")
+                finally:
+                    self.adaptive_learning_controller = None
             
             self._log("慢加时间测定控制器资源已释放")
+            
         except Exception as e:
             self.logger.error(f"释放控制器资源异常: {e}")
+            # 即使出现异常也要尝试清理关键资源
+            try:
+                if hasattr(self, 'monitoring_service') and self.monitoring_service is not None:
+                    self.monitoring_service.dispose()
+            except:
+                pass
+            
+            try:
+                self.adaptive_learning_controller = None
+            except:
+                pass
 
 def create_fine_time_test_controller(modbus_client: ModbusClient) -> FineTimeTestController:
     """

@@ -22,7 +22,7 @@ from tkinter import ttk, messagebox
 import tkinter.font as tkFont
 import threading
 from typing import List
-
+from typing import Optional
 # 导入数据库相关模块
 try:
     from database.material_dao import MaterialDAO, Material
@@ -578,6 +578,10 @@ class MaterialManagementInterface:
                 return
             
             # 更新数据库
+            if material.id is None:
+                messagebox.showerror("操作失败", f"物料'{material.material_name}'的ID无效，无法{status_text}")
+                return
+
             if new_status == 1:
                 success, message = MaterialDAO.enable_material(material.id)
             else:
@@ -611,7 +615,11 @@ class MaterialManagementInterface:
 
             print(f"[信息] 开始再学习物料: {material.material_name}")
             # 直接显示参数输入对话框（再学习模式）
-            self.show_new_material_params_dialog(material.material_name, is_relearning=True, material_id=material.id)
+            self.show_new_material_params_dialog(
+                    material.material_name, 
+                    is_relearning=True, 
+                    material_id=material.id  # 确保传递material_id
+                )
 
         except Exception as e:
             error_msg = f"再学习操作异常: {str(e)}"
@@ -772,7 +780,9 @@ class MaterialManagementInterface:
             print(f"[错误] {error_msg}")
             messagebox.showerror("系统错误", error_msg)
     
-    def show_new_material_params_dialog(self, material_name: str, is_relearning: bool = False, material_id: int = None):
+    
+
+    def show_new_material_params_dialog(self, material_name: str, is_relearning: bool = False, material_id: Optional[int] = None):
         """
         显示新物料参数输入对话框（第二个弹窗）
         
@@ -914,11 +924,14 @@ class MaterialManagementInterface:
                 
                 if is_relearning:
                     print(f"[信息] 再学习物料: {material_name}, 重量: {target_weight}g, 数量: {package_quantity}")
-                    
+                    if material_id is None:
+                        messagebox.showerror("参数错误", "再学习时未获取到物料ID，无法重置AI状态！")
+                        return
                     # 更新物料AI状态为"未学习"
-                    if DATABASE_AVAILABLE and material_id:
+                    if DATABASE_AVAILABLE :
                         try:
                             success, message = MaterialDAO.update_material_ai_status(material_id, "未学习")
+                            
                             if success:
                                 print(f"[成功] 物料AI状态已重置: {message}")
                                 # 刷新物料列表

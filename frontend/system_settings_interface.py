@@ -161,14 +161,14 @@ class SystemSettingsInterface:
                                    "物料管理", 
                                    "新增物料并启动AI学习\n查看AI状态和管理物料启用",
                                    self.on_material_management_click,
-                                   side=tk.LEFT, padx=(0, 80))
+                                   side=tk.LEFT, padx=80)
         
         # 生产记录按钮
         self.create_function_button(buttons_container, 
                                    "生产记录", 
                                    "查看历史生产数据和合格率\n按时间和条件搜索记录",
                                    self.on_production_records_click,
-                                   side=tk.LEFT, padx=(0, 80))
+                                   side=tk.LEFT, padx=80)
         
         # 出厂设置按钮
         self.create_function_button(buttons_container, 
@@ -192,6 +192,7 @@ class SystemSettingsInterface:
         # 按钮容器
         button_container = tk.Frame(parent, bg='#d3d3d3', relief='flat', bd=0)
         button_container.pack(side=side, padx=padx)
+        
         button_container.configure(width=320, height=240)
         button_container.pack_propagate(False)
         

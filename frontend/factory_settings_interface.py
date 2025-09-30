@@ -19,6 +19,7 @@ import time
 import tkinter as tk
 from tkinter import ttk, messagebox
 import tkinter.font as tkFont
+from typing import Union, Tuple, Literal
 
 class ErrorThresholdConfig:
     """误差阈值配置类"""
@@ -219,16 +220,16 @@ class FactorySettingsInterface:
         
         # 左侧标题
         left_frame = tk.Frame(title_frame, bg='white')
-        left_frame.pack(side=tk.LEFT)
+        left_frame.pack(side='left')
         
         # 出厂设置标题
         title_label = tk.Label(left_frame, text="出厂设置", 
                              font=self.title_font, bg='white', fg='#333333')
-        title_label.pack(side=tk.LEFT)
+        title_label.pack(side='left')
         
         # 右侧返回按钮
         right_frame = tk.Frame(title_frame, bg='white')
-        right_frame.pack(side=tk.RIGHT)
+        right_frame.pack(side='right')
         
         # 返回AI模式按钮
         return_btn = tk.Button(right_frame, text="返回AI模式", 
@@ -237,7 +238,7 @@ class FactorySettingsInterface:
                               relief='flat', bd=1,
                               padx=20, pady=8,
                               command=self.on_return_to_ai_mode)
-        return_btn.pack(side=tk.LEFT)
+        return_btn.pack(side='left')
         
         # 蓝色分隔线
         separator = tk.Frame(parent, height=3, bg='#7fb3d3')
@@ -350,16 +351,16 @@ class FactorySettingsInterface:
         
         # 左侧标题
         left_frame = tk.Frame(title_frame, bg='white')
-        left_frame.pack(side=tk.LEFT)
+        left_frame.pack(side='left')
         
         # 出厂设置标题
         title_label = tk.Label(left_frame, text="出厂设置", 
                              font=self.title_font, bg='white', fg='#333333')
-        title_label.pack(side=tk.LEFT)
+        title_label.pack(side='left')
         
         # 右侧返回按钮
         right_frame = tk.Frame(title_frame, bg='white')
-        right_frame.pack(side=tk.RIGHT)
+        right_frame.pack(side='right')
         
         # 返回AI模式按钮
         return_btn = tk.Button(right_frame, text="返回AI模式", 
@@ -368,7 +369,7 @@ class FactorySettingsInterface:
                               relief='flat', bd=1,
                               padx=20, pady=8,
                               command=self.on_return_to_ai_mode)
-        return_btn.pack(side=tk.LEFT)
+        return_btn.pack(side='left')
         
         # 蓝色分隔线
         separator = tk.Frame(parent, height=3, bg='#7fb3d3')
@@ -390,11 +391,11 @@ class FactorySettingsInterface:
         
         # 下限误差设置
         self.create_error_setting(settings_row, "下限误差", self.current_lower_error, 
-                                 self.on_lower_error_change, side=tk.LEFT, padx=(0, 100))
+                                 self.on_lower_error_change, side='left', padx=(0, 100))
         
         # 上限误差设置
         self.create_error_setting(settings_row, "上限误差", self.current_upper_error, 
-                                 self.on_upper_error_change, side=tk.LEFT)
+                                 self.on_upper_error_change, side='left')
         
     def setup_force_exit_mechanism(self, window):
         """设置强制退出机制"""
@@ -432,8 +433,19 @@ class FactorySettingsInterface:
             import os
             os._exit(0)  # 强制终止进程
     
-    def create_error_setting(self, parent, title, initial_value, change_callback, side=tk.LEFT, padx=0):
-        """创建误差设置组件"""
+    def create_error_setting(self, parent, title, initial_value, change_callback, 
+                           side: Literal['left', 'right', 'top', 'bottom'] = 'left', 
+                           padx: Union[int, Tuple[int, int]] = 0):
+        """创建误差设置组件
+        
+        Args:
+            parent: 父容器
+            title: 设置标题
+            initial_value: 初始值
+            change_callback: 值变化回调函数
+            side: pack方向，可选值: 'left', 'right', 'top', 'bottom'
+            padx: 水平填充，可以是整数或元组(左,右)
+        """
         # 设置容器
         setting_frame = tk.Frame(parent, bg='white')
         setting_frame.pack(side=side, padx=padx)
@@ -469,7 +481,7 @@ class FactorySettingsInterface:
         # 单位标签
         unit_label = tk.Label(unit_button_frame, text="克g", 
                              font=self.unit_font, bg='white', fg='#333333')
-        unit_label.pack(side=tk.LEFT, padx=(0, 20))
+        unit_label.pack(side='left', padx=(0, 20))
         
         # 加号按钮
         plus_btn = tk.Button(unit_button_frame, text="+", 
@@ -478,7 +490,7 @@ class FactorySettingsInterface:
                             relief='flat', bd=1,
                             width=3, height=1,
                             command=lambda: change_callback(0.1, value_display))
-        plus_btn.pack(side=tk.LEFT, padx=(0, 10))
+        plus_btn.pack(side='left', padx=(0, 10))
         
         # 减号按钮
         minus_btn = tk.Button(unit_button_frame, text="-", 
@@ -487,7 +499,7 @@ class FactorySettingsInterface:
                              relief='flat', bd=1,
                              width=3, height=1,
                              command=lambda: change_callback(-0.1, value_display))
-        minus_btn.pack(side=tk.LEFT)
+        minus_btn.pack(side='left')
         
         # 保存显示框引用
         if title == "下限误差":
@@ -544,7 +556,7 @@ class FactorySettingsInterface:
                              relief='flat', bd=1,
                              padx=40, pady=12,
                              command=self.reset_to_default)
-        reset_btn.pack(side=tk.LEFT, padx=(0, 30))
+        reset_btn.pack(side='left', padx=(0, 30))
         
         # 保存设置按钮
         save_btn = tk.Button(button_frame, text="保存设置", 
@@ -553,7 +565,7 @@ class FactorySettingsInterface:
                             relief='flat', bd=1,
                             padx=40, pady=12,
                             command=self.save_settings)
-        save_btn.pack(side=tk.LEFT, padx=(30, 0))
+        save_btn.pack(side='left', padx=(30, 0))
     
     def reset_to_default(self):
         """恢复默认设置"""
@@ -651,10 +663,10 @@ class FactorySettingsInterface:
         """创建底部信息区域"""
         # 底部信息容器
         footer_frame = tk.Frame(parent, bg='white')
-        footer_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=(20, 0))
+        footer_frame.pack(side='bottom', fill='x', pady=(20, 0))
         
         # 版本信息
-        version_text = "MHWPM v1.5.1 ©杭州公式人工智能科技有限公司 温州天腾机械有限公司"
+        version_text = "MHWPM v1.5.1 ©杭州公弘人工智能科技有限公司 温州天腾机械有限公司"
         version_label = tk.Label(footer_frame, text=version_text, 
                                font=self.footer_font, bg='white', fg='#888888')
         version_label.pack(pady=(0, 5))
